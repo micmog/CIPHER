@@ -24,8 +24,8 @@ make MPF-mc
 
 Running an example:
 ```bash
-cd example/64x64x64_N3_D16x16x8
-./MPF-mc.exe -finaltime 72000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-2 -ctol 1e-3 -kI 0.2 -geomfile 64x64x64_N3_D16x16x8.geom -interfacefile N3.interface -outfreq 5000 -outfile 64x64x64_N3_D16x16x8
+cd example/GrainBoundaryPrecipitate
+./MPF-mc.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-2 -ctol 1e-3 -kI 0.2 -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface -outfreq 10000 -outfile GrainBoundaryPrecipitate
 ```
 
 ## References
