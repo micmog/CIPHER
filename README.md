@@ -1,4 +1,4 @@
-# CIPHER: **C**ALPHAD **I**ntegrated **PH**ase-field solv**ER**
+# CIPHER: Calphad Integrated PHase-field solvER
 
 ## What is this?
 
