@@ -31,7 +31,7 @@ export PATH=CIPHER_DIR/bin:$PATH
 # navigate to examples folder
 cd examples/GrainBoundaryPrecipitate
 # run example
-./cipher.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-2 -ctol 1e-3 -kI 0.2 -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface -outfreq 10000 -outfile GrainBoundaryPrecipitate
+cipher.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-3 -ctol 1e-5 -kI 0.2 -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface -outfreq 10000 -outfile GrainBoundaryPrecipitate
 ```
 
 ## Contact
