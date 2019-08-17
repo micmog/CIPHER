@@ -37,8 +37,7 @@ cipher.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e
 ## Contact
 
 This code is maintained by the Microstructure Modelling Group at the University of Manchester. 
-
-Email: pratheek.shanthraj@manchester.ac.uk
+For questions, comments, bug-reports or contributions please email Dr. Pratheek Shanthraj at pratheek.shanthraj@manchester.ac.uk.
 
 ## References
 
