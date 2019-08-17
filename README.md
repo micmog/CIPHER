@@ -30,10 +30,8 @@ cd example/64x64x64_N3_D16x16x8
 
 ## References
 
-[1] Grand-canonical phase-field implementation: https://arxiv.org/abs/1906.10503
-
-[2] PETSc: https://www.mcs.anl.gov/petsc/
-
+[1] Grand-canonical phase-field implementation: https://arxiv.org/abs/1906.10503  
+[2] PETSc: https://www.mcs.anl.gov/petsc/  
 [3] Roaring BitMap: https://github.com/RoaringBitmap/CRoaring
 
 ## License
