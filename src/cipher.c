@@ -336,15 +336,14 @@ PetscErrorCode PostStep(DM da,Vec X,AppCtx *user)
        for (PetscInt k=zs; k<zm; k++) {
            for (PetscInt j=ys; j<ym; j++) {
                for (PetscInt i=xs; i<xm; i++) {
-                   PetscScalar max = -LARGE;
+                   PetscScalar max = -LARGE, interpolant[alist[k][j][i].i[0]];
+                   EvalInterpolant(interpolant,gfdof[k][j][i].p,alist[k][j][i].i[0]);
                    for (PetscInt g=0; g<alist[k][j][i].i[0]; g++) {
-                       if (gfdof[k][j][i].p[g] > max) {
-                          max = gfdof[k][j][i].p[g];
+                       if (interpolant[g] > max) {
+                          max = interpolant[g];
                           xout[0].o[k][j][i] = (PetscScalar) alist[k][j][i].i[g+1];
                        }
                    }
-                   PetscScalar interpolant[alist[k][j][i].i[0]];
-                   EvalInterpolant(interpolant,gfdof[k][j][i].p,alist[k][j][i].i[0]);
                    for (PetscInt c=0; c<user->nc; c++) {
                        xout[c+1].o[k][j][i] = 0.0;
                        for (PetscInt g=0; g<alist[k][j][i].i[0]; g++)
