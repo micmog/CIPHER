@@ -14,7 +14,12 @@
 #define UTILITY_IMPORT
 #include "utility.h"
 
+/* nc x nc matrix inversion function */
 static void (*Invertmatrixf)(PetscScalar *, PetscScalar *);
+
+/* interpolation shape functions */
+static void (*Interpolant          )(PetscScalar *, const PetscScalar *,                      const uint16_t);
+static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t);
 
 /*
  Extract string between tags
@@ -303,6 +308,66 @@ void Invertmatrix(PetscScalar * dst, PetscScalar * src)
 }
 
 /*
+ Linear interpolation shape function
+ */
+static void Interpolant_linear(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    memcpy(interpolant,phasefrac,nphases*sizeof(PetscScalar));
+}
+
+/*
+ Linear interpolation shape function derivative
+ */
+static void InterpolantDerivative_linear(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    memcpy(out,in,nphases*sizeof(PetscScalar));
+}
+
+/*
+ Cubic interpolation shape function
+ */
+static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    PetscScalar interpolantsum = 0.0;
+    for (PetscInt g = 0; g < nphases; g++) {
+        interpolant[g] = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
+        interpolantsum += interpolant[g];
+    }
+    for (PetscInt g = 0; g < nphases; g++) interpolant[g] /= interpolantsum;
+}
+
+/*
+ Cubic interpolation shape function derivative
+ */
+static void InterpolantDerivative_cubic(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    PetscScalar avgin = 0.0, interpolantsum = 0.0;
+    for (PetscInt g = 0; g < nphases; g++) {
+        PetscScalar interpolant = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
+        interpolantsum += interpolant;
+        avgin += interpolant*in[g];
+    }    
+    for (PetscInt g = 0; g < nphases; g++)
+        out[g] = 6.0*phasefrac[g]*(1.0 - phasefrac[g])*(in[g] - avgin/interpolantsum)/interpolantsum;
+}
+
+/*
+ Interpolation shape function
+ */
+void EvalInterpolant(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    Interpolant(interpolant,phasefrac,nphases);
+}
+
+/*
+ Interpolation shape function derivative
+ */
+void MatMulInterpolantDerivative(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+{
+    InterpolantDerivative(out,in,phasefrac,nphases);
+}
+
+/*
  SimplexProjection - Project given vector on to Gibbs simplex
  */
 static int Comparison(const void *x, const void *y){   
@@ -348,4 +413,11 @@ void utility_init(const AppCtx *user)
     } else {
         Invertmatrixf = &Invertnxn;
     }  
+    if        (user->interpolation == LINEAR_INTERPOLATION) {
+        Interpolant = &Interpolant_linear;
+        InterpolantDerivative = &InterpolantDerivative_linear;
+    } else if (user->interpolation == CUBIC_INTERPOLATION ) {
+        Interpolant = &Interpolant_cubic;
+        InterpolantDerivative = &InterpolantDerivative_cubic;
+    }
 }

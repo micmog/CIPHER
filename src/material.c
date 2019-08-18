@@ -394,19 +394,19 @@ void material_init(const AppCtx *user)
     Matfunc = (MATFUNC *) malloc(user->nmat*sizeof(struct MATFUNC));
     MATERIAL *currentmaterial = &user->material[0];
     for (PetscInt mat=0; mat<user->nmat; mat++, currentmaterial++) {
-        if        (currentmaterial->model == QUADRATIC_FE) {
+        if        (currentmaterial->model == QUADRATIC_CHEMENERGY) {
             Matfunc[mat].Chemicalpotential = &Chemicalpotential_quad;
             Matfunc[mat].Chemenergy = &Chemenergy_quad;
             Matfunc[mat].Composition = &Composition_quad;
             Matfunc[mat].CompositionTangent = &CompositionTangent_quad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_quad;
-        } else if (currentmaterial->model == CALPHAD_FE  ) {
+        } else if (currentmaterial->model == CALPHAD_CHEMENERGY  ) {
             Matfunc[mat].Chemicalpotential = &Chemicalpotential_calphad;
             Matfunc[mat].Chemenergy = &Chemenergy_calphad;
             Matfunc[mat].Composition = &Composition_calphad;
             Matfunc[mat].CompositionTangent = &CompositionTangent_calphad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_calphad;
-        } else if (currentmaterial->model == NONE_FE     ) {
+        } else if (currentmaterial->model == NONE_CHEMENERGY     ) {
             Matfunc[mat].Chemicalpotential = &Chemicalpotential_none;
             Matfunc[mat].Chemenergy = &Chemenergy_none;
             Matfunc[mat].Composition = &Composition_none;
