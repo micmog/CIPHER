@@ -53,6 +53,14 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     char *tok, *savetok;
     substr = Extract(buffer, "<header>", "</header>");
     tok = strtok_r(substr, "\n", &savetok);
+    /* initialise header information */
+    user->resolution[0] = 1;
+    user->resolution[1] = 1;
+    user->resolution[2] = 1;
+    user->nc = 1;
+    user->np = 1;
+    user->nmat = 1;
+    user->interpolation = LINEAR_INTERPOLATION;
     while (tok !=NULL) {
         // process the line
         if (strstr(tok, "grid") != NULL) {
@@ -112,7 +120,18 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
+    /* header information sanity checks */
+    assert(user->resolution[0] > 0  );
+    assert(user->resolution[1] > 0  );
+    assert(user->resolution[2] > 0  );
+    assert(user->nc         >  0    );
+    assert(user->nc         <= MAXCP);
+    assert(user->np         >  0    );
+    assert(user->nmat       >  0    );
     assert(user->interpolation != NONE_INTERPOLATION);
+    free(substr);
+    
+    /* initialise material information */
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
         currentmaterial->model = NONE_CHEMENERGY;
@@ -129,15 +148,6 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         currentcalphad->ternary = (RK *) malloc(user->nc*(user->nc-1)*(user->nc-2)*sizeof(struct RK)/6);
         currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscScalar));
     }
-    assert(user->resolution[0] > 0  );
-    assert(user->resolution[1] > 0  );
-    assert(user->resolution[2] > 0  );
-    assert(user->nc         >  0    );
-    assert(user->nc         <= MAXCP);
-    assert(user->np         >  0    );
-    assert(user->nmat       >  0    );
-    free(substr);
-    
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
         QUAD *currentquad = &currentmaterial->energy.quad;
@@ -445,6 +455,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             //advance the token
             tok = strtok_r(NULL, "\n", &savetok);
         }
+        /* material information sanity checks */
         assert(currentmaterial->molarvolume > 0.0);
         for (PetscInt c=0;c<user->nc;c++) {
             assert(currentmaterial->c0[c] > 0.0);
