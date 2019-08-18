@@ -18,8 +18,8 @@
 static void (*Invertmatrixf)(PetscScalar *, PetscScalar *);
 
 /* interpolation shape functions */
-static void (*Interpolant          )(PetscScalar *, const PetscScalar *, const uint16_t);
-static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const uint16_t);
+static void (*Interpolant          )(PetscScalar *, const PetscScalar *,                      const uint16_t);
+static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t);
 
 /*
  Extract string between tags
@@ -318,10 +318,9 @@ static void Interpolant_linear(PetscScalar *interpolant, const PetscScalar *phas
 /*
  Linear interpolation shape function derivative
  */
-static void InterpolantDerivative_linear(PetscScalar *interpolantderivative, const PetscScalar *phasefrac, const uint16_t nphases)
+static void InterpolantDerivative_linear(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
 {
-    memset(interpolantderivative,0,nphases*nphases*sizeof(PetscScalar));
-    for (PetscInt g = 0; g < nphases; g++) interpolantderivative[g*nphases+g] = 1.0;
+    memcpy(out,in,nphases*sizeof(PetscScalar));
 }
 
 /*
@@ -334,36 +333,28 @@ static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phase
         interpolant[g] = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
         interpolantsum += interpolant[g];
     }
-    interpolantsum = 1.0/interpolantsum;
-    for (PetscInt g = 0; g < nphases; g++) interpolant[g] *= interpolantsum;
+    for (PetscInt g = 0; g < nphases; g++) interpolant[g] /= interpolantsum;
 }
 
 /*
  Cubic interpolation shape function derivative
  */
-static void InterpolantDerivative_cubic(PetscScalar *interpolantderivative, const PetscScalar *phasefrac, const uint16_t nphases)
+static void InterpolantDerivative_cubic(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
 {
-    memset(interpolantderivative,0,nphases*nphases*sizeof(PetscScalar));
-    PetscScalar interpolant[nphases], interpolantd[nphases], interpolantsum = 0.0;
+    PetscScalar avgin = 0.0, interpolantsum = 0.0;
     for (PetscInt g = 0; g < nphases; g++) {
-        interpolant [g] = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
-        interpolantd[g] = 6.0*phasefrac[g]*(1.0 - phasefrac[g]);
-        interpolantsum += interpolant[g];
+        PetscScalar interpolant = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
+        interpolantsum += interpolant;
+        avgin += interpolant*in[g];
     }    
-    interpolantsum = 1.0/interpolantsum;
-    PetscScalar interpolantsum2 = interpolantsum*interpolantsum;
-    for (PetscInt gk = 0; gk < nphases; gk++) {
-        interpolantderivative[gk*nphases+gk] += interpolantd[gk]*interpolantsum;
-        for (PetscInt gj = 0; gj < nphases; gj++) {
-            interpolantderivative[gk*nphases+gj] -= interpolant[gk]*interpolantd[gj]*interpolantsum2;
-        }
-    }    
+    for (PetscInt g = 0; g < nphases; g++)
+        out[g] = 6.0*phasefrac[g]*(1.0 - phasefrac[g])*(in[g] - avgin/interpolantsum)/interpolantsum;
 }
 
 /*
  Interpolation shape function
  */
-void Shapefunc(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+void EvalInterpolant(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
 {
     Interpolant(interpolant,phasefrac,nphases);
 }
@@ -371,9 +362,9 @@ void Shapefunc(PetscScalar *interpolant, const PetscScalar *phasefrac, const uin
 /*
  Interpolation shape function derivative
  */
-void ShapefuncDerivative(PetscScalar *interpolantderivative, const PetscScalar *phasefrac, const uint16_t nphases)
+void MatMulInterpolantDerivative(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
 {
-    InterpolantDerivative(interpolantderivative,phasefrac,nphases);
+    InterpolantDerivative(out,in,phasefrac,nphases);
 }
 
 /*

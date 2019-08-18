@@ -27,9 +27,7 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
     C_DOFS         ***cdof; 
     F2I            ***glist, ***nalist, ***alist;
     PetscInt       xs, ys, zs, xm, ym, zm;
-    PetscScalar    phi[user->np], phidel[user->np], phidot[user->np];
-    PetscScalar    compos[user->np*user->nc], compag[MAXAP*user->nc]; 
-    PetscScalar    caplflux[MAXAP], caplsource[MAXAP], chemsource[MAXAP], rhs[MAXAP];
+    PetscScalar    deltaphi[MAXAP]; 
     uint16_t       superset[MAXAP];
     PetscScalar    fdcoeff[3][3][3] = {{{1.0/36.0, 4.0/36.0, 1.0/36.0},{4.0/36.0, 16.0/36.0, 4.0/36.0},{1.0/36.0, 4.0/36.0, 1.0/36.0}},
                                        {{4.0/36.0, 16.0/36.0, 4.0/36.0},{16.0/36.0, -152.0/36.0, 16.0/36.0},{4.0/36.0, 16.0/36.0, 4.0/36.0}},
@@ -66,7 +64,7 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
             for (PetscInt i=xs; i<xm && err; i++) {
                 /* more than 1 phase active at this point neighbourhood */
                 PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
-                memset(phidel,0,user->np*sizeof(PetscScalar));
+                memset(deltaphi,0,MAXAP*sizeof(PetscScalar));
                 if (   ((alist[k][j][i].i[0] + nalist[k][j][i].i[0]) <= 1) 
                     || ((user->resolution[2] - 1                   ) == k) 
                     || ( 0                                           == k)) {
@@ -77,8 +75,10 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                     superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],
                                                & alist[k][j][i].i[1], alist[k][j][i].i[0], 
                                                &superset[1]);
+                    PetscScalar phi[user->np], phidel[user->np], phidot[user->np], phir[superset[0]];
                     memset(phi   ,0,user->np*sizeof(PetscScalar));
                     memset(phidot,0,user->np*sizeof(PetscScalar));
+                    memset(phidel,0,user->np*sizeof(PetscScalar));
                     for (PetscInt kk=kb; kk<=kt; kk++) {
                         for (PetscInt jj=js; jj<=jn; jj++) {
                             for (PetscInt ii=iw; ii<=ie; ii++) {
@@ -93,6 +93,9 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                         phi   [alist[k ][j ][i ].i[g+1]]  = fdof[k ][j ][i ].p[g];
                         phidot[alist[k ][j ][i ].i[g+1]]  = fdot[k ][j ][i ].p[g];
                     }
+                    for (PetscInt g=0; g<superset[0]; g++) phir[g] = phi[superset[g+1]];
+                    
+                    PetscScalar compos[user->np*user->nc], compag[superset[0]*user->nc];
                     for (PetscInt g=0; g<nalist[k ][j ][i ].i[0]; g++)
                         memcpy(&compos[nalist[k][j][i].i[g+1]*user->nc],
                                user->material[user->phasematerialmapping[nalist[k][j][i].i[g+1]]].c0,
@@ -102,7 +105,12 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                                &cdof[k][j][i].c[g*user->nc],user->nc*sizeof(PetscScalar));
                     for (PetscInt g=0; g<superset[0]; g++)
                         memcpy(&compag[g*user->nc],&compos[superset[g+1]*user->nc],user->nc*sizeof(PetscScalar));
+
+                    /* calculate interpolants */
+                    PetscScalar interpolant[superset[0]];
+                    EvalInterpolant(interpolant,phir,superset[0]);
                     /* capillary driving force */ 
+                    PetscScalar caplflux[superset[0]], caplsource[superset[0]];
                     memset(caplflux  ,0,superset[0]*sizeof(PetscScalar));
                     memset(caplsource,0,superset[0]*sizeof(PetscScalar));
                     for (PetscInt gk=0; gk<superset[0]; gk++) {
@@ -112,16 +120,18 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                             INTERFACE *currentinterface = &user->interface[interfacekj];
                             caplflux  [gk] -= currentinterface->energy*phidel[superset[gj+1]];
                             caplflux  [gj] -= currentinterface->energy*phidel[superset[gk+1]];
-                            caplsource[gk] -= currentinterface->energy*phi   [superset[gj+1]];
-                            caplsource[gj] -= currentinterface->energy*phi   [superset[gk+1]];
+                            caplsource[gk] -= currentinterface->energy*phir  [         gj   ];
+                            caplsource[gj] -= currentinterface->energy*phir  [         gk   ];
                         }
                         caplflux  [gk] *= 8.0*user->len/PETSC_PI/PETSC_PI;
                         caplsource[gk] *= 8.0/user->len;
                     }   
                     /* chemical driving force */ 
-                    Chemenergy(chemsource,compag,fdof[k][j][i].m,superset,user);
+                    PetscScalar chemsource[superset[0]], chemsourcer[superset[0]];
+                    Chemenergy(chemsourcer,compag,fdof[k][j][i].m,superset,user);
+                    MatMulInterpolantDerivative(chemsource,chemsourcer,phir,superset[0]);
                     /* build total RHS and forward solution  */ 
-                    PetscScalar phiunprojected[superset[0]], phiprojected[superset[0]];
+                    PetscScalar rhs[superset[0]], phiunprojected[superset[0]], phiprojected[superset[0]];
                     memset(rhs,0,superset[0]*sizeof(PetscScalar));
                     for (PetscInt gk=0; gk<superset[0]; gk++) {
                         for (PetscInt gj=gk+1; gj<superset[0]; gj++) {
@@ -131,23 +141,22 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                             PetscScalar val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
                                                                           + (caplsource[gk] - caplsource[gj])
                                                                           + (chemsource[gj] - chemsource[gk])
-                                                                          * sqrt(phi[superset[gk+1]]*phi[superset[gj+1]]));
+                                                                          * sqrt(interpolant[gk]*interpolant[gj]));
                             rhs[gk] += val; rhs[gj] -= val;
                         }
                         rhs[gk] /= ((PetscScalar) superset[0]);
-                        phiunprojected [gk] = phi[superset[gk+1]] + user->dt*rhs[gk];
+                        phiunprojected[gk] = phir[gk] + user->dt*rhs[gk];
                     }
                     /* project solution and update active list */
                     SimplexProjection(phiprojected ,phiunprojected ,superset[0]);
                     glist[k][j][i].i[0] = 0;
-                    memset(phidel,0,user->np*sizeof(PetscScalar));
                     for (PetscInt g=0; g<superset[0];g++) {
                         if (phiprojected[g] > TOL || rhs[g] > TOL) {
                             lte  [k][j][i].p[  glist[k][j][i].i[0]] = 
-                                (phiprojected[g] - phi[superset[g+1]] - user->dt*phidot[superset[g+1]])/user->ptol;
-                            fdot [k][j][i].p[  glist[k][j][i].i[0]] = (phiprojected[g] - phi[superset[g+1]])/user->dt;
-                            gfdof[k][j][i].p[  glist[k][j][i].i[0]] = phiprojected[g];
-                            phidel[superset[g+1]] = phiprojected[g] - phi[superset[g+1]];
+                                (phiprojected[g] - phir[g] - user->dt*phidot[superset[g+1]])/user->ptol;
+                            fdot [k][j][i].p[  glist[k][j][i].i[0]] = (phiprojected[g] - phir[g])/user->dt;
+                            gfdof[k][j][i].p[  glist[k][j][i].i[0]] =  phiprojected[g];
+                            deltaphi        [  glist[k][j][i].i[0]] =  phiprojected[g] - phir[g];
                             memcpy(&cdof[k][j][i].c[glist[k][j][i].i[0]*user->nc],
                                    &compag[g*user->nc],user->nc*sizeof(PetscScalar));
                             glist[k][j][i].i[++glist[k][j][i].i[0]] = superset[g+1];
@@ -172,23 +181,26 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                             }
                         }
                     }
+                    /* calculate interpolants */
+                    PetscScalar interpolant[glist[k][j][i].i[0]];
+                    EvalInterpolant(interpolant,gfdof[k][j][i].p,glist[k][j][i].i[0]);
                     /* calculate mobility matrix (volume-fixed frame of reference) */
                     PetscScalar mobilitycv[user->nc-1];
-                    CompositionMobility(mobilitycv ,cdof[k][j][i].c,gfdof[k][j][i].p,glist[k][j][i].i,user);
+                    CompositionMobility(mobilitycv,cdof[k][j][i].c,interpolant,glist[k][j][i].i,user);
                     /* calculate composition rate */
-                    PetscScalar cavgdot[user->nc-1];
+                    PetscScalar cavgdot[user->nc-1], deltac[glist[k][j][i].i[0]], ctemp[glist[k][j][i].i[0]];
                     for (PetscInt c=0; c<user->nc-1; c++) {
                         cavgdot[c] = mobilitycv[c]*chempotdel[c];
                         lte  [k][j][i].m[c] = user->dt*(cavgdot[c] - fdot[k][j][i].m[c])/user->ctol;
                         fdot [k][j][i].m[c] = cavgdot[c];
                         cavgdot[c] *= user->dt;
-                        for (PetscInt g =0; g<glist[k][j][i].i[0];  g++) {
-                            cavgdot[c] -= cdof[k][j][i].c[g*user->nc+c]*phidel[glist[k][j][i].i[g+1]];
-                        }
+                        for (PetscInt g =0; g<glist[k][j][i].i[0];  g++) ctemp[g] = cdof[k][j][i].c[g*user->nc+c];
+                        MatMulInterpolantDerivative(deltac,ctemp,gfdof[k][j][i].p,glist[k][j][i].i[0]);
+                        for (PetscInt g =0; g<glist[k][j][i].i[0];  g++) cavgdot[c] -= deltac[g]*deltaphi[g];
                     }
                     /* calculate composition tangent wrt chemical potential */
                     PetscScalar dcdm[(user->nc-1)*(user->nc-1)], dmdc[(user->nc-1)*(user->nc-1)];
-                    CompositionTangent(dcdm ,cdof[k][j][i].c,gfdof[k][j][i].p,glist[k][j][i].i,user);
+                    CompositionTangent(dcdm ,cdof[k][j][i].c,interpolant,glist[k][j][i].i,user);
                     Invertmatrix(dmdc,dcdm);
                     /* update chemical potential */
                     for (PetscInt cj=0; cj<user->nc; cj++) {
@@ -206,7 +218,7 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
                                 PetscInt interfacekj = (PetscInt) user->interfacelist[  glist[k][j][i].i[gk+1]*user->np
                                                                                       + glist[k][j][i].i[gj+1]         ];
                                 INTERFACE *currentinterface = &user->interface[interfacekj];
-                                interfacepotential[c] += sqrt(gfdof[k][j][i].p[gk]*gfdof[k][j][i].p[gj])*currentinterface->potential[c];
+                                interfacepotential[c] += sqrt(interpolant[gk]*interpolant[gj])*currentinterface->potential[c];
                             }
                         }
                     }    
@@ -331,10 +343,12 @@ PetscErrorCode PostStep(DM da,Vec X,AppCtx *user)
                           xout[0].o[k][j][i] = (PetscScalar) alist[k][j][i].i[g+1];
                        }
                    }
+                   PetscScalar interpolant[alist[k][j][i].i[0]];
+                   EvalInterpolant(interpolant,gfdof[k][j][i].p,alist[k][j][i].i[0]);
                    for (PetscInt c=0; c<user->nc; c++) {
                        xout[c+1].o[k][j][i] = 0.0;
                        for (PetscInt g=0; g<alist[k][j][i].i[0]; g++)
-                           xout[c+1].o[k][j][i] += gfdof[k][j][i].p[g]*cdof[k][j][i].c[g*user->nc+c];        
+                           xout[c+1].o[k][j][i] += interpolant[g]*cdof[k][j][i].c[g*user->nc+c];        
                    }
                }
            }
