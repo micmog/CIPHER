@@ -371,9 +371,9 @@ void Shapefunc(PetscScalar *interpolant, const PetscScalar *phasefrac, const uin
 /*
  Interpolation shape function derivative
  */
-void ShapefuncDerivative(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+void ShapefuncDerivative(PetscScalar *interpolantderivative, const PetscScalar *phasefrac, const uint16_t nphases)
 {
-    InterpolantDerivative(interpolant,phasefrac,nphases);
+    InterpolantDerivative(interpolantderivative,phasefrac,nphases);
 }
 
 /*
