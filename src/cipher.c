@@ -29,9 +29,11 @@ PetscErrorCode EulerStep(DM da,Vec X,AppCtx *user)
     PetscInt       xs, ys, zs, xm, ym, zm;
     PetscScalar    deltaphi[MAXAP]; 
     uint16_t       superset[MAXAP];
-    PetscScalar    fdcoeff[3][3][3] = {{{1.0/36.0, 4.0/36.0, 1.0/36.0},{4.0/36.0, 16.0/36.0, 4.0/36.0},{1.0/36.0, 4.0/36.0, 1.0/36.0}},
-                                       {{4.0/36.0, 16.0/36.0, 4.0/36.0},{16.0/36.0, -152.0/36.0, 16.0/36.0},{4.0/36.0, 16.0/36.0, 4.0/36.0}},
-                                       {{1.0/36.0, 4.0/36.0, 1.0/36.0},{4.0/36.0, 16.0/36.0, 4.0/36.0},{1.0/36.0, 4.0/36.0, 1.0/36.0}}};
+    /* Isotropic FD stencil coefficients from https://arxiv.org/abs/1202.3299 */
+    PetscScalar    fdcoeff0 = -152.0/36.0, fdcoeff1 = 16.0/36.0, fdcoeff2 = 4.0/36.0, fdcoeff3 = 1.0/36.0; 
+    PetscScalar    fdcoeff[3][3][3] = {{{fdcoeff3, fdcoeff2, fdcoeff3},{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff3, fdcoeff2, fdcoeff3}},
+                                       {{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff1, fdcoeff0, fdcoeff1},{fdcoeff2, fdcoeff1, fdcoeff2}},
+                                       {{fdcoeff3, fdcoeff2, fdcoeff3},{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff3, fdcoeff2, fdcoeff3}}};
     
     PetscFunctionBeginUser;
 
