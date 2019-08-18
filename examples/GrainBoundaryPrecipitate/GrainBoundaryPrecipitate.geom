@@ -4,6 +4,7 @@
   n_materials 2
   n_components 4
   componentnames al cu mg zn
+  interpolation_type cubic
 </header>
 <material 1>
   chemicalenergy_type calphaddis
