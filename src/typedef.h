@@ -32,10 +32,17 @@
 
 /* model type */
 typedef enum {
-   QUADRATIC_FE,
-   CALPHAD_FE,
-   NONE_FE
+   QUADRATIC_CHEMENERGY,
+   CALPHAD_CHEMENERGY,
+   NONE_CHEMENERGY
 } model_t;
+
+/* interpolation type */
+typedef enum {
+   LINEAR_INTERPOLATION,
+   CUBIC_INTERPOLATION,
+   NONE_INTERPOLATION
+} interpolation_t;
 
 /* field dofs */
 typedef struct F_DOFS {
@@ -121,6 +128,7 @@ typedef struct AppCtx {
     MATERIAL *material;
     roaring_bitmap_t **phasevoxelmapping;
     uint16_t *phasematerialmapping;
+    interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;
     uint16_t *interfacelist;

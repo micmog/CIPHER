@@ -96,11 +96,26 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->componentname[c]);
             }
         }
+        /* interpolation type */
+        if (strstr(tok, "interpolation_type") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            mtok = strtok_r(NULL, " ", &savemtok);
+            if (strstr(mtok, "linear") != NULL) {
+                user->interpolation = LINEAR_INTERPOLATION;
+            } else if (strstr(mtok, "cubic") != NULL) {
+                user->interpolation = CUBIC_INTERPOLATION;
+            } else {
+                user->interpolation = NONE_INTERPOLATION;
+            }
+        }
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
+    assert(user->interpolation != NONE_INTERPOLATION);
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
+        currentmaterial->model = NONE_CHEMENERGY;
         currentmaterial->c0 = malloc(user->nc*sizeof(PetscScalar));
         memset(currentmaterial->c0,0,user->nc*sizeof(PetscScalar));
         QUAD *currentquad = &currentmaterial->energy.quad;
@@ -140,14 +155,14 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
                 if (strstr(mtok, "quadratic") != NULL) {
-                    currentmaterial->model = QUADRATIC_FE;
+                    currentmaterial->model = QUADRATIC_CHEMENERGY;
                     currentquad->ref = 0.0;
                     memset(currentquad->ceq,0,user->nc*sizeof(PetscScalar));
                     memset(currentquad->unary,0,user->nc*sizeof(PetscScalar));
                     memset(currentquad->binary,0,user->nc*sizeof(PetscScalar));
                     memset(currentquad->mobilityc,0,user->nc*sizeof(PetscScalar));
                 } else if (strstr(mtok, "calphaddis") != NULL) {
-                    currentmaterial->model = CALPHAD_FE;
+                    currentmaterial->model = CALPHAD_CHEMENERGY;
                     currentcalphad->ref = 0.0;
                     currentcalphad->RT = 2436.002; // default is room temperature
                     memset(currentcalphad->unary,0,user->nc*sizeof(PetscScalar));
@@ -163,7 +178,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         }
                     } 
                 } else {
-                    currentmaterial->model = NONE_FE;
+                    currentmaterial->model = NONE_CHEMENERGY;
                     currentmaterial->c0[0] = 1.0;
                 }
             }
@@ -188,9 +203,9 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 while (mtok != NULL) {
                     PetscScalar mobilityc;
                     sscanf(mtok, "%lf", &mobilityc);
-                    if (currentmaterial->model == QUADRATIC_FE) {
+                    if (currentmaterial->model == QUADRATIC_CHEMENERGY) {
                         currentquad->mobilityc[c] = mobilityc;
-                    } else if (currentmaterial->model == CALPHAD_FE) {
+                    } else if (currentmaterial->model == CALPHAD_CHEMENERGY) {
                         currentcalphad->mobilityc[c] = mobilityc;
                     }   
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -434,19 +449,19 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         for (PetscInt c=0;c<user->nc;c++) {
             assert(currentmaterial->c0[c] > 0.0);
         }
-        if        (currentmaterial->model == QUADRATIC_FE) {
+        if        (currentmaterial->model == QUADRATIC_CHEMENERGY) {
             QUAD *currentquad = &currentmaterial->energy.quad;
             for (PetscInt c=0;c<user->nc;c++) {
                 assert(currentquad->ceq[c] > 0.0);
                 assert(currentquad->mobilityc[c] > 0.0);
             }
-        } else if (currentmaterial->model ==   CALPHAD_FE) {
+        } else if (currentmaterial->model ==   CALPHAD_CHEMENERGY) {
             CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
             assert(currentcalphad->RT > 0.0);
             for (PetscInt c=0;c<user->nc;c++) {
                 assert(currentcalphad->mobilityc[c] > 0.0);
             }
-        } else if (currentmaterial->model ==      NONE_FE) {
+        } else if (currentmaterial->model ==      NONE_CHEMENERGY) {
             assert(user->nc == 1);
         }
         free(substr);
