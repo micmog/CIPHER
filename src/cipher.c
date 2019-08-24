@@ -307,14 +307,13 @@ PetscErrorCode PostStep(TS ts)
     /* write output */
     ierr = TSGetStepNumber(ts, &user->step);CHKERRQ(ierr);
     if (user->step%user->outputfreq == 0) {
-       Vec               Xout[user->nc+user->np];
-       O_DOFS            xout[user->nc+user->np];
+       Vec               Xout[user->nc+1];
+       O_DOFS            xout[user->nc+1];
        char              name[256];
        PetscViewer       viewer;
        
-       for (PetscInt c=0; c<user->nc+user->np; c++) {
+       for (PetscInt c=0; c<user->nc+1; c++) {
            ierr = DMGetGlobalVector(user->da_output,&Xout[c]); CHKERRQ(ierr);
-           ierr = VecZeroEntries(Xout[c]); CHKERRQ(ierr);
            ierr = DMDAVecGetArray(user->da_output,Xout[c],&xout[c].o); CHKERRQ(ierr);
        }
        ierr = DMDAVecGetArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
@@ -323,15 +322,18 @@ PetscErrorCode PostStep(TS ts)
        for (PetscInt k=zs; k<zm; k++) {
            for (PetscInt j=ys; j<ym; j++) {
                for (PetscInt i=xs; i<xm; i++) {
-                   PetscScalar interpolant[slist[k][j][i].i[0]];
+                   PetscScalar max = -LARGE, interpolant[slist[k][j][i].i[0]];
                    EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
                    for (PetscInt g=0; g<slist[k][j][i].i[0]; g++) {
-                       xout[slist[k][j][i].i[g+1]].o[k][j][i] = fdof[k][j][i].p[g];
+                       if (interpolant[g] > max) {
+                          max = interpolant[g];
+                          xout[0].o[k][j][i] = (PetscScalar) slist[k][j][i].i[g+1];
+                       }
                    }
                    for (PetscInt c=0; c<user->nc; c++) {
-                       xout[user->np+c].o[k][j][i] = 0.0;
+                       xout[c+1].o[k][j][i] = 0.0;
                        for (PetscInt g=0; g<slist[k][j][i].i[0]; g++)
-                           xout[user->np+c].o[k][j][i] += interpolant[g]*matstate[k][j][i].c[g*user->nc+c];        
+                           xout[c+1].o[k][j][i] += interpolant[g]*matstate[k][j][i].c[g*user->nc+c];        
                    }
                }
            }
@@ -342,19 +344,16 @@ PetscErrorCode PostStep(TS ts)
        sprintf(name, "%s_%d.vtr",user->outfile,user->step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output to %s\n",name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);
-       for (PetscInt g=0; g<user->np; g++) {
-           ierr = DMDAVecRestoreArray(user->da_output,Xout[g],&xout[g].o); CHKERRQ(ierr);
-           sprintf(name,"phase %d",g);
-           ierr = PetscObjectSetName((PetscObject) Xout[g],name);
-           ierr = VecView(Xout[g],viewer);
-           ierr = DMRestoreGlobalVector(user->da_output,&Xout[g]); CHKERRQ(ierr);
-       }
+       ierr = DMDAVecRestoreArray(user->da_output,Xout[0],&xout[0].o); CHKERRQ(ierr);
+       ierr = PetscObjectSetName((PetscObject) Xout[0],"phase");
+       ierr = VecView(Xout[0],viewer);
+       ierr = DMRestoreGlobalVector(user->da_output,&Xout[0]); CHKERRQ(ierr);
        for (PetscInt c=0; c<user->nc; c++) {
-           ierr = DMDAVecRestoreArray(user->da_output,Xout[user->np+c],&xout[user->np+c].o); CHKERRQ(ierr);
+           ierr = DMDAVecRestoreArray(user->da_output,Xout[c+1],&xout[c+1].o); CHKERRQ(ierr);
            sprintf(name,"composition %s",user->componentname[c]);
-           ierr = PetscObjectSetName((PetscObject) Xout[user->np+c],name);
-           ierr = VecView(Xout[user->np+c],viewer);
-           ierr = DMRestoreGlobalVector(user->da_output,&Xout[user->np+c]); CHKERRQ(ierr);
+           ierr = PetscObjectSetName((PetscObject) Xout[c+1],name);
+           ierr = VecView(Xout[c+1],viewer);
+           ierr = DMRestoreGlobalVector(user->da_output,&Xout[c+1]); CHKERRQ(ierr);
        }
        ierr = PetscViewerDestroy(&viewer);
     }
