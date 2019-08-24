@@ -45,15 +45,15 @@ typedef enum {
 } interpolation_t;
 
 /* field dofs */
-typedef struct F_DOFS {
+typedef struct FIELD {
    PetscScalar   p[MAXAP];
    PetscScalar   m[MAXCP];
-} F_DOFS;
+} FIELD;
 
 /* composition dofs */
-typedef struct C_DOFS {
+typedef struct STATE {
    PetscScalar   c[MAXAP*MAXCP];
-} C_DOFS;
+} STATE;
 
 /* output dofs */
 typedef struct O_DOFS {
@@ -122,8 +122,8 @@ typedef struct AppCtx {
     /* tolerances */
     PetscReal ptol, ctol, error, error0, error1, kI;
     /* aux grids and vecs */
-    DM daCmp, daOut, daIdx;
-    Vec activephases, activeneighbourphases, rhs0, cvec;
+    DM da_phaseID, da_matstate, da_output;
+    Vec activephaseset, activephasesuperset, matstate;
     /* phase material parameters */
     MATERIAL *material;
     roaring_bitmap_t **phasevoxelmapping;

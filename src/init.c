@@ -722,27 +722,27 @@ PetscErrorCode SetUpInterface(AppCtx *user)
 /*
  SetUpProblem - initializes solution
  */
-PetscErrorCode SetUpProblem(DM da,AppCtx *user,Vec X)
+PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
 {
     PetscInt       xs, ys, zs, xm, ym, zm;
     PetscErrorCode ierr;
-    Vec            gactivephases;
-    F_DOFS         ***fdof;
-    C_DOFS         ***cdof;
-    F2I            ***nalist, ***alist, ***glist;
+    Vec            gactivephaseset, gactivephasesuperset;
+    FIELD          ***fdof;
+    STATE          ***matstate;
+    F2I            ***slist, ***alist, ***gslist, ***galist;
     MATERIAL       *currentmaterial;
-    uint16_t       superset[MAXAP];
+    uint16_t       superset[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
     
     PetscFunctionBeginUser;  
     /*
      Import initial microstructure from geom file
      */
-    ierr = DMDAGetCorners(da,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
+    ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
     zm+=zs; ym+=ys; xm+=xs; 
 
     /* initially only self phase is active... */
-    ierr = DMGetGlobalVector(user->daIdx,&gactivephases); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daIdx,gactivephases,&glist); CHKERRQ(ierr);
+    ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
     for (PetscInt phase=0;phase<user->np;phase++) {
         roaring_bitmap_t *tempbm = roaring_bitmap_copy(user->phasevoxelmapping[phase]);
         roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
@@ -751,8 +751,8 @@ PetscErrorCode SetUpProblem(DM da,AppCtx *user,Vec X)
             PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
             PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
             if ((xs <= i && i < xm) && (ys <= j && j < ym) && (zs <= k && k < zm)) {
-                glist[k][j][i].i[0]=1;
-                glist[k][j][i].i[glist[k][j][i].i[0]] = phase;
+                galist[k][j][i].i[0]=1;
+                galist[k][j][i].i[galist[k][j][i].i[0]] = phase;
             } else {       
                 /* remove off processor nodes... */
                 roaring_bitmap_remove(tempbm, g->current_value);
@@ -763,57 +763,64 @@ PetscErrorCode SetUpProblem(DM da,AppCtx *user,Vec X)
         user->phasevoxelmapping[phase] = roaring_bitmap_copy(tempbm);
         roaring_bitmap_free(tempbm);
     }
-    ierr = DMDAVecRestoreArray(user->daIdx,gactivephases,&glist); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalBegin(user->daIdx,gactivephases,INSERT_VALUES,user->activephases); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(user->daIdx,gactivephases,INSERT_VALUES,user->activephases); CHKERRQ(ierr);
-    ierr = DMRestoreGlobalVector(user->daIdx,&gactivephases); CHKERRQ(ierr);  
+    ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);  
 
     /* activate self phase on neighbours... */
-    ierr = DMDAVecGetArray(user->daIdx,user->activephases,&alist); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daIdx,user->activeneighbourphases,&nalist); CHKERRQ(ierr);
+    ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
+    ierr = DMGetGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_phaseID,gactivephasesuperset,&gslist); CHKERRQ(ierr);
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
-                nalist[k][j][i].i[0] = 0;
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j  ][i+1].i[1],alist[k  ][j  ][i+1].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j  ][i-1].i[1],alist[k  ][j  ][i-1].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j+1][i  ].i[1],alist[k  ][j+1][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j-1][i  ].i[1],alist[k  ][j-1][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k+1][j  ][i  ].i[1],alist[k+1][j  ][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k-1][j  ][i  ].i[1],alist[k-1][j  ][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                nalist[k][j][i].i[0] = difference_uint16(&superset[1],superset[0],&alist[k][j][i].i[1],alist[k][j][i].i[0],&nalist[k][j][i].i[1]);
+                PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
+                gslist[k][j][i].i[0] = 0;
+                for (PetscInt kk=kb; kk<=kt; kk++) {
+                    for (PetscInt jj=js; jj<=jn; jj++) {
+                        for (PetscInt ii=iw; ii<=ie; ii++) {
+                            SetUnion(superset,injectionA,injectionB,alist[kk][jj][ii].i,gslist[k][j][i].i);
+                            memcpy(gslist[k][j][i].i,superset,2*MAXAP);          
+                        }
+                    }
+                }
             }
         }
     }       
-    ierr = DMDAVecRestoreArray(user->daIdx,user->activeneighbourphases,&nalist); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(user->daIdx,user->activephases,&alist); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephasesuperset,&gslist); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);  
+    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
 
     /* Set initial phase field values */
-    ierr = DMDAVecGetArray(da,X,&fdof); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daCmp,user->cvec,&cdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
+    ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     for (PetscInt phase=0;phase<user->np;phase++) {
-        currentmaterial = &user->material[user->phasematerialmapping[phase]];
         roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
         while (g->has_value) {
             PetscInt i = (g->current_value%(user->resolution[0]));
             PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
             PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
-            fdof[k][j][i].p[0] = 1.0;
-            uint16_t plist[2] = {1,phase};
-            memcpy(cdof[k][j][i].c,currentmaterial->c0,user->nc*sizeof(PetscScalar)); 
-            Chemicalpotential(fdof[k][j][i].m,cdof[k][j][i].c,fdof[k][j][i].p,plist,user);
+            for (PetscInt ph=0; ph<slist[k][j][i].i[0]; ph++) {
+                currentmaterial = &user->material[user->phasematerialmapping[slist[k][j][i].i[ph+1]]];
+                if (slist[k][j][i].i[ph+1] == phase) {
+                    fdof[k][j][i].p[ph] = 1.0;
+                } else {
+                    fdof[k][j][i].p[ph] = 0.0;
+                }
+                memcpy(&matstate[k][j][i].c[ph*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar)); 
+            }       
+            Chemicalpotential(fdof[k][j][i].m,matstate[k][j][i].c,fdof[k][j][i].p,slist[k][j][i].i,user);
             roaring_advance_uint32_iterator(g);
         }
         roaring_free_uint32_iterator(g);
     }    
-    ierr = DMDAVecGetArray(user->daCmp,user->cvec,&cdof); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(da,X,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
     PetscFunctionReturn(0);
 }
 

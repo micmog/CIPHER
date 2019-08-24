@@ -18,8 +18,8 @@
 static void (*Invertmatrixf)(PetscScalar *, PetscScalar *);
 
 /* interpolation shape functions */
-static void (*Interpolant          )(PetscScalar *, const PetscScalar *,                      const uint16_t);
-static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t);
+static void (*Interpolant          )(PetscScalar *, const PetscScalar *, const uint16_t);
+static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const uint16_t);
 
 /*
  Extract string between tags
@@ -103,6 +103,73 @@ PetscScalar FastExp(PetscScalar a) {
 PetscScalar FastLog(PetscScalar a) {
   union { PetscScalar d; long long x; } u = { a };
   return (u.x - 4606921278410026770) * 1.539095918623324e-16; /* 1 / 6497320848556798.0; */
+}
+
+/*
+ SetIntersection - C <-- A \cap B, A(CInA(i)) = C(i), B(CInB(i)) = C(i)
+ */
+void SetIntersection(uint16_t *OutC, uint16_t *CInA, uint16_t *CInB, uint16_t *InA, uint16_t *InB)
+{
+    uint16_t i=0, j=0;
+    OutC[0] = 0;
+    while (i < InA[0] && j < InB[0])
+    {
+        if (InA[i+1] == InB[j+1])
+        {
+            CInA[OutC[0]] = i; 
+            CInB[OutC[0]] = j; 
+            i++; j++; (OutC[0])++; 
+            OutC[OutC[0]] = InA[i]; 
+        }
+        else if (InA[i+1] < InB[j+1])
+        {
+            i++;
+        }
+        else
+        {
+            j++;
+        }
+    }
+}
+
+/*
+ SetUnion - C <-- A U B, C(AInC(i)) = A(i), C(AInB(i)) = B(i) 
+ */
+void SetUnion(uint16_t *OutC, uint16_t *AInC, uint16_t *BInC, uint16_t *InA, uint16_t *InB)
+{
+    uint16_t i=0, j=0;
+    OutC[0] = 0;
+    while (i < InA[0] && j < InB[0])
+    {
+        if      (InA[i+1] == InB[j+1])
+        {
+            AInC[i] = OutC[0]; 
+            BInC[j] = OutC[0]; 
+            i++; j++; (OutC[0])++;
+            OutC[OutC[0]] = InA[i];
+        }
+        else if (InA[i+1] <  InB[j+1])
+        {
+            AInC[i] = OutC[0]; 
+            i++;      (OutC[0])++;
+            OutC[OutC[0]] = InA[i]; 
+        }
+        else
+        {
+            BInC[j] = OutC[0]; 
+            j++;      (OutC[0])++; 
+            OutC[OutC[0]] = InB[j]; 
+        }
+    }
+    
+    while (i < InA[0]) {
+        AInC[i] = OutC[0];
+        OutC[++(OutC[0])] = InA[++i];
+    }
+    while (j < InB[0]) {
+        BInC[j] = OutC[0];
+        OutC[++(OutC[0])] = InB[++j];
+    }
 }
 
 static void Invert1x1(PetscScalar * dst, PetscScalar * src)
@@ -318,16 +385,18 @@ static void Interpolant_linear(PetscScalar *interpolant, const PetscScalar *phas
 /*
  Linear interpolation shape function derivative
  */
-static void InterpolantDerivative_linear(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
-{
-    memcpy(out,in,nphases*sizeof(PetscScalar));
-}
+static void InterpolantDerivative_linear(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+{}
 
 /*
  Cubic interpolation shape function
  */
 static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
 {
+    if (nphases == 1) {
+        interpolant[0] = 1.0;
+        return;
+    }
     PetscScalar interpolantsum = 0.0;
     for (PetscInt g = 0; g < nphases; g++) {
         interpolant[g] = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
@@ -339,8 +408,13 @@ static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phase
 /*
  Cubic interpolation shape function derivative
  */
-static void InterpolantDerivative_cubic(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+static void InterpolantDerivative_cubic(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
 {
+    if (nphases == 1) {
+        in[0] = 0.0;
+        return;
+    }
+    PetscScalar out[nphases];
     PetscScalar avgin = 0.0, interpolantsum = 0.0;
     for (PetscInt g = 0; g < nphases; g++) {
         PetscScalar interpolant = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
@@ -349,6 +423,8 @@ static void InterpolantDerivative_cubic(PetscScalar *out, const PetscScalar *in,
     }    
     for (PetscInt g = 0; g < nphases; g++)
         out[g] = 6.0*phasefrac[g]*(1.0 - phasefrac[g])*(in[g] - avgin/interpolantsum)/interpolantsum;
+    
+    memcpy(in,out,nphases*sizeof(PetscScalar));
 }
 
 /*
@@ -362,9 +438,9 @@ void EvalInterpolant(PetscScalar *interpolant, const PetscScalar *phasefrac, con
 /*
  Interpolation shape function derivative
  */
-void MatMulInterpolantDerivative(PetscScalar *out, const PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+void MatMulInterpolantDerivative(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
 {
-    InterpolantDerivative(out,in,phasefrac,nphases);
+    InterpolantDerivative(in,phasefrac,nphases);
 }
 
 /*

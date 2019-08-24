@@ -25,9 +25,11 @@ EXTERN PetscScalar FastPow(PetscScalar, unsigned);
 EXTERN PetscScalar FastSqrt(PetscScalar);
 EXTERN PetscScalar FastExp(PetscScalar);
 EXTERN PetscScalar FastLog(PetscScalar);
+EXTERN void SetIntersection(uint16_t *, uint16_t *, uint16_t *, uint16_t *, uint16_t *);
+EXTERN void SetUnion(uint16_t *, uint16_t *, uint16_t *, uint16_t *, uint16_t *);
 EXTERN void Invertmatrix(PetscScalar *, PetscScalar *);
 EXTERN void EvalInterpolant(PetscScalar *, const PetscScalar *, const uint16_t);
-EXTERN void MatMulInterpolantDerivative(PetscScalar *, const PetscScalar *,  const PetscScalar *, const uint16_t);
+EXTERN void MatMulInterpolantDerivative(PetscScalar *,  const PetscScalar *, const uint16_t);
 EXTERN void SimplexProjection(PetscScalar *, PetscScalar *, int);
 EXTERN void utility_init(const AppCtx *);
 
