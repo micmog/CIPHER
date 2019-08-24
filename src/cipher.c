@@ -49,7 +49,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = DMDAVecGetArray(da_solution,F,&rhs); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMGetGlobalVector(user->da_matstate,&matstate0); CHKERRQ(ierr);
-    ierr = VecCopy(matstate0,user->matstate); CHKERRQ(ierr);
+    ierr = VecCopy(user->matstate,matstate0); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,matstate0,&matstate); CHKERRQ(ierr);
 
     ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
@@ -73,71 +73,86 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
                     
                     /* more than 1 phase active at this point neighbourhood */
-                    if (slist[k][j][i].i[0] <= 1) {
-                        memset(rhs[k][j][i].p,0.0,MAXAP*sizeof(PetscScalar));
-                    } else {
-                       PetscScalar phidel[slist[k][j][i].i[0]];
-                       uint16_t setintersect[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
-                       for (PetscInt kk=kb; kk<=kt; kk++) {
-                           for (PetscInt jj=js; jj<=jn; jj++) {
-                               for (PetscInt ii=iw; ii<=ie; ii++) {
-                                   SetIntersection(setintersect,injectionA,injectionB,slist[k ][j ][i ].i,slist[kk][jj][ii].i);
-                                   for (PetscInt g=0; g<setintersect[0]; g++)
-                                       phidel[injectionA[g]] += fdcoeff[kk-kb][jj-js][ii-iw]*fdof[kk][jj][ii].p[injectionB[g]];
-                               }
-                           }
-                       }
+                    memset(rhs[k][j][i].p,0.0,MAXAP*sizeof(PetscScalar));
+                    if (slist[k][j][i].i[0] > 1) {
+                        PetscScalar phidel[slist[k][j][i].i[0]];
+                        uint16_t setintersect[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
+                        for (PetscInt kk=kb; kk<=kt; kk++) {
+                            for (PetscInt jj=js; jj<=jn; jj++) {
+                                for (PetscInt ii=iw; ii<=ie; ii++) {
+                                    SetIntersection(setintersect,injectionA,injectionB,slist[k ][j ][i ].i,slist[kk][jj][ii].i);
+                                    for (PetscInt g=0; g<setintersect[0]; g++)
+                                        phidel[injectionA[g]] += fdcoeff[kk-kb][jj-js][ii-iw]*fdof[kk][jj][ii].p[injectionB[g]];
+                                }
+                            }
+                        }
                     
-                       /* capillary driving force */ 
-                       PetscScalar caplflux[slist[k][j][i].i[0]], caplsource[slist[k][j][i].i[0]];
-                       memset(caplflux  ,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
-                       memset(caplsource,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
-                       for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
-                           for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
-                               PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
-                                                                                     + slist[k][j][i].i[gj+1]         ];
-                               INTERFACE *currentinterface = &user->interface[interfacekj];
-                               caplflux  [gk] -= currentinterface->energy*phidel[gj];
-                               caplflux  [gj] -= currentinterface->energy*phidel[gk];
-                               caplsource[gk] -= currentinterface->energy*fdof[k][j][i].p[gj];
-                               caplsource[gj] -= currentinterface->energy*fdof[k][j][i].p[gk];
-                           }
-                           caplflux  [gk] *= 8.0*user->len/PETSC_PI/PETSC_PI;
-                           caplsource[gk] *= 8.0/user->len;
-                       }   
+                        /* capillary driving force */ 
+                        PetscScalar caplflux[slist[k][j][i].i[0]], caplsource[slist[k][j][i].i[0]];
+                        memset(caplflux  ,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
+                        memset(caplsource,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
+                        for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
+                            for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
+                                PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
+                                                                                      + slist[k][j][i].i[gj+1]         ];
+                                INTERFACE *currentinterface = &user->interface[interfacekj];
+                                caplflux  [gk] -= currentinterface->energy*phidel[gj];
+                                caplflux  [gj] -= currentinterface->energy*phidel[gk];
+                                caplsource[gk] -= currentinterface->energy*fdof[k][j][i].p[gj];
+                                caplsource[gj] -= currentinterface->energy*fdof[k][j][i].p[gk];
+                            }
+                            caplflux  [gk] *= 8.0*user->len/PETSC_PI/PETSC_PI;
+                            caplsource[gk] *= 8.0/user->len;
+                        }   
                     
-                       /* chemical driving force */ 
-                       PetscScalar chemsource[slist[k][j][i].i[0]];
-                       Chemenergy(chemsource,matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
-                       MatMulInterpolantDerivative(chemsource,fdof[k][j][i].p,slist[k][j][i].i[0]);
+                        /* chemical driving force */ 
+                        PetscScalar chemsource[slist[k][j][i].i[0]];
+                        Chemenergy(chemsource,matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
+                        MatMulInterpolantDerivative(chemsource,fdof[k][j][i].p,slist[k][j][i].i[0]);
                     
-                       /* build total RHS and forward solution  */ 
-                       PetscScalar nactivephases = 0.0;
-                       memset(rhs[k][j][i].p,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
-                       for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
-                           if (fdof[k][j][i].p[gk] > 0.0 || fabs(phidel[gk]) > TOL) {
-                               for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
-                                   if (fdof[k][j][i].p[gj] > 0.0 || fabs(phidel[gj]) > TOL) {
-                                       PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
-                                                                                             + slist[k][j][i].i[gj+1]         ];
-                                       INTERFACE *currentinterface = &user->interface[interfacekj];
-                                       PetscScalar val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                                                     + (caplsource[gk] - caplsource[gj])
-                                                                                     + (chemsource[gj] - chemsource[gk])
-                                                                                     * sqrt(interpolant[gk]*interpolant[gj]));
-                                       rhs[k][j][i].p[gk] += val; rhs[k][j][i].p[gj] -= val;
-                                   }
-                               }
-                               nactivephases += 1.0;
-                           }        
-                       }
-                       for (PetscInt g=0; g<slist[k][j][i].i[0];g++) rhs[k][j][i].p[g] /= nactivephases;
-                   }
+                        /* build total RHS and forward solution  */ 
+                        PetscScalar rhs_unconstrained[slist[k][j][i].i[0]], nactivephases = 0.0;
+                        PetscBool active[slist[k][j][i].i[0]];
+                        memset(rhs_unconstrained,0,slist[k][j][i].i[0]*sizeof(PetscScalar));
+                        for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
+                            for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
+                                    PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
+                                                                                          + slist[k][j][i].i[gj+1]         ];
+                                    INTERFACE *currentinterface = &user->interface[interfacekj];
+                                    PetscScalar val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                                                  + (caplsource[gk] - caplsource[gj])
+                                                                                  + (chemsource[gj] - chemsource[gk])
+                                                                                  * sqrt(interpolant[gk]*interpolant[gj]));
+                                    rhs_unconstrained[gk] += val; rhs_unconstrained[gj] -= val;
+                            }
+                            active[gk] =    (fdof[k][j][i].p[gk] >       TOL && fdof[k][j][i].p  [gk] < 1.0 - TOL)
+                                         || (fdof[k][j][i].p[gk] <       TOL && rhs_unconstrained[gk] > 0.0      )
+                                         || (fdof[k][j][i].p[gk] > 1.0 - TOL && rhs_unconstrained[gk] < 0.0      );
+                            if (active[gk]) nactivephases += 1.0;
+                        }
+
+                        for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
+                            if (active[gk]) {
+                                for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
+                                    if (active[gj]) {
+                                        PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
+                                                                                              + slist[k][j][i].i[gj+1]         ];
+                                        INTERFACE *currentinterface = &user->interface[interfacekj];
+                                        PetscScalar val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                                                      + (caplsource[gk] - caplsource[gj])
+                                                                                      + (chemsource[gj] - chemsource[gk])
+                                                                                      * sqrt(interpolant[gk]*interpolant[gj]));
+                                        rhs[k][j][i].p[gk] += val; rhs[k][j][i].p[gj] -= val;
+                                    }
+                                }
+                                rhs[k][j][i].p[gk] /= nactivephases;
+                            }        
+                        }
+                    }
                     
                     /* more than 1 component active at this point */
-                    if (user->nc            <= 1) {
-                        memset(rhs[k][j][i].m,0.0,MAXCP*sizeof(PetscScalar));
-                    } else {
+                    memset(rhs[k][j][i].m,0.0,MAXCP*sizeof(PetscScalar));
+                    if (user->nc > 1) {
                         /* gather neighbourhood field values */
                         PetscScalar chempotdel[user->nc-1];
                         memset(chempotdel,0,(user->nc-1)*sizeof(PetscScalar));
@@ -150,11 +165,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                 }
                             }
                         }
-                        
+                      
                         /* calculate mobility matrix (volume-fixed frame of reference) */
                         PetscScalar mobilitycv[user->nc-1];
                         CompositionMobility(mobilitycv,matstate[k][j][i].c,interpolant,slist[k][j][i].i,user);
-                        
+                      
                         /* calculate avg composition rate */
                         PetscScalar cavgdot[user->nc-1], cvgdot_phase[slist[k][j][i].i[0]];
                         for (PetscInt c=0; c<user->nc-1; c++) {
@@ -163,15 +178,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                             MatMulInterpolantDerivative(cvgdot_phase,fdof[k][j][i].p,slist[k][j][i].i[0]);
                             for (PetscInt g =0; g<slist[k][j][i].i[0];  g++) cavgdot[c] -= rhs[k][j][i].p[g]*cvgdot_phase[g];
                         }
-                        
+                      
                         /* calculate composition tangent wrt chemical potential */
                         PetscScalar dcdm[(user->nc-1)*(user->nc-1)], dmdc[(user->nc-1)*(user->nc-1)];
                         CompositionTangent(dcdm ,matstate[k][j][i].c,interpolant,slist[k][j][i].i,user);
                         Invertmatrix(dmdc,dcdm);
-                        
+                      
                         /* update chemical potential */
                         for (PetscInt cj=0; cj<user->nc-1; cj++) {
-                            rhs[k][j][i].m[cj] = 0.0;
                             for (PetscInt ci=0; ci<user->nc-1; ci++) {
                                 rhs[k][j][i].m[cj] += dmdc[cj*(user->nc-1)+ci]*cavgdot[ci];
                             }
@@ -222,7 +236,7 @@ PetscErrorCode PostStep(TS ts)
             for (PetscInt i=xs; i<xm; i++) {
                 galist[k][j][i].i[0] = 0;
                 for (PetscInt g=0; g<slist[k][j][i].i[0];  g++) {
-                    if (fdof[k][j][i].p[g] > 0.0) {
+                    if (fdof[k][j][i].p[g] > TOL) {
                         galist[k][j][i].i[++galist[k][j][i].i[0]] = slist[k][j][i].i[g+1];
                     }
                 }
@@ -236,9 +250,7 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
 
-    /* Determine active phase super set, 
-       reorder dofs in solution, update composition, 
-       initialize new phase frac & comp */
+    /* Determine active phase super set, reorder dofs in solution, update composition, initialize new phase frac & comp */
     ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
@@ -248,22 +260,9 @@ PetscErrorCode PostStep(TS ts)
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
+                /* update active phase superset */
                 PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
-                uint16_t setunion[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
-                PetscScalar phi[user->np], composition[user->np*user->nc];
-                /* phases not in slist but in gslist? */
-                for (PetscInt g=0; g<user->np;  g++) {
-                    phi[g] = 0.0;
-                    MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[g]];
-                    memcpy(&composition[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar));
-                }
-                for (PetscInt g=0; g<slist[k][j][i].i[0];  g++) {
-                    phi[slist[k][j][i].i[g+1]] = fdof[k][j][i].p[g];
-                    memcpy(&composition[slist[k][j][i].i[g+1]*user->nc],
-                           &matstate[k][j][i].c[g*user->nc],
-                           user->nc*sizeof(PetscScalar));
-                }
-
+                uint16_t setunion[MAXAP], setintersection[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
                 gslist[k][j][i].i[0] = 0;
                 for (PetscInt kk=kb; kk<=kt; kk++) {
                     for (PetscInt jj=js; jj<=jn; jj++) {
@@ -274,10 +273,25 @@ PetscErrorCode PostStep(TS ts)
                     }
                 }
                 
+                /* initialize new phase states */
+                PetscScalar phi[gslist[k][j][i].i[0]], composition[gslist[k][j][i].i[0]*user->nc];
                 for (PetscInt g=0; g<gslist[k][j][i].i[0];  g++) {
-                    fdof[k][j][i].p[g] = phi[gslist[k][j][i].i[g+1]];
-                    memcpy(&matstate[k][j][i].c[g*user->nc],&composition[gslist[k][j][i].i[g+1]*user->nc],user->nc*sizeof(PetscScalar));
+                    phi[g] = 0.0;
+                    MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[gslist[k][j][i].i[g+1]]];
+                    memcpy(&composition[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar));
                 }
+                
+                /* reorder dofs to new active phase superset */
+                SetIntersection(setintersection,injectionA,injectionB,slist[k][j][i].i,gslist[k][j][i].i);
+                for (PetscInt g=0; g<setintersection[0];  g++) {
+                    phi[injectionB[g]] = fdof[k][j][i].p[injectionA[g]];
+                    memcpy(&composition[injectionB[g]*user->nc],&matstate[k][j][i].c[injectionA[g]*user->nc],user->nc*sizeof(PetscScalar));
+                }
+                memcpy(fdof[k][j][i].p,phi,gslist[k][j][i].i[0]*sizeof(PetscScalar));
+                memcpy(matstate[k][j][i].c,composition,gslist[k][j][i].i[0]*user->nc*sizeof(PetscScalar));
+
+                /* update material state */
+                Composition(matstate[k][j][i].c,fdof[k][j][i].m,gslist[k][j][i].i,user);
             }
         }
     }        
@@ -293,13 +307,14 @@ PetscErrorCode PostStep(TS ts)
     /* write output */
     ierr = TSGetStepNumber(ts, &user->step);CHKERRQ(ierr);
     if (user->step%user->outputfreq == 0) {
-       Vec               Xout[user->nc+1];
-       O_DOFS            xout[user->nc+1];
+       Vec               Xout[user->nc+user->np];
+       O_DOFS            xout[user->nc+user->np];
        char              name[256];
        PetscViewer       viewer;
        
-       for (PetscInt c=0; c<user->nc+1; c++) {
+       for (PetscInt c=0; c<user->nc+user->np; c++) {
            ierr = DMGetGlobalVector(user->da_output,&Xout[c]); CHKERRQ(ierr);
+           ierr = VecZeroEntries(Xout[c]); CHKERRQ(ierr);
            ierr = DMDAVecGetArray(user->da_output,Xout[c],&xout[c].o); CHKERRQ(ierr);
        }
        ierr = DMDAVecGetArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
@@ -308,18 +323,15 @@ PetscErrorCode PostStep(TS ts)
        for (PetscInt k=zs; k<zm; k++) {
            for (PetscInt j=ys; j<ym; j++) {
                for (PetscInt i=xs; i<xm; i++) {
-                   PetscScalar max = -LARGE, interpolant[slist[k][j][i].i[0]];
+                   PetscScalar interpolant[slist[k][j][i].i[0]];
                    EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
                    for (PetscInt g=0; g<slist[k][j][i].i[0]; g++) {
-                       if (interpolant[g] > max) {
-                          max = interpolant[g];
-                          xout[0].o[k][j][i] = (PetscScalar) slist[k][j][i].i[g+1];
-                       }
+                       xout[slist[k][j][i].i[g+1]].o[k][j][i] = fdof[k][j][i].p[g];
                    }
                    for (PetscInt c=0; c<user->nc; c++) {
-                       xout[c+1].o[k][j][i] = 0.0;
+                       xout[user->np+c].o[k][j][i] = 0.0;
                        for (PetscInt g=0; g<slist[k][j][i].i[0]; g++)
-                           xout[c+1].o[k][j][i] += interpolant[g]*matstate[k][j][i].c[g*user->nc+c];        
+                           xout[user->np+c].o[k][j][i] += interpolant[g]*matstate[k][j][i].c[g*user->nc+c];        
                    }
                }
            }
@@ -330,16 +342,19 @@ PetscErrorCode PostStep(TS ts)
        sprintf(name, "%s_%d.vtr",user->outfile,user->step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output to %s\n",name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);
-       ierr = DMDAVecRestoreArray(user->da_output,Xout[0],&xout[0].o); CHKERRQ(ierr);
-       ierr = PetscObjectSetName((PetscObject) Xout[0],"phase");
-       ierr = VecView(Xout[0],viewer);
-       ierr = DMRestoreGlobalVector(user->da_output,&Xout[0]); CHKERRQ(ierr);
+       for (PetscInt g=0; g<user->np; g++) {
+           ierr = DMDAVecRestoreArray(user->da_output,Xout[g],&xout[g].o); CHKERRQ(ierr);
+           sprintf(name,"phase %d",g);
+           ierr = PetscObjectSetName((PetscObject) Xout[g],name);
+           ierr = VecView(Xout[g],viewer);
+           ierr = DMRestoreGlobalVector(user->da_output,&Xout[g]); CHKERRQ(ierr);
+       }
        for (PetscInt c=0; c<user->nc; c++) {
-           ierr = DMDAVecRestoreArray(user->da_output,Xout[c+1],&xout[c+1].o); CHKERRQ(ierr);
+           ierr = DMDAVecRestoreArray(user->da_output,Xout[user->np+c],&xout[user->np+c].o); CHKERRQ(ierr);
            sprintf(name,"composition %s",user->componentname[c]);
-           ierr = PetscObjectSetName((PetscObject) Xout[c+1],name);
-           ierr = VecView(Xout[c+1],viewer);
-           ierr = DMRestoreGlobalVector(user->da_output,&Xout[c+1]); CHKERRQ(ierr);
+           ierr = PetscObjectSetName((PetscObject) Xout[user->np+c],name);
+           ierr = VecView(Xout[user->np+c],viewer);
+           ierr = DMRestoreGlobalVector(user->da_output,&Xout[user->np+c]); CHKERRQ(ierr);
        }
        ierr = PetscViewerDestroy(&viewer);
     }
