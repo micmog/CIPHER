@@ -306,6 +306,7 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephasesuperset,&gslist); CHKERRQ(ierr);
     ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
     ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
