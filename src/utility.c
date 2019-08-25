@@ -389,6 +389,45 @@ static void InterpolantDerivative_linear(PetscReal *in, const PetscReal *phasefr
 {}
 
 /*
+ Quadratic interpolation shape function
+ */
+static void Interpolant_quad(PetscReal *interpolant, const PetscReal *phasefrac, const uint16_t nphases)
+{
+    if (nphases == 1) {
+        interpolant[0] = 1.0;
+        return;
+    }
+    PetscReal interpolantsum = 0.0;
+    for (PetscInt g = 0; g < nphases; g++) {
+        interpolant[g] = phasefrac[g]*phasefrac[g];
+        interpolantsum += interpolant[g];
+    }
+    for (PetscInt g = 0; g < nphases; g++) interpolant[g] /= interpolantsum;
+}
+
+/*
+ Quadratic interpolation shape function derivative
+ */
+static void InterpolantDerivative_quad(PetscReal *in, const PetscReal *phasefrac, const uint16_t nphases)
+{
+    if (nphases == 1) {
+        in[0] = 0.0;
+        return;
+    }
+    PetscReal out[nphases];
+    PetscReal avgin = 0.0, interpolantsum = 0.0;
+    for (PetscInt g = 0; g < nphases; g++) {
+        PetscReal interpolant = phasefrac[g]*phasefrac[g];
+        interpolantsum += interpolant;
+        avgin += interpolant*in[g];
+    }    
+    for (PetscInt g = 0; g < nphases; g++)
+        out[g] = 2.0*phasefrac[g]*(in[g] - avgin/interpolantsum)/interpolantsum;
+    
+    memcpy(in,out,nphases*sizeof(PetscReal));
+}
+
+/*
  Cubic interpolation shape function
  */
 static void Interpolant_cubic(PetscReal *interpolant, const PetscReal *phasefrac, const uint16_t nphases)
@@ -492,6 +531,9 @@ void utility_init(const AppCtx *user)
     if        (user->interpolation == LINEAR_INTERPOLATION) {
         Interpolant = &Interpolant_linear;
         InterpolantDerivative = &InterpolantDerivative_linear;
+    } else if (user->interpolation == QUADRATIC_INTERPOLATION ) {
+        Interpolant = &Interpolant_quad;
+        InterpolantDerivative = &InterpolantDerivative_quad;
     } else if (user->interpolation == CUBIC_INTERPOLATION ) {
         Interpolant = &Interpolant_cubic;
         InterpolantDerivative = &InterpolantDerivative_cubic;

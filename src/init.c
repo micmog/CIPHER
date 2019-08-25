@@ -108,9 +108,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             mtok = strtok_r(NULL, " ", &savemtok);
-            if (strstr(mtok, "linear") != NULL) {
+            if        (strstr(mtok, "linear"   ) != NULL) {
                 user->interpolation = LINEAR_INTERPOLATION;
-            } else if (strstr(mtok, "cubic") != NULL) {
+            } else if (strstr(mtok, "quadratic") != NULL) {
+                user->interpolation = QUADRATIC_INTERPOLATION;
+            } else if (strstr(mtok, "cubic"    ) != NULL) {
                 user->interpolation = CUBIC_INTERPOLATION;
             } else {
                 user->interpolation = NONE_INTERPOLATION;

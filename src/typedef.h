@@ -41,6 +41,7 @@ typedef enum {
 /* interpolation type */
 typedef enum {
    LINEAR_INTERPOLATION,
+   QUADRATIC_INTERPOLATION,
    CUBIC_INTERPOLATION,
    NONE_INTERPOLATION
 } interpolation_t;
