@@ -72,14 +72,13 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             user->resolution[1] = atoi(strtok_r(NULL, " ", &savemtok));
             mtok = strtok_r(NULL, " ", &savemtok);
             user->resolution[2] = atoi(strtok_r(NULL, " ", &savemtok));
+            user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
         }
         if (strstr(tok, "n_phases") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->np);
             user->phasematerialmapping = malloc(user->np*sizeof(uint16_t));
-            user->phasevoxelmapping = malloc(user->np*sizeof(struct roaring_bitmap_t *));
-            for (PetscInt phase=0; phase<user->np; phase++) user->phasevoxelmapping[phase] = roaring_bitmap_create();
         }    
         if (strstr(tok, "n_materials") != NULL) {
             char *mtok, *savemtok;
@@ -109,9 +108,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             mtok = strtok_r(NULL, " ", &savemtok);
-            if (strstr(mtok, "linear") != NULL) {
+            if        (strstr(mtok, "linear"   ) != NULL) {
                 user->interpolation = LINEAR_INTERPOLATION;
-            } else if (strstr(mtok, "cubic") != NULL) {
+            } else if (strstr(mtok, "quadratic") != NULL) {
+                user->interpolation = QUADRATIC_INTERPOLATION;
+            } else if (strstr(mtok, "cubic"    ) != NULL) {
                 user->interpolation = CUBIC_INTERPOLATION;
             } else {
                 user->interpolation = NONE_INTERPOLATION;
@@ -135,18 +136,18 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
         currentmaterial->model = NONE_CHEMENERGY;
-        currentmaterial->c0 = malloc(user->nc*sizeof(PetscScalar));
-        memset(currentmaterial->c0,0,user->nc*sizeof(PetscScalar));
+        currentmaterial->c0 = malloc(user->nc*sizeof(PetscReal));
+        memset(currentmaterial->c0,0,user->nc*sizeof(PetscReal));
         QUAD *currentquad = &currentmaterial->energy.quad;
-        currentquad->ceq = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->unary = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->binary = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->mobilityc = malloc(user->nc*sizeof(PetscScalar));
+        currentquad->ceq = malloc(user->nc*sizeof(PetscReal));
+        currentquad->unary = malloc(user->nc*sizeof(PetscReal));
+        currentquad->binary = malloc(user->nc*sizeof(PetscReal));
+        currentquad->mobilityc = malloc(user->nc*sizeof(PetscReal));
         CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-        currentcalphad->unary = malloc(user->nc*sizeof(PetscScalar));
+        currentcalphad->unary = malloc(user->nc*sizeof(PetscReal));
         currentcalphad->binary = (RK *) malloc(user->nc*(user->nc-1)*sizeof(struct RK)/2);
         currentcalphad->ternary = (RK *) malloc(user->nc*(user->nc-1)*(user->nc-2)*sizeof(struct RK)/6);
-        currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscScalar));
+        currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscReal));
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -167,16 +168,16 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 if (strstr(mtok, "quadratic") != NULL) {
                     currentmaterial->model = QUADRATIC_CHEMENERGY;
                     currentquad->ref = 0.0;
-                    memset(currentquad->ceq,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->unary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->binary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->mobilityc,0,user->nc*sizeof(PetscScalar));
+                    memset(currentquad->ceq,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->unary,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->binary,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->mobilityc,0,user->nc*sizeof(PetscReal));
                 } else if (strstr(mtok, "calphaddis") != NULL) {
                     currentmaterial->model = CALPHAD_CHEMENERGY;
                     currentcalphad->ref = 0.0;
                     currentcalphad->RT = 2436.002; // default is room temperature
-                    memset(currentcalphad->unary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentcalphad->mobilityc,0,user->nc*sizeof(PetscScalar));
+                    memset(currentcalphad->unary,0,user->nc*sizeof(PetscReal));
+                    memset(currentcalphad->mobilityc,0,user->nc*sizeof(PetscReal));
                     RK *currentbinary = &currentcalphad->binary[0];
                     RK *currentternary = &currentcalphad->ternary[0];
                     for (PetscInt ck=0; ck<user->nc; ck++) {
@@ -211,7 +212,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar mobilityc;
+                    PetscReal mobilityc;
                     sscanf(mtok, "%lf", &mobilityc);
                     if (currentmaterial->model == QUADRATIC_CHEMENERGY) {
                         currentquad->mobilityc[c] = mobilityc;
@@ -230,7 +231,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c=0;
                 while (mtok != NULL) {
-                    PetscScalar c0;
+                    PetscReal c0;
                     sscanf(mtok, "%lf", &c0);
                     currentmaterial->c0[c] = c0;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -245,7 +246,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c=0;
                 while (mtok != NULL) {
-                    PetscScalar ceq;
+                    PetscReal ceq;
                     sscanf(mtok, "%lf", &ceq);
                     assert(ceq > 0.0);
                     currentquad->ceq[c] = ceq;
@@ -260,7 +261,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
                 while (mtok != NULL) {
-                    PetscScalar refenthalpy;
+                    PetscReal refenthalpy;
                     sscanf(mtok, "%lf", &refenthalpy);
                     currentquad->ref = refenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -273,7 +274,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar unaryenthalpy;
+                    PetscReal unaryenthalpy;
                     sscanf(mtok, "%lf", &unaryenthalpy);
                     currentquad->unary[c] = unaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -288,7 +289,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar binaryenthalpy;
+                    PetscReal binaryenthalpy;
                     sscanf(mtok, "%lf", &binaryenthalpy);
                     currentquad->binary[c] = binaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -302,7 +303,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
                 while (mtok != NULL) {
-                    PetscScalar refenthalpy;
+                    PetscReal refenthalpy;
                     sscanf(mtok, "%lf", &refenthalpy);
                     currentcalphad->ref = refenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -315,7 +316,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar unaryenthalpy;
+                    PetscReal unaryenthalpy;
                     sscanf(mtok, "%lf", &unaryenthalpy);
                     currentcalphad->unary[c] = unaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -340,8 +341,8 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentbinary->n);
                 assert(currentbinary->n >= 0);
-                currentbinary->enthalpy = malloc(currentbinary->n*sizeof(PetscScalar));
-                memset(currentbinary->enthalpy,0,currentbinary->n*sizeof(PetscScalar));
+                currentbinary->enthalpy = malloc(currentbinary->n*sizeof(PetscReal));
+                memset(currentbinary->enthalpy,0,currentbinary->n*sizeof(PetscReal));
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "calphad_binaryenthalpy") != NULL) {
@@ -360,7 +361,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
-                    PetscScalar binaryenthalpy;
+                    PetscReal binaryenthalpy;
                     sscanf(mtok, "%lf", &binaryenthalpy);
                     currentbinary->enthalpy[nrk] = binaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -388,8 +389,8 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentternary->n);
                 assert(currentternary->n >= 0 && currentternary->n <=3);
-                currentternary->enthalpy = malloc(currentternary->n*sizeof(PetscScalar));
-                memset(currentternary->enthalpy,0,currentternary->n*sizeof(PetscScalar));
+                currentternary->enthalpy = malloc(currentternary->n*sizeof(PetscReal));
+                memset(currentternary->enthalpy,0,currentternary->n*sizeof(PetscReal));
                 currentternary->i = malloc(currentternary->n*sizeof(PetscInt));
                 memset(currentternary->i,0,currentternary->n*sizeof(PetscInt));
             }
@@ -444,7 +445,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
-                    PetscScalar ternaryenthalpy;
+                    PetscReal ternaryenthalpy;
                     sscanf(mtok, "%lf", &ternaryenthalpy);
                     currentternary->enthalpy[nrk] = ternaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -527,7 +528,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             sscanf(tok, "%s of %s", stra, strb);
             sof = atoi(stra); p = atoi(strb);
             for (PetscInt j=ctrv;j<ctrv+sof;j++) 
-                roaring_bitmap_add(user->phasevoxelmapping[p-1], j);
+                user->phasevoxelmapping[j] = p-1;;
             ctrv+=sof;
         } else if (strstr(tok, "to") != NULL) {
             char stra[128], strb[128];
@@ -536,21 +537,19 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             pfrom = atoi(stra); pto = atoi(strb);
             if (pfrom < pto) {
                 for (p=pfrom;p<=pto;p++) 
-                    roaring_bitmap_add(user->phasevoxelmapping[p-1], ctrv++);
+                    user->phasevoxelmapping[ctrv++] = p-1;
             } else {
                 for (p=pfrom;p>=pto;p--)
-                    roaring_bitmap_add(user->phasevoxelmapping[p-1], ctrv++);
+                    user->phasevoxelmapping[ctrv++] = p-1;
             }   
         }
         else {
-            roaring_bitmap_add(user->phasevoxelmapping[atoi(tok)-1], ctrv++);
+            user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
         }
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
     assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
-    for (PetscInt phase=0; phase<user->np; phase++) 
-        roaring_bitmap_run_optimize(user->phasevoxelmapping[phase]);
     free(substr);    
     free(buffer);    
     PetscFunctionReturn(0);
@@ -604,10 +603,10 @@ PetscErrorCode SetUpInterface(AppCtx *user)
             for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
                 currentinterface->energy = 0.0;
                 currentinterface->mobility = 0.0;
-                currentinterface->potential = malloc(user->nc*sizeof(PetscScalar));
-                currentinterface->mobilityc = malloc(user->nc*sizeof(PetscScalar));
-                memset(currentinterface->potential,0,user->nc*sizeof(PetscScalar));
-                memset(currentinterface->mobilityc,0,user->nc*sizeof(PetscScalar));
+                currentinterface->potential = malloc(user->nc*sizeof(PetscReal));
+                currentinterface->mobilityc = malloc(user->nc*sizeof(PetscReal));
+                memset(currentinterface->potential,0,user->nc*sizeof(PetscReal));
+                memset(currentinterface->mobilityc,0,user->nc*sizeof(PetscReal));
             }    
                 
         }
@@ -641,7 +640,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar potential;
+                    PetscReal potential;
                     sscanf(mtok, "%lf", &potential);
                     currentinterface->potential[c] = potential;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -655,7 +654,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar mobilityc;
+                    PetscReal mobilityc;
                     sscanf(mtok, "%lf", &mobilityc);
                     currentinterface->mobilityc[c] = mobilityc;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -722,98 +721,89 @@ PetscErrorCode SetUpInterface(AppCtx *user)
 /*
  SetUpProblem - initializes solution
  */
-PetscErrorCode SetUpProblem(DM da,AppCtx *user,Vec X)
+PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
 {
     PetscInt       xs, ys, zs, xm, ym, zm;
     PetscErrorCode ierr;
-    Vec            gactivephases;
-    F_DOFS         ***fdof;
-    C_DOFS         ***cdof;
-    F2I            ***nalist, ***alist, ***glist;
+    Vec            gactivephaseset, gactivephasesuperset;
+    FIELD          ***fdof;
+    STATE          ***matstate;
+    F2I            ***slist, ***alist, ***gslist, ***galist;
     MATERIAL       *currentmaterial;
-    uint16_t       superset[MAXAP];
+    uint16_t       superset[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
     
     PetscFunctionBeginUser;  
     /*
      Import initial microstructure from geom file
      */
-    ierr = DMDAGetCorners(da,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
+    ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
     zm+=zs; ym+=ys; xm+=xs; 
 
     /* initially only self phase is active... */
-    ierr = DMGetGlobalVector(user->daIdx,&gactivephases); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daIdx,gactivephases,&glist); CHKERRQ(ierr);
-    for (PetscInt phase=0;phase<user->np;phase++) {
-        roaring_bitmap_t *tempbm = roaring_bitmap_copy(user->phasevoxelmapping[phase]);
-        roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
-        while (g->has_value) {
-            PetscInt i = (g->current_value%(user->resolution[0]));
-            PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
-            PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
-            if ((xs <= i && i < xm) && (ys <= j && j < ym) && (zs <= k && k < zm)) {
-                glist[k][j][i].i[0]=1;
-                glist[k][j][i].i[glist[k][j][i].i[0]] = phase;
-            } else {       
-                /* remove off processor nodes... */
-                roaring_bitmap_remove(tempbm, g->current_value);
-            }
-            roaring_advance_uint32_iterator(g);
-        }
-        roaring_free_uint32_iterator(g);
-        user->phasevoxelmapping[phase] = roaring_bitmap_copy(tempbm);
-        roaring_bitmap_free(tempbm);
-    }
-    ierr = DMDAVecRestoreArray(user->daIdx,gactivephases,&glist); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalBegin(user->daIdx,gactivephases,INSERT_VALUES,user->activephases); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(user->daIdx,gactivephases,INSERT_VALUES,user->activephases); CHKERRQ(ierr);
-    ierr = DMRestoreGlobalVector(user->daIdx,&gactivephases); CHKERRQ(ierr);  
-
-    /* activate self phase on neighbours... */
-    ierr = DMDAVecGetArray(user->daIdx,user->activephases,&alist); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daIdx,user->activeneighbourphases,&nalist); CHKERRQ(ierr);
+    ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
-                nalist[k][j][i].i[0] = 0;
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j  ][i+1].i[1],alist[k  ][j  ][i+1].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j  ][i-1].i[1],alist[k  ][j  ][i-1].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j+1][i  ].i[1],alist[k  ][j+1][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k  ][j-1][i  ].i[1],alist[k  ][j-1][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k+1][j  ][i  ].i[1],alist[k+1][j  ][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                superset[0] = union_uint16(&nalist[k][j][i].i[1],nalist[k][j][i].i[0],&alist[k-1][j  ][i  ].i[1],alist[k-1][j  ][i  ].i[0],&superset[1]);
-                memcpy(nalist[k][j][i].i,superset,2*MAXAP);          
-                nalist[k][j][i].i[0] = difference_uint16(&superset[1],superset[0],&alist[k][j][i].i[1],alist[k][j][i].i[0],&nalist[k][j][i].i[1]);
+                galist[k][j][i].i[0]=1;
+                galist[k][j][i].i[1]=user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)];
+            }
+        }
+    }        
+    ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);  
+
+    /* activate self phase on neighbours... */
+    ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
+    ierr = DMGetGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_phaseID,gactivephasesuperset,&gslist); CHKERRQ(ierr);
+    for (PetscInt k=zs; k<zm; k++) {
+        for (PetscInt j=ys; j<ym; j++) {
+            for (PetscInt i=xs; i<xm; i++) {
+                PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
+                gslist[k][j][i].i[0] = 0;
+                for (PetscInt kk=kb; kk<=kt; kk++) {
+                    for (PetscInt jj=js; jj<=jn; jj++) {
+                        for (PetscInt ii=iw; ii<=ie; ii++) {
+                            SetUnion(superset,injectionA,injectionB,alist[kk][jj][ii].i,gslist[k][j][i].i);
+                            memcpy(gslist[k][j][i].i,superset,2*MAXAP);          
+                        }
+                    }
+                }
             }
         }
     }       
-    ierr = DMDAVecRestoreArray(user->daIdx,user->activeneighbourphases,&nalist); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(user->daIdx,user->activephases,&alist); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephasesuperset,&gslist); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);  
+    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
 
     /* Set initial phase field values */
-    ierr = DMDAVecGetArray(da,X,&fdof); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(user->daCmp,user->cvec,&cdof); CHKERRQ(ierr);
-    for (PetscInt phase=0;phase<user->np;phase++) {
-        currentmaterial = &user->material[user->phasematerialmapping[phase]];
-        roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
-        while (g->has_value) {
-            PetscInt i = (g->current_value%(user->resolution[0]));
-            PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
-            PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
-            fdof[k][j][i].p[0] = 1.0;
-            uint16_t plist[2] = {1,phase};
-            memcpy(cdof[k][j][i].c,currentmaterial->c0,user->nc*sizeof(PetscScalar)); 
-            Chemicalpotential(fdof[k][j][i].m,cdof[k][j][i].c,fdof[k][j][i].p,plist,user);
-            roaring_advance_uint32_iterator(g);
+    ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
+    ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
+    for (PetscInt k=zs; k<zm; k++) {
+        for (PetscInt j=ys; j<ym; j++) {
+            for (PetscInt i=xs; i<xm; i++) {
+                for (PetscInt g=0; g<slist[k][j][i].i[0]; g++) {
+                    currentmaterial = &user->material[user->phasematerialmapping[slist[k][j][i].i[g+1]]];
+                    if (slist[k][j][i].i[g+1] == user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)]) {
+                        fdof[k][j][i].p[g] = 1.0;
+                    } else {
+                        fdof[k][j][i].p[g] = 0.0;
+                    }
+                    memcpy(&matstate[k][j][i].c[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
+                }       
+                Chemicalpotential(fdof[k][j][i].m,matstate[k][j][i].c,fdof[k][j][i].p,slist[k][j][i].i,user);
+            }
         }
-        roaring_free_uint32_iterator(g);
-    }    
-    ierr = DMDAVecGetArray(user->daCmp,user->cvec,&cdof); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(da,X,&fdof); CHKERRQ(ierr);
+    }        
+    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
     PetscFunctionReturn(0);
 }
 

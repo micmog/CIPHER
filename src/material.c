@@ -13,11 +13,11 @@
 
 /* constitutive functions */
 typedef struct MATFUNC {
-    void (*Chemicalpotential  )(PetscScalar *, const PetscScalar *, const CHEMFE, const PetscInt);
-    void (*Chemenergy         )(PetscScalar *, const PetscScalar *, const CHEMFE, const PetscInt);
-    int  (*Composition        )(PetscScalar *, const PetscScalar *, const CHEMFE, const PetscInt);
-    void (*CompositionTangent )(PetscScalar *, const PetscScalar *, const CHEMFE, const PetscInt);
-    void (*CompositionMobility)(PetscScalar *, const PetscScalar *, const CHEMFE, const PetscInt);
+    void (*Chemicalpotential  )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*Chemenergy         )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    int  (*Composition        )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*CompositionTangent )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*CompositionMobility)(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
 } MATFUNC;
 
 static MATFUNC *Matfunc;
@@ -25,10 +25,10 @@ static MATFUNC *Matfunc;
 /*
  Chemicalpotential - CALPHAD model for chemical potential
  */
-static void Chemicalpotential_calphad(PetscScalar *chempot, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemicalpotential_calphad(PetscReal *chempot, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    PetscScalar  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
-    PetscScalar ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
+    PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
+    PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
     const CALPHAD *currentcalphad = &energy.calphad;
     const RK *currentbinary = &currentcalphad->binary[0];
     const RK *currentternary = &currentcalphad->ternary[0];
@@ -40,7 +40,7 @@ static void Chemicalpotential_calphad(PetscScalar *chempot, const PetscScalar *c
             }
             binaryfactorb[ck][cj] = 0.0;
             for (PetscInt rko=1; rko<currentbinary->n; rko++) {
-                binaryfactorb[ck][cj] += currentbinary->enthalpy[rko]*((PetscScalar) rko)*FastPow(composition[ck] - composition[cj],rko-1);
+                binaryfactorb[ck][cj] += currentbinary->enthalpy[rko]*((PetscReal) rko)*FastPow(composition[ck] - composition[cj],rko-1);
             }
             for (PetscInt ci=cj+1; ci<numcomps; ci++,currentternary++) {
                 ternaryfactora[ck][cj][ci] = 0.0; ternaryfactorb[ck][cj][ci] = 0.0;
@@ -75,7 +75,7 @@ static void Chemicalpotential_calphad(PetscScalar *chempot, const PetscScalar *c
 /*
  Chemicalpotential - Quadratic model for chemical potential
  */
-static void Chemicalpotential_quad(PetscScalar *chempot, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemicalpotential_quad(PetscReal *chempot, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
     for (PetscInt c=0; c<numcomps; c++)
@@ -85,20 +85,20 @@ static void Chemicalpotential_quad(PetscScalar *chempot, const PetscScalar *comp
 /*
  Chemicalpotential - None model for chemical potential
  */
-static void Chemicalpotential_none(PetscScalar *chempot, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemicalpotential_none(PetscReal *chempot, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(chempot,0,(numcomps-1)*sizeof(PetscScalar));
+    memset(chempot,0,(numcomps-1)*sizeof(PetscReal));
 }
 
 /*
  Chemicalpotential
  */
-void Chemicalpotential(PetscScalar *chempot, const PetscScalar *composition, const PetscScalar *phasefrac, const uint16_t *phaseID, const AppCtx *user)
+void Chemicalpotential(PetscReal *chempot, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(chempot,0,(user->nc-1)*sizeof(PetscScalar));
+    memset(chempot,0,(user->nc-1)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
-        PetscScalar chempotk[user->nc];
-        memset(chempotk,0,user->nc*sizeof(PetscScalar));
+        PetscReal chempotk[user->nc];
+        memset(chempotk,0,user->nc*sizeof(PetscReal));
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
         Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemicalpotential(chempotk,&composition[g*user->nc],currentmaterial->energy,user->nc);
         for (PetscInt ck=0; ck<user->nc-1; ck++) {  
@@ -110,7 +110,7 @@ void Chemicalpotential(PetscScalar *chempot, const PetscScalar *composition, con
 /*
  Chemenergy - CALPHAD model for chemical energy
  */
-static void Chemenergy_calphad(PetscScalar *chemenergy, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
     for (PetscInt c=0; c<numcomps; c++) assert(composition[c] + TOL > 0.0);
     const CALPHAD *currentcalphad = &energy.calphad;
@@ -135,7 +135,7 @@ static void Chemenergy_calphad(PetscScalar *chemenergy, const PetscScalar *compo
 /*
  Chemenergy - quadratic model for chemical energy
  */
-static void Chemenergy_quad(PetscScalar *chemenergy, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemenergy_quad(PetscReal *chemenergy, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
     *chemenergy = currentquad->ref;
@@ -148,7 +148,7 @@ static void Chemenergy_quad(PetscScalar *chemenergy, const PetscScalar *composit
 /*
  Chemenergy - none model for chemical energy
  */
-static void Chemenergy_none(PetscScalar *chemenergy, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void Chemenergy_none(PetscReal *chemenergy, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
     *chemenergy = 0.0;
 }
@@ -156,7 +156,7 @@ static void Chemenergy_none(PetscScalar *chemenergy, const PetscScalar *composit
 /*
  Chemenergy - CALPHAD model for chemical energy
  */
-void Chemenergy(PetscScalar *chemenergy, const PetscScalar *composition, const PetscScalar *chempot, const uint16_t *phaseID, const AppCtx *user)
+void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const PetscReal *chempot, const uint16_t *phaseID, const AppCtx *user)
 {
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
@@ -169,10 +169,10 @@ void Chemenergy(PetscScalar *chemenergy, const PetscScalar *composition, const P
 /*
  Composition - Semi-implicit concentration per phase
  */
-static int Composition_calphad(PetscScalar *composition, const PetscScalar *chempot, const CHEMFE energy, const PetscInt numcomps)
+static int Composition_calphad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
-    PetscScalar  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
-    PetscScalar ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
+    PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
+    PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
     const CALPHAD *currentcalphad = &energy.calphad;
     const RK *currentbinary = &currentcalphad->binary[0];
     const RK *currentternary = &currentcalphad->ternary[0];
@@ -185,7 +185,7 @@ static int Composition_calphad(PetscScalar *composition, const PetscScalar *chem
             binaryfactorb[ck][cj] = 0.0;
             for (PetscInt rko=1; rko<currentbinary->n; rko++) {
                 binaryfactorb[ck][cj] += 
-                    currentbinary->enthalpy[rko]*((PetscScalar) rko)*FastPow(composition[ck] - composition[cj],rko-1);
+                    currentbinary->enthalpy[rko]*((PetscReal) rko)*FastPow(composition[ck] - composition[cj],rko-1);
             }
             for (PetscInt ci=cj+1; ci<numcomps; ci++,currentternary++) {
                 ternaryfactora[ck][cj][ci] = 0.0; ternaryfactorb[ck][cj][ci] = 0.0;
@@ -197,8 +197,8 @@ static int Composition_calphad(PetscScalar *composition, const PetscScalar *chem
             }
         }
     }        
-    PetscScalar chempote[numcomps];
-    memset(chempote,0,numcomps*sizeof(PetscScalar));
+    PetscReal chempote[numcomps];
+    memset(chempote,0,numcomps*sizeof(PetscReal));
     currentternary = &currentcalphad->ternary[0];
     for (PetscInt ck=0; ck<numcomps; ck++) {  
         chempote[ck] += currentcalphad->unary[ck];
@@ -216,7 +216,7 @@ static int Composition_calphad(PetscScalar *composition, const PetscScalar *chem
             }
         }
     }        
-    PetscScalar sumexp = 0.0;
+    PetscReal sumexp = 0.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
         composition[c] = exp((chempot[c] - chempote[c] + chempote[numcomps-1])/currentcalphad->RT);
         sumexp += composition[c];
@@ -236,11 +236,11 @@ static int Composition_calphad(PetscScalar *composition, const PetscScalar *chem
 /*
  Composition - Semi-implicit concentration per phase
  */
-static int Composition_quad(PetscScalar *composition, const PetscScalar *chempot, const CHEMFE energy, const PetscInt numcomps)
+static int Composition_quad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
-    PetscScalar rhs[numcomps];
-    PetscScalar sument = 0.0, sumc = 0.0;
+    PetscReal rhs[numcomps];
+    PetscReal sument = 0.0, sumc = 0.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
         rhs[c] = 0.5*chempot[c] - 0.5*currentquad->unary[c] + 0.5*currentquad->unary[numcomps-1]
                + currentquad->binary[c]*currentquad->ceq[c] - currentquad->binary[numcomps-1]*currentquad->ceq[numcomps-1]
@@ -260,7 +260,7 @@ static int Composition_quad(PetscScalar *composition, const PetscScalar *chempot
 /*
  Composition - const concentration per phase
  */
-static int Composition_none(PetscScalar *composition, const PetscScalar *chempot, const CHEMFE energy, const PetscInt numcomps)
+static int Composition_none(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
     composition[0] = 1.0;
     return 1;
@@ -269,7 +269,7 @@ static int Composition_none(PetscScalar *composition, const PetscScalar *chempot
 /*
  Composition - Semi-implicit concentration per phase
  */
-int Composition(PetscScalar *composition, const PetscScalar *chempot, const uint16_t *phaseID, const AppCtx *user)
+int Composition(PetscReal *composition, const PetscReal *chempot, const uint16_t *phaseID, const AppCtx *user)
 {
     int err;
     for (PetscInt g=0; g<phaseID[0]; g++) {
@@ -282,9 +282,9 @@ int Composition(PetscScalar *composition, const PetscScalar *chempot, const uint
 /*
  Composition tangent wrt chemical potential
  */
-static void CompositionTangent_calphad(PetscScalar *compositiontangent, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionTangent_calphad(PetscReal *compositiontangent, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscScalar));
+    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     const CALPHAD *currentcalphad = &energy.calphad;
     for (PetscInt cj=0; cj<numcomps-1; cj++) {
         compositiontangent[cj*(numcomps-1)+cj] = composition[cj]/currentcalphad->RT;
@@ -297,11 +297,11 @@ static void CompositionTangent_calphad(PetscScalar *compositiontangent, const Pe
 /*
  Composition tangent wrt chemical potential
  */
-static void CompositionTangent_quad(PetscScalar *compositiontangent, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionTangent_quad(PetscReal *compositiontangent, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscScalar));
+    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
-    PetscScalar sument = 0.0;
+    PetscReal sument = 0.0;
     for (PetscInt c=0; c<numcomps-1; c++) sument += 1.0/currentquad->binary[c];
     sument = currentquad->binary[numcomps-1]/(1.0 + sument*currentquad->binary[numcomps-1]);            
     for (PetscInt cj=0; cj<numcomps-1; cj++) {
@@ -315,20 +315,20 @@ static void CompositionTangent_quad(PetscScalar *compositiontangent, const Petsc
 /*
  Composition tangent wrt chemical potential
  */
-static void CompositionTangent_none(PetscScalar *compositiontangent, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionTangent_none(PetscReal *compositiontangent, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscScalar));
+    memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
 }
 
 /*
  Composition tangent wrt chemical potential
  */
-void CompositionTangent(PetscScalar *compositiontangent, const PetscScalar *composition, const PetscScalar *phasefrac, const uint16_t *phaseID, const AppCtx *user)
+void CompositionTangent(PetscReal *compositiontangent, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(compositiontangent,0,(user->nc-1)*(user->nc-1)*sizeof(PetscScalar));
+    memset(compositiontangent,0,(user->nc-1)*(user->nc-1)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        PetscScalar compositiontangentg[(user->nc-1)*(user->nc-1)];
+        PetscReal compositiontangentg[(user->nc-1)*(user->nc-1)];
         Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionTangent(compositiontangentg,&composition[g*user->nc],currentmaterial->energy,user->nc);
         for (PetscInt cj=0; cj<user->nc-1; cj++) {
             for (PetscInt ci=0; ci<user->nc-1; ci++) {
@@ -341,9 +341,9 @@ void CompositionTangent(PetscScalar *compositiontangent, const PetscScalar *comp
 /*
  Composition mobility
  */
-static void CompositionMobility_calphad(PetscScalar *mobilityc, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionMobility_calphad(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscScalar));
+    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
     const CALPHAD *currentcalphad = &energy.calphad;
     for (PetscInt c=0; c<numcomps-1; c++) {
         mobilityc[c] = currentcalphad->mobilityc[c];
@@ -353,9 +353,9 @@ static void CompositionMobility_calphad(PetscScalar *mobilityc, const PetscScala
 /*
  Composition mobility
  */
-static void CompositionMobility_quad(PetscScalar *mobilityc, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscScalar));
+    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
     for (PetscInt c=0; c<numcomps-1; c++) {
         mobilityc[c] = currentquad->mobilityc[c];
@@ -365,20 +365,20 @@ static void CompositionMobility_quad(PetscScalar *mobilityc, const PetscScalar *
 /*
  Composition mobility
  */
-static void CompositionMobility_none(PetscScalar *mobilityc, const PetscScalar *composition, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscScalar));
+    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
 }
 
 /*
  Composition mobility
  */
-void CompositionMobility(PetscScalar *mobilityc, const PetscScalar *composition, const PetscScalar *phasefrac, const uint16_t *phaseID, const AppCtx *user)
+void CompositionMobility(PetscReal *mobilityc, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(mobilityc,0,(user->nc-1)*sizeof(PetscScalar));
+    memset(mobilityc,0,(user->nc-1)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        PetscScalar mobilitycg[user->nc-1];
+        PetscReal mobilitycg[user->nc-1];
         Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionMobility(mobilitycg,&composition[g*user->nc],currentmaterial->energy,user->nc);
         for (PetscInt c=0; c<user->nc-1; c++) {
             mobilityc[c] += phasefrac[g]*mobilitycg[c];

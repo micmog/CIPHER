@@ -25,7 +25,7 @@
 EXTERN char *strtok_r(char *, const char *, char **);
 EXTERN PetscErrorCode SetUpGeometry(AppCtx *);
 EXTERN PetscErrorCode SetUpInterface(AppCtx *);
-EXTERN PetscErrorCode SetUpProblem(DM,AppCtx *,Vec);
+EXTERN PetscErrorCode SetUpProblem(DM, Vec, AppCtx *);
 
 #undef INIT_IMPORT
 #undef EXTERN

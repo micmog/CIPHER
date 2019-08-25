@@ -27,11 +27,11 @@
 /* Global variables declarations */
 
 /* Function prototypes */
-EXTERN void Chemicalpotential  (PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t *, const AppCtx *);
-EXTERN void Chemenergy         (PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t *, const AppCtx *);
-EXTERN int  Composition        (PetscScalar *, const PetscScalar *,                      const uint16_t *, const AppCtx *);
-EXTERN void CompositionTangent (PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t *, const AppCtx *);
-EXTERN void CompositionMobility(PetscScalar *, const PetscScalar *, const PetscScalar *, const uint16_t *, const AppCtx *);
+EXTERN void Chemicalpotential  (PetscReal *, const PetscReal *, const PetscReal *, const uint16_t *, const AppCtx *);
+EXTERN void Chemenergy         (PetscReal *, const PetscReal *, const PetscReal *, const uint16_t *, const AppCtx *);
+EXTERN int  Composition        (PetscReal *, const PetscReal *,                      const uint16_t *, const AppCtx *);
+EXTERN void CompositionTangent (PetscReal *, const PetscReal *, const PetscReal *, const uint16_t *, const AppCtx *);
+EXTERN void CompositionMobility(PetscReal *, const PetscReal *, const PetscReal *, const uint16_t *, const AppCtx *);
 EXTERN void material_init(const AppCtx *);
 
 #undef MATERIAL_IMPORT

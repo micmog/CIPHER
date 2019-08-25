@@ -8,9 +8,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <assert.h>
 #include <petscdm.h>
 #include <petscdmda.h>
-#include "roaring.h"
+#include <petscts.h>
 
 /* Set EXTERN macro: */
 #ifdef TYPEDEF_IMPORT
@@ -40,52 +41,53 @@ typedef enum {
 /* interpolation type */
 typedef enum {
    LINEAR_INTERPOLATION,
+   QUADRATIC_INTERPOLATION,
    CUBIC_INTERPOLATION,
    NONE_INTERPOLATION
 } interpolation_t;
 
 /* field dofs */
-typedef struct F_DOFS {
-   PetscScalar   p[MAXAP];
-   PetscScalar   m[MAXCP];
-} F_DOFS;
+typedef struct FIELD {
+   PetscReal   p[MAXAP];
+   PetscReal   m[MAXCP];
+} FIELD;
 
 /* composition dofs */
-typedef struct C_DOFS {
-   PetscScalar   c[MAXAP*MAXCP];
-} C_DOFS;
+typedef struct STATE {
+   PetscReal   c[MAXAP*MAXCP];
+} STATE;
 
 /* output dofs */
 typedef struct O_DOFS {
-   PetscScalar   ***o;
+   PetscReal   ***o;
 } O_DOFS;
 
 /* Float to int conversion */
 typedef union F2I {
-   PetscScalar   f[MAXTP];
-   uint16_t      i[MAXAP];
+   PetscReal   f[MAXTP];
+   uint16_t    i[MAXAP];
 } F2I;
 
 /* RK coefficients */
 typedef struct RK {
     PetscInt n, *i;
-    PetscScalar *enthalpy;
+    PetscReal *enthalpy;
 } RK;
 
 /* CALPHAD energy parameters container */
 typedef struct CALPHAD {
-    PetscScalar ref, RT;
-    PetscScalar *unary;
+    PetscReal ref, RT;
+    PetscReal *unary;
     RK *binary, *ternary;
-    PetscScalar *mobilityc;
+    PetscReal *mobilityc;
 } CALPHAD;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
-    PetscScalar ref;
-    PetscScalar *ceq;
-    PetscScalar *unary, *binary;
-    PetscScalar *mobilityc;
+    PetscReal ref;
+    PetscReal *ceq;
+    PetscReal *unary, *binary;
+    PetscReal *mobilityc;
 } QUAD;
 
 /* Energy container */
@@ -97,15 +99,15 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscScalar molarvolume;
-    PetscScalar *c0;
+    PetscReal molarvolume;
+    PetscReal *c0;
     CHEMFE energy;
 } MATERIAL;
 
 /* Phase container */
 typedef struct INTERFACE {
-    PetscScalar energy, mobility;
-    PetscScalar *potential, *mobilityc;
+    PetscReal energy, mobility;
+    PetscReal *potential, *mobilityc;
 } INTERFACE;
 
 /* solution parameters */
@@ -120,14 +122,13 @@ typedef struct AppCtx {
     PetscReal dt, dtmax, time;
     PetscInt step;
     /* tolerances */
-    PetscReal ptol, ctol, error, error0, error1, kI;
+    PetscReal ptol, ctol;
     /* aux grids and vecs */
-    DM daCmp, daOut, daIdx;
-    Vec activephases, activeneighbourphases, rhs0, cvec;
+    DM da_phaseID, da_matstate, da_output;
+    Vec activephaseset, activephasesuperset, matstate;
     /* phase material parameters */
     MATERIAL *material;
-    roaring_bitmap_t **phasevoxelmapping;
-    uint16_t *phasematerialmapping;
+    uint16_t *phasevoxelmapping, *phasematerialmapping;
     interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;
