@@ -15,6 +15,7 @@ static char help[] = "Solves multi phase field equations \n";
 /* User-defined routines */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void *);
 extern PetscErrorCode PostStep(TS);
+extern PetscErrorCode CheckException(TSAdapt,TS,PetscReal,Vec,PetscBool *);
 
 /*
  RHSFunction - Evaluates RHS function, F(x)
@@ -88,7 +89,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     for (PetscInt c=0; c<user->nc-1; c++) 
                         chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
                     /* update composition for given chemical potential */
-                    Composition(matstate[k][j][i].c,chemicalpotential,slist[k][j][i].i,user);
+                    user->rejectstage = Composition(matstate[k][j][i].c,chemicalpotential,slist[k][j][i].i,user);
+                    if (user->rejectstage) goto BREAK_LOOP;
                     
                     /* more than 1 phase active at this point neighbourhood */
                     memset(rhs[k][j][i].p,0.0,MAXAP*sizeof(PetscReal));
@@ -213,6 +215,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
         }
     }       
+    BREAK_LOOP: 
     ierr = DMDAVecRestoreArray(user->da_matstate,matstate0,&matstate); CHKERRQ(ierr);
     ierr = DMRestoreGlobalVector(user->da_matstate,&matstate0); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
@@ -406,6 +409,19 @@ PetscErrorCode PostStep(TS ts)
     PetscFunctionReturn(0);
 }
 
+/*
+ CheckException - Exception handling
+ */
+PetscErrorCode CheckException(TSAdapt adapt, TS ts, PetscReal ftime, Vec X, PetscBool *accept)
+{
+    AppCtx *user;         
+    PetscErrorCode ierr;
+    ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
+    *accept = !user->rejectstage;
+    ierr = MPI_Allreduce(MPI_IN_PLACE,accept,1,MPI_INT,MPI_LAND,PETSC_COMM_WORLD);
+    PetscFunctionReturn(0);
+}
+
 int main(int argc,char **args)
 {
   /* user-defined work context */
@@ -415,6 +431,7 @@ int main(int argc,char **args)
   Vec            solution;
   /* time stepping context */
   TS             ts;
+  TSAdapt        adapt;
   /* numerical parameters */
   PetscReal      finaltime;
   PetscErrorCode ierr;
@@ -447,6 +464,7 @@ int main(int argc,char **args)
   user.outputfreq = 1;
   ierr = PetscOptionsGetInt(NULL,NULL,"-outfreq",&user.outputfreq,NULL); CHKERRQ(ierr);
   ierr = PetscOptionsGetString(NULL,NULL,"-outfile",user.outfile,128,NULL);
+  user.rejectstage = 0;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Create distributed array (DMDA) to manage parallel grid and vectors
@@ -518,10 +536,14 @@ int main(int argc,char **args)
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP); CHKERRQ(ierr);
   ierr = TSSetTimeStep(ts,user.dt); CHKERRQ(ierr);
   ierr = TSSetPostStep(ts,PostStep); CHKERRQ(ierr);
+  ierr = TSGetAdapt(ts,&adapt); CHKERRQ(ierr);
+  ierr = TSAdaptSetType(adapt,TSADAPTDSP); CHKERRQ(ierr);
+  ierr = TSAdaptSetCheckStage(adapt,CheckException);
   ierr = TSSetDM(ts,da_solution); CHKERRQ(ierr);
   ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
   ierr = TSSetType(ts,TSRK); CHKERRQ(ierr);
   ierr = TSSetTolerances(ts,user.ptol,NULL,user.ctol,NULL); CHKERRQ(ierr);
+  ierr = TSSetMaxStepRejections(ts,INT_MAX); CHKERRQ(ierr);
   
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Set up and perform time integration 

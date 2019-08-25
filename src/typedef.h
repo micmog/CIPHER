@@ -123,6 +123,7 @@ typedef struct AppCtx {
     PetscInt step;
     /* tolerances */
     PetscReal ptol, ctol;
+    PetscErrorCode rejectstage;
     /* aux grids and vecs */
     DM da_phaseID, da_matstate, da_output;
     Vec activephaseset, activephasesuperset, matstate;

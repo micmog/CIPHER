@@ -13,11 +13,11 @@
 
 /* constitutive functions */
 typedef struct MATFUNC {
-    void (*Chemicalpotential  )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
-    void (*Chemenergy         )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
-    int  (*Composition        )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
-    void (*CompositionTangent )(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
-    void (*CompositionMobility)(PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*Chemicalpotential) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*Chemenergy) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    PetscErrorCode  (*Composition) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*CompositionTangent) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*CompositionMobility) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
 } MATFUNC;
 
 static MATFUNC *Matfunc;
@@ -169,7 +169,7 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
 /*
  Composition - Semi-implicit concentration per phase
  */
-static int Composition_calphad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static PetscErrorCode Composition_calphad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
     PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
     PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
@@ -226,17 +226,18 @@ static int Composition_calphad(PetscReal *composition, const PetscReal *chempot,
         composition[c] /= (1.0 + sumexp);   
         composition[numcomps-1] -= composition[c];
     } 
-    int ierr = 1;
     for (PetscInt c=0; c<numcomps; c++) {
-        ierr = ierr && (composition[c] + TOL > 0.0);
+        if (composition[c] < 0.0 || isnan(composition[c])) {
+            return 1;
+        }    
     }
-    return ierr;    
+    return 0;    
 }
 
 /*
  Composition - Semi-implicit concentration per phase
  */
-static int Composition_quad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static PetscErrorCode Composition_quad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
     PetscReal rhs[numcomps];
@@ -254,29 +255,29 @@ static int Composition_quad(PetscReal *composition, const PetscReal *chempot, co
         composition[c] -= sument*sumc/currentquad->binary[c];
         composition[numcomps-1] -= composition[c];
     }
-    return 1;
+    return 0;
 }
 
 /*
  Composition - const concentration per phase
  */
-static int Composition_none(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static PetscErrorCode Composition_none(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
 {
     composition[0] = 1.0;
-    return 1;
+    return 0;
 }
 
 /*
  Composition - Semi-implicit concentration per phase
  */
-int Composition(PetscReal *composition, const PetscReal *chempot, const uint16_t *phaseID, const AppCtx *user)
+PetscErrorCode Composition(PetscReal *composition, const PetscReal *chempot, const uint16_t *phaseID, const AppCtx *user)
 {
-    int err;
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        err = Matfunc[user->phasematerialmapping[phaseID[g+1]]].Composition(&composition[g*user->nc],chempot,currentmaterial->energy,user->nc);
+        if (Matfunc[user->phasematerialmapping[phaseID[g+1]]].Composition(&composition[g*user->nc],chempot,currentmaterial->energy,user->nc))
+            return 1;
     }
-    return err;
+    return 0;
 }
 
 /*
