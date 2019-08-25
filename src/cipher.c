@@ -401,8 +401,6 @@ int main(int argc,char **args)
   ierr = PetscOptionsGetReal(NULL,NULL,"-ptol",&user.ptol,NULL); CHKERRQ(ierr);
   user.ctol = TOL;
   ierr = PetscOptionsGetReal(NULL,NULL,"-ctol",&user.ctol,NULL); CHKERRQ(ierr);
-  user.kI = 0.4;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-kI",&user.kI,NULL); CHKERRQ(ierr);
   user.outputfreq = 1;
   ierr = PetscOptionsGetInt(NULL,NULL,"-outfreq",&user.outputfreq,NULL); CHKERRQ(ierr);
   ierr = PetscOptionsGetString(NULL,NULL,"-outfile",user.outfile,128,NULL);

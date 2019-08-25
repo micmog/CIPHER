@@ -121,7 +121,7 @@ typedef struct AppCtx {
     PetscReal dt, dtmax, time;
     PetscInt step;
     /* tolerances */
-    PetscReal ptol, ctol, error, error0, error1, kI;
+    PetscReal ptol, ctol;
     /* aux grids and vecs */
     DM da_phaseID, da_matstate, da_output;
     Vec activephaseset, activephasesuperset, matstate;
