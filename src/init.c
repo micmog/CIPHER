@@ -72,14 +72,13 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             user->resolution[1] = atoi(strtok_r(NULL, " ", &savemtok));
             mtok = strtok_r(NULL, " ", &savemtok);
             user->resolution[2] = atoi(strtok_r(NULL, " ", &savemtok));
+            user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
         }
         if (strstr(tok, "n_phases") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->np);
             user->phasematerialmapping = malloc(user->np*sizeof(uint16_t));
-            user->phasevoxelmapping = malloc(user->np*sizeof(struct roaring_bitmap_t *));
-            for (PetscInt phase=0; phase<user->np; phase++) user->phasevoxelmapping[phase] = roaring_bitmap_create();
         }    
         if (strstr(tok, "n_materials") != NULL) {
             char *mtok, *savemtok;
@@ -527,7 +526,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             sscanf(tok, "%s of %s", stra, strb);
             sof = atoi(stra); p = atoi(strb);
             for (PetscInt j=ctrv;j<ctrv+sof;j++) 
-                roaring_bitmap_add(user->phasevoxelmapping[p-1], j);
+                user->phasevoxelmapping[j] = p-1;;
             ctrv+=sof;
         } else if (strstr(tok, "to") != NULL) {
             char stra[128], strb[128];
@@ -536,21 +535,19 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             pfrom = atoi(stra); pto = atoi(strb);
             if (pfrom < pto) {
                 for (p=pfrom;p<=pto;p++) 
-                    roaring_bitmap_add(user->phasevoxelmapping[p-1], ctrv++);
+                    user->phasevoxelmapping[ctrv++] = p-1;
             } else {
                 for (p=pfrom;p>=pto;p--)
-                    roaring_bitmap_add(user->phasevoxelmapping[p-1], ctrv++);
+                    user->phasevoxelmapping[ctrv++] = p-1;
             }   
         }
         else {
-            roaring_bitmap_add(user->phasevoxelmapping[atoi(tok)-1], ctrv++);
+            user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
         }
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
     assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
-    for (PetscInt phase=0; phase<user->np; phase++) 
-        roaring_bitmap_run_optimize(user->phasevoxelmapping[phase]);
     free(substr);    
     free(buffer);    
     PetscFunctionReturn(0);
@@ -743,26 +740,14 @@ PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
     /* initially only self phase is active... */
     ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
-    for (PetscInt phase=0;phase<user->np;phase++) {
-        roaring_bitmap_t *tempbm = roaring_bitmap_copy(user->phasevoxelmapping[phase]);
-        roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
-        while (g->has_value) {
-            PetscInt i = (g->current_value%(user->resolution[0]));
-            PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
-            PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
-            if ((xs <= i && i < xm) && (ys <= j && j < ym) && (zs <= k && k < zm)) {
+    for (PetscInt k=zs; k<zm; k++) {
+        for (PetscInt j=ys; j<ym; j++) {
+            for (PetscInt i=xs; i<xm; i++) {
                 galist[k][j][i].i[0]=1;
-                galist[k][j][i].i[galist[k][j][i].i[0]] = phase;
-            } else {       
-                /* remove off processor nodes... */
-                roaring_bitmap_remove(tempbm, g->current_value);
+                galist[k][j][i].i[1]=user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)];
             }
-            roaring_advance_uint32_iterator(g);
         }
-        roaring_free_uint32_iterator(g);
-        user->phasevoxelmapping[phase] = roaring_bitmap_copy(tempbm);
-        roaring_bitmap_free(tempbm);
-    }
+    }        
     ierr = DMDAVecRestoreArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
     ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
     ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
@@ -798,26 +783,24 @@ PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
     ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
-    for (PetscInt phase=0;phase<user->np;phase++) {
-        roaring_uint32_iterator_t *g = roaring_create_iterator(user->phasevoxelmapping[phase]);
-        while (g->has_value) {
-            PetscInt i = (g->current_value%(user->resolution[0]));
-            PetscInt j = (g->current_value%(user->resolution[0]*user->resolution[1]))/user->resolution[0];
-            PetscInt k = (g->current_value/(user->resolution[1]*user->resolution[0]));
-            for (PetscInt ph=0; ph<slist[k][j][i].i[0]; ph++) {
-                currentmaterial = &user->material[user->phasematerialmapping[slist[k][j][i].i[ph+1]]];
-                if (slist[k][j][i].i[ph+1] == phase) {
-                    fdof[k][j][i].p[ph] = 1.0;
-                } else {
-                    fdof[k][j][i].p[ph] = 0.0;
-                }
-                memcpy(&matstate[k][j][i].c[ph*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
-            }       
-            Chemicalpotential(fdof[k][j][i].m,matstate[k][j][i].c,fdof[k][j][i].p,slist[k][j][i].i,user);
-            roaring_advance_uint32_iterator(g);
+    for (PetscInt k=zs; k<zm; k++) {
+        for (PetscInt j=ys; j<ym; j++) {
+            for (PetscInt i=xs; i<xm; i++) {
+                galist[k][j][i].i[0]=1;
+                galist[k][j][i].i[1]=user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)];
+                for (PetscInt g=0; g<slist[k][j][i].i[0]; g++) {
+                    currentmaterial = &user->material[user->phasematerialmapping[slist[k][j][i].i[g+1]]];
+                    if (slist[k][j][i].i[g+1] == user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)]) {
+                        fdof[k][j][i].p[g] = 1.0;
+                    } else {
+                        fdof[k][j][i].p[g] = 0.0;
+                    }
+                    memcpy(&matstate[k][j][i].c[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
+                }       
+                Chemicalpotential(fdof[k][j][i].m,matstate[k][j][i].c,fdof[k][j][i].p,slist[k][j][i].i,user);
+            }
         }
-        roaring_free_uint32_iterator(g);
-    }    
+    }        
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);

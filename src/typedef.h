@@ -8,9 +8,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <assert.h>
 #include <petscdm.h>
 #include <petscdmda.h>
-#include "roaring.h"
+#include <petscts.h>
 
 /* Set EXTERN macro: */
 #ifdef TYPEDEF_IMPORT
@@ -126,8 +127,7 @@ typedef struct AppCtx {
     Vec activephaseset, activephasesuperset, matstate;
     /* phase material parameters */
     MATERIAL *material;
-    roaring_bitmap_t **phasevoxelmapping;
-    uint16_t *phasematerialmapping;
+    uint16_t *phasevoxelmapping, *phasematerialmapping;
     interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;
