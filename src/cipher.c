@@ -65,12 +65,30 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 } else {
                     PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
                     
-                    /* update material state */
-                    Composition(matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
-                    
                     /* calculate phase interpolants */
                     PetscReal interpolant[slist[k][j][i].i[0]];
                     EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
+                    
+                    /* update material state */
+                    PetscReal interfacepotential[user->nc], chemicalpotential[user->nc-1];
+                    memset(interfacepotential,0,user->nc*sizeof(PetscScalar));
+                    memcpy(chemicalpotential,fdof[k][j][i].m,(user->nc-1)*sizeof(PetscScalar));
+                    /* get chemical part of diffusion potential */
+                    for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
+                        for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
+                            PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
+                                                                                  + slist[k][j][i].i[gj+1]         ];
+                            INTERFACE *currentinterface = &user->interface[interfacekj];
+                            PetscReal val = sqrt(interpolant[gk]*interpolant[gj]);
+                            for (PetscInt c=0; c<user->nc; c++) {
+                                interfacepotential[c] += val*currentinterface->potential[c];
+                            }
+                        }
+                    }    
+                    for (PetscInt c=0; c<user->nc-1; c++) 
+                        chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
+                    /* update composition for given chemical potential */
+                    Composition(matstate[k][j][i].c,chemicalpotential,slist[k][j][i].i,user);
                     
                     /* more than 1 phase active at this point neighbourhood */
                     memset(rhs[k][j][i].p,0.0,MAXAP*sizeof(PetscReal));
@@ -235,12 +253,32 @@ PetscErrorCode PostStep(TS ts)
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
-                /* update material state */
+                /* project phase fields back to Gibbs simplex */
                 PetscReal phiUP[slist[k][j][i].i[0]], interpolant[slist[k][j][i].i[0]];
                 memcpy(phiUP,fdof[k][j][i].p,slist[k][j][i].i[0]*sizeof(PetscReal));
                 SimplexProjection(fdof[k][j][i].p,phiUP,slist[k][j][i].i[0]);
                 EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
-                Composition(matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
+                
+                /* update material state */
+                PetscReal interfacepotential[user->nc], chemicalpotential[user->nc-1];
+                memset(interfacepotential,0,user->nc*sizeof(PetscScalar));
+                memcpy(chemicalpotential,fdof[k][j][i].m,(user->nc-1)*sizeof(PetscScalar));
+                /* get chemical part of diffusion potential */
+                for (PetscInt gk=0; gk<slist[k][j][i].i[0]; gk++) {
+                    for (PetscInt gj=gk+1; gj<slist[k][j][i].i[0]; gj++) {
+                        PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
+                                                                              + slist[k][j][i].i[gj+1]         ];
+                        INTERFACE *currentinterface = &user->interface[interfacekj];
+                        PetscReal val = sqrt(interpolant[gk]*interpolant[gj]);
+                        for (PetscInt c=0; c<user->nc; c++) {
+                            interfacepotential[c] += val*currentinterface->potential[c];
+                        }
+                    }
+                }    
+                for (PetscInt c=0; c<user->nc-1; c++) 
+                    chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
+                /* update composition for given chemical potential */
+                Composition(matstate[k][j][i].c,chemicalpotential,slist[k][j][i].i,user);
 
                 /* update active set */
                 galist[k][j][i].i[0] = 0;
