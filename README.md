@@ -43,7 +43,6 @@ For questions, comments, bug-reports or contributions please email Dr. Pratheek 
 
 [1] Grand-canonical phase-field implementation: https://arxiv.org/abs/1906.10503  
 [2] PETSc: https://www.mcs.anl.gov/petsc/  
-[3] Roaring BitMap: https://github.com/RoaringBitmap/CRoaring
 
 ## License
 
