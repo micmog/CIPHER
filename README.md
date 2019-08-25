@@ -7,7 +7,7 @@ CIPHER is a phase-field simulation code for microstructure evolution in multi-co
 - Local truccation error estimates and adaptive time stepping.
 - Designed for large number of phases (10-10000), with constant computational complexity, i.e. computational cost is independent of the number of phases.
 - Efficient grand-canonical-based phase-field implementation with direct use of Compound-Energy-Formalism and other CALPHAD thermodynamic models for multi-component systems [1].
-- MPI parallelization and scalable implementation.
+- Designed for MPI parallelization and scalability.
 
 ## Requirements
 
