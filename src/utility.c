@@ -15,11 +15,11 @@
 #include "utility.h"
 
 /* nc x nc matrix inversion function */
-static void (*Invertmatrixf)(PetscScalar *, PetscScalar *);
+static void (*Invertmatrixf)(PetscReal *, PetscReal *);
 
 /* interpolation shape functions */
-static void (*Interpolant          )(PetscScalar *, const PetscScalar *, const uint16_t);
-static void (*InterpolantDerivative)(PetscScalar *, const PetscScalar *, const uint16_t);
+static void (*Interpolant          )(PetscReal *, const PetscReal *, const uint16_t);
+static void (*InterpolantDerivative)(PetscReal *, const PetscReal *, const uint16_t);
 
 /*
  Extract string between tags
@@ -50,11 +50,11 @@ char *Extract(const char *const string, const char *const left, const char *cons
 }
 
 /*
- PetscScalar to power of unsigned int
+ PetscReal to power of unsigned int
  */
-PetscScalar FastPow(PetscScalar base, unsigned expn)
+PetscReal FastPow(PetscReal base, unsigned expn)
 {
-    PetscScalar result = 1.0;
+    PetscReal result = 1.0;
     while (expn)
     {
         if (expn & 1)
@@ -67,19 +67,19 @@ PetscScalar FastPow(PetscScalar base, unsigned expn)
 }
 
 /*
- PetscScalar fast square root
+ PetscReal fast square root
  */
-PetscScalar FastSqrt(PetscScalar number)
+PetscReal FastSqrt(PetscReal number)
 {
     if (number < TOL) {
       return 0.0;
     } else {
-      PetscScalar y = number;
-      PetscScalar x2 = y * 0.5;
+      PetscReal y = number;
+      PetscReal x2 = y * 0.5;
       int64_t i = *(int64_t *) &y;
       // The magic number is for doubles is from https://cs.uwaterloo.ca/~m32rober/rsqrt.pdf
       i = 0x5fe6eb50c7b537a9 - (i >> 1);
-      y = *(PetscScalar *) &i;
+      y = *(PetscReal *) &i;
       // 1st iteration
       y = y * (1.5 - (x2 * y * y));        
       // 2nd iteration, this can be removed
@@ -89,19 +89,19 @@ PetscScalar FastSqrt(PetscScalar number)
 }
   
 /*
- PetscScalar fast exponential
+ PetscReal fast exponential
  */
-PetscScalar FastExp(PetscScalar a) {
-  union { PetscScalar d; long long x; } u;
+PetscReal FastExp(PetscReal a) {
+  union { PetscReal d; long long x; } u;
   u.x = (long long)(6497320848556798LL * a + 0x3fef127e83d16f12LL);
   return u.d;
 }
 
 /*
- PetscScalar fast log_e
+ PetscReal fast log_e
  */
-PetscScalar FastLog(PetscScalar a) {
-  union { PetscScalar d; long long x; } u = { a };
+PetscReal FastLog(PetscReal a) {
+  union { PetscReal d; long long x; } u = { a };
   return (u.x - 4606921278410026770) * 1.539095918623324e-16; /* 1 / 6497320848556798.0; */
 }
 
@@ -172,16 +172,16 @@ void SetUnion(uint16_t *OutC, uint16_t *AInC, uint16_t *BInC, uint16_t *InA, uin
     }
 }
 
-static void Invert1x1(PetscScalar * dst, PetscScalar * src)
+static void Invert1x1(PetscReal * dst, PetscReal * src)
 {
     /* Compute adjoint and multiply with reciprocal of determinant: */
 
     dst[0] = 1.0 / src[0];
 }
 
-static void Invert2x2(PetscScalar * dst, PetscScalar * src)
+static void Invert2x2(PetscReal * dst, PetscReal * src)
 {
-    PetscScalar det;
+    PetscReal det;
 
     /* Compute adjoint: */
 
@@ -203,9 +203,9 @@ static void Invert2x2(PetscScalar * dst, PetscScalar * src)
     dst[1] = dst[2];
 }
 
-static void Invert3x3(PetscScalar * dst, PetscScalar * src)
+static void Invert3x3(PetscReal * dst, PetscReal * src)
 {
-    PetscScalar det;
+    PetscReal det;
 
     /* Compute adjoint: */
 
@@ -235,9 +235,9 @@ static void Invert3x3(PetscScalar * dst, PetscScalar * src)
     dst[5] = dst[7];
 }
 
-static void Invert4x4(PetscScalar * dst, PetscScalar * src)
+static void Invert4x4(PetscReal * dst, PetscReal * src)
 {
-    PetscScalar det;
+    PetscReal det;
 
     /* Compute adjoint: */
 
@@ -347,16 +347,16 @@ static void Invert4x4(PetscScalar * dst, PetscScalar * src)
     dst[11] = dst[14];
 }
 
-static void Invertnxn(PetscScalar * dst, PetscScalar * src)
+static void Invertnxn(PetscReal * dst, PetscReal * src)
 {
-    PetscInt n = sizeof(src)/sizeof(PetscScalar);
-    memset(dst,0,n*n*sizeof(PetscScalar));
+    PetscInt n = sizeof(src)/sizeof(PetscReal);
+    memset(dst,0,n*n*sizeof(PetscReal));
     for(PetscInt i = 0; i < n; i++) dst[i*n+i] = 1.0;
 
     for(PetscInt i = 0; i < n; i++) {
         for(PetscInt j = 0; j < n; j++) {
             if (i != j) {
-                PetscScalar ratio = src[j*n+i]/src[i*n+i];
+                PetscReal ratio = src[j*n+i]/src[i*n+i];
                 for(PetscInt k = 0; k < n; k++) src[j*n+k] -= ratio * src[i*n+k];
                 for(PetscInt k = 0; k < n; k++) dst[j*n+k] -= ratio * dst[i*n+k];
             }
@@ -364,12 +364,12 @@ static void Invertnxn(PetscScalar * dst, PetscScalar * src)
     }
 
     for(PetscInt i = 0; i < n; i++) {
-        PetscScalar a = src[i*n+i];
+        PetscReal a = src[i*n+i];
         for(PetscInt j = 0; j < n; j++) dst[i*n+j] /= a;
     }
 }
 
-void Invertmatrix(PetscScalar * dst, PetscScalar * src)
+void Invertmatrix(PetscReal * dst, PetscReal * src)
 {
     Invertmatrixf(dst,src);
 }
@@ -377,27 +377,27 @@ void Invertmatrix(PetscScalar * dst, PetscScalar * src)
 /*
  Linear interpolation shape function
  */
-static void Interpolant_linear(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+static void Interpolant_linear(PetscReal *interpolant, const PetscReal *phasefrac, const uint16_t nphases)
 {
-    memcpy(interpolant,phasefrac,nphases*sizeof(PetscScalar));
+    memcpy(interpolant,phasefrac,nphases*sizeof(PetscReal));
 }
 
 /*
  Linear interpolation shape function derivative
  */
-static void InterpolantDerivative_linear(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+static void InterpolantDerivative_linear(PetscReal *in, const PetscReal *phasefrac, const uint16_t nphases)
 {}
 
 /*
  Cubic interpolation shape function
  */
-static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+static void Interpolant_cubic(PetscReal *interpolant, const PetscReal *phasefrac, const uint16_t nphases)
 {
     if (nphases == 1) {
         interpolant[0] = 1.0;
         return;
     }
-    PetscScalar interpolantsum = 0.0;
+    PetscReal interpolantsum = 0.0;
     for (PetscInt g = 0; g < nphases; g++) {
         interpolant[g] = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
         interpolantsum += interpolant[g];
@@ -408,29 +408,29 @@ static void Interpolant_cubic(PetscScalar *interpolant, const PetscScalar *phase
 /*
  Cubic interpolation shape function derivative
  */
-static void InterpolantDerivative_cubic(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+static void InterpolantDerivative_cubic(PetscReal *in, const PetscReal *phasefrac, const uint16_t nphases)
 {
     if (nphases == 1) {
         in[0] = 0.0;
         return;
     }
-    PetscScalar out[nphases];
-    PetscScalar avgin = 0.0, interpolantsum = 0.0;
+    PetscReal out[nphases];
+    PetscReal avgin = 0.0, interpolantsum = 0.0;
     for (PetscInt g = 0; g < nphases; g++) {
-        PetscScalar interpolant = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
+        PetscReal interpolant = phasefrac[g]*phasefrac[g]*(3.0 - 2.0*phasefrac[g]);
         interpolantsum += interpolant;
         avgin += interpolant*in[g];
     }    
     for (PetscInt g = 0; g < nphases; g++)
         out[g] = 6.0*phasefrac[g]*(1.0 - phasefrac[g])*(in[g] - avgin/interpolantsum)/interpolantsum;
     
-    memcpy(in,out,nphases*sizeof(PetscScalar));
+    memcpy(in,out,nphases*sizeof(PetscReal));
 }
 
 /*
  Interpolation shape function
  */
-void EvalInterpolant(PetscScalar *interpolant, const PetscScalar *phasefrac, const uint16_t nphases)
+void EvalInterpolant(PetscReal *interpolant, const PetscReal *phasefrac, const uint16_t nphases)
 {
     Interpolant(interpolant,phasefrac,nphases);
 }
@@ -438,7 +438,7 @@ void EvalInterpolant(PetscScalar *interpolant, const PetscScalar *phasefrac, con
 /*
  Interpolation shape function derivative
  */
-void MatMulInterpolantDerivative(PetscScalar *in, const PetscScalar *phasefrac, const uint16_t nphases)
+void MatMulInterpolantDerivative(PetscReal *in, const PetscReal *phasefrac, const uint16_t nphases)
 {
     InterpolantDerivative(in,phasefrac,nphases);
 }
@@ -447,20 +447,20 @@ void MatMulInterpolantDerivative(PetscScalar *in, const PetscScalar *phasefrac, 
  SimplexProjection - Project given vector on to Gibbs simplex
  */
 static int Comparison(const void *x, const void *y){   
-   if (*(PetscScalar*)y > *(PetscScalar*)x) {
+   if (*(PetscReal*)y > *(PetscReal*)x) {
        return 1;
-   } else if (*(PetscScalar*)y < *(PetscScalar*)x) {    
+   } else if (*(PetscReal*)y < *(PetscReal*)x) {    
        return -1;
    } else {
        return 0;
    }
 }
-void SimplexProjection(PetscScalar *out, PetscScalar *in, int size)
+void SimplexProjection(PetscReal *out, PetscReal *in, int size)
 {
     char bget=0;
-    PetscScalar s[size], tmax, tempsum=0.0;
-    memcpy(s,in,size*sizeof(PetscScalar));
-    qsort(s,size,sizeof(PetscScalar),Comparison);
+    PetscReal s[size], tmax, tempsum=0.0;
+    memcpy(s,in,size*sizeof(PetscReal));
+    qsort(s,size,sizeof(PetscReal),Comparison);
     for (int i=0; i<size-1; i++) {
         tempsum += s[i];
         tmax = (tempsum-1.0)/((double)(i+1));
@@ -469,7 +469,7 @@ void SimplexProjection(PetscScalar *out, PetscScalar *in, int size)
             break;
         }
     }
-    if (!bget) tmax = (tempsum + s[size-1] - 1.0)/((PetscScalar)(size));
+    if (!bget) tmax = (tempsum + s[size-1] - 1.0)/((PetscReal)(size));
     for (int i=0; i<size; i++) out[i] = in[i]-tmax > 0.0 ? in[i]-tmax : 0.0;
 }
 

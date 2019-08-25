@@ -135,18 +135,18 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
         currentmaterial->model = NONE_CHEMENERGY;
-        currentmaterial->c0 = malloc(user->nc*sizeof(PetscScalar));
-        memset(currentmaterial->c0,0,user->nc*sizeof(PetscScalar));
+        currentmaterial->c0 = malloc(user->nc*sizeof(PetscReal));
+        memset(currentmaterial->c0,0,user->nc*sizeof(PetscReal));
         QUAD *currentquad = &currentmaterial->energy.quad;
-        currentquad->ceq = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->unary = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->binary = malloc(user->nc*sizeof(PetscScalar));
-        currentquad->mobilityc = malloc(user->nc*sizeof(PetscScalar));
+        currentquad->ceq = malloc(user->nc*sizeof(PetscReal));
+        currentquad->unary = malloc(user->nc*sizeof(PetscReal));
+        currentquad->binary = malloc(user->nc*sizeof(PetscReal));
+        currentquad->mobilityc = malloc(user->nc*sizeof(PetscReal));
         CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-        currentcalphad->unary = malloc(user->nc*sizeof(PetscScalar));
+        currentcalphad->unary = malloc(user->nc*sizeof(PetscReal));
         currentcalphad->binary = (RK *) malloc(user->nc*(user->nc-1)*sizeof(struct RK)/2);
         currentcalphad->ternary = (RK *) malloc(user->nc*(user->nc-1)*(user->nc-2)*sizeof(struct RK)/6);
-        currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscScalar));
+        currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscReal));
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -167,16 +167,16 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 if (strstr(mtok, "quadratic") != NULL) {
                     currentmaterial->model = QUADRATIC_CHEMENERGY;
                     currentquad->ref = 0.0;
-                    memset(currentquad->ceq,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->unary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->binary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentquad->mobilityc,0,user->nc*sizeof(PetscScalar));
+                    memset(currentquad->ceq,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->unary,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->binary,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->mobilityc,0,user->nc*sizeof(PetscReal));
                 } else if (strstr(mtok, "calphaddis") != NULL) {
                     currentmaterial->model = CALPHAD_CHEMENERGY;
                     currentcalphad->ref = 0.0;
                     currentcalphad->RT = 2436.002; // default is room temperature
-                    memset(currentcalphad->unary,0,user->nc*sizeof(PetscScalar));
-                    memset(currentcalphad->mobilityc,0,user->nc*sizeof(PetscScalar));
+                    memset(currentcalphad->unary,0,user->nc*sizeof(PetscReal));
+                    memset(currentcalphad->mobilityc,0,user->nc*sizeof(PetscReal));
                     RK *currentbinary = &currentcalphad->binary[0];
                     RK *currentternary = &currentcalphad->ternary[0];
                     for (PetscInt ck=0; ck<user->nc; ck++) {
@@ -211,7 +211,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar mobilityc;
+                    PetscReal mobilityc;
                     sscanf(mtok, "%lf", &mobilityc);
                     if (currentmaterial->model == QUADRATIC_CHEMENERGY) {
                         currentquad->mobilityc[c] = mobilityc;
@@ -230,7 +230,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c=0;
                 while (mtok != NULL) {
-                    PetscScalar c0;
+                    PetscReal c0;
                     sscanf(mtok, "%lf", &c0);
                     currentmaterial->c0[c] = c0;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -245,7 +245,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c=0;
                 while (mtok != NULL) {
-                    PetscScalar ceq;
+                    PetscReal ceq;
                     sscanf(mtok, "%lf", &ceq);
                     assert(ceq > 0.0);
                     currentquad->ceq[c] = ceq;
@@ -260,7 +260,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
                 while (mtok != NULL) {
-                    PetscScalar refenthalpy;
+                    PetscReal refenthalpy;
                     sscanf(mtok, "%lf", &refenthalpy);
                     currentquad->ref = refenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -273,7 +273,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar unaryenthalpy;
+                    PetscReal unaryenthalpy;
                     sscanf(mtok, "%lf", &unaryenthalpy);
                     currentquad->unary[c] = unaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -288,7 +288,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar binaryenthalpy;
+                    PetscReal binaryenthalpy;
                     sscanf(mtok, "%lf", &binaryenthalpy);
                     currentquad->binary[c] = binaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -302,7 +302,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
                 while (mtok != NULL) {
-                    PetscScalar refenthalpy;
+                    PetscReal refenthalpy;
                     sscanf(mtok, "%lf", &refenthalpy);
                     currentcalphad->ref = refenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -315,7 +315,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar unaryenthalpy;
+                    PetscReal unaryenthalpy;
                     sscanf(mtok, "%lf", &unaryenthalpy);
                     currentcalphad->unary[c] = unaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -340,8 +340,8 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentbinary->n);
                 assert(currentbinary->n >= 0);
-                currentbinary->enthalpy = malloc(currentbinary->n*sizeof(PetscScalar));
-                memset(currentbinary->enthalpy,0,currentbinary->n*sizeof(PetscScalar));
+                currentbinary->enthalpy = malloc(currentbinary->n*sizeof(PetscReal));
+                memset(currentbinary->enthalpy,0,currentbinary->n*sizeof(PetscReal));
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "calphad_binaryenthalpy") != NULL) {
@@ -360,7 +360,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
-                    PetscScalar binaryenthalpy;
+                    PetscReal binaryenthalpy;
                     sscanf(mtok, "%lf", &binaryenthalpy);
                     currentbinary->enthalpy[nrk] = binaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -388,8 +388,8 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentternary->n);
                 assert(currentternary->n >= 0 && currentternary->n <=3);
-                currentternary->enthalpy = malloc(currentternary->n*sizeof(PetscScalar));
-                memset(currentternary->enthalpy,0,currentternary->n*sizeof(PetscScalar));
+                currentternary->enthalpy = malloc(currentternary->n*sizeof(PetscReal));
+                memset(currentternary->enthalpy,0,currentternary->n*sizeof(PetscReal));
                 currentternary->i = malloc(currentternary->n*sizeof(PetscInt));
                 memset(currentternary->i,0,currentternary->n*sizeof(PetscInt));
             }
@@ -444,7 +444,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
-                    PetscScalar ternaryenthalpy;
+                    PetscReal ternaryenthalpy;
                     sscanf(mtok, "%lf", &ternaryenthalpy);
                     currentternary->enthalpy[nrk] = ternaryenthalpy;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -604,10 +604,10 @@ PetscErrorCode SetUpInterface(AppCtx *user)
             for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
                 currentinterface->energy = 0.0;
                 currentinterface->mobility = 0.0;
-                currentinterface->potential = malloc(user->nc*sizeof(PetscScalar));
-                currentinterface->mobilityc = malloc(user->nc*sizeof(PetscScalar));
-                memset(currentinterface->potential,0,user->nc*sizeof(PetscScalar));
-                memset(currentinterface->mobilityc,0,user->nc*sizeof(PetscScalar));
+                currentinterface->potential = malloc(user->nc*sizeof(PetscReal));
+                currentinterface->mobilityc = malloc(user->nc*sizeof(PetscReal));
+                memset(currentinterface->potential,0,user->nc*sizeof(PetscReal));
+                memset(currentinterface->mobilityc,0,user->nc*sizeof(PetscReal));
             }    
                 
         }
@@ -641,7 +641,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar potential;
+                    PetscReal potential;
                     sscanf(mtok, "%lf", &potential);
                     currentinterface->potential[c] = potential;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -655,7 +655,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt c = 0;
                 while (mtok != NULL) {
-                    PetscScalar mobilityc;
+                    PetscReal mobilityc;
                     sscanf(mtok, "%lf", &mobilityc);
                     currentinterface->mobilityc[c] = mobilityc;
                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -811,7 +811,7 @@ PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
                 } else {
                     fdof[k][j][i].p[ph] = 0.0;
                 }
-                memcpy(&matstate[k][j][i].c[ph*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar)); 
+                memcpy(&matstate[k][j][i].c[ph*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
             }       
             Chemicalpotential(fdof[k][j][i].m,matstate[k][j][i].c,fdof[k][j][i].p,slist[k][j][i].i,user);
             roaring_advance_uint32_iterator(g);

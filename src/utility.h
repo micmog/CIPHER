@@ -21,16 +21,16 @@
 
 /* Function prototypes */
 EXTERN char *Extract(const char *const, const char *const, const char *const);
-EXTERN PetscScalar FastPow(PetscScalar, unsigned);
-EXTERN PetscScalar FastSqrt(PetscScalar);
-EXTERN PetscScalar FastExp(PetscScalar);
-EXTERN PetscScalar FastLog(PetscScalar);
+EXTERN PetscReal FastPow(PetscReal, unsigned);
+EXTERN PetscReal FastSqrt(PetscReal);
+EXTERN PetscReal FastExp(PetscReal);
+EXTERN PetscReal FastLog(PetscReal);
 EXTERN void SetIntersection(uint16_t *, uint16_t *, uint16_t *, uint16_t *, uint16_t *);
 EXTERN void SetUnion(uint16_t *, uint16_t *, uint16_t *, uint16_t *, uint16_t *);
-EXTERN void Invertmatrix(PetscScalar *, PetscScalar *);
-EXTERN void EvalInterpolant(PetscScalar *, const PetscScalar *, const uint16_t);
-EXTERN void MatMulInterpolantDerivative(PetscScalar *,  const PetscScalar *, const uint16_t);
-EXTERN void SimplexProjection(PetscScalar *, PetscScalar *, int);
+EXTERN void Invertmatrix(PetscReal *, PetscReal *);
+EXTERN void EvalInterpolant(PetscReal *, const PetscReal *, const uint16_t);
+EXTERN void MatMulInterpolantDerivative(PetscReal *,  const PetscReal *, const uint16_t);
+EXTERN void SimplexProjection(PetscReal *, PetscReal *, int);
 EXTERN void utility_init(const AppCtx *);
 
 #undef UTILITY_IMPORT

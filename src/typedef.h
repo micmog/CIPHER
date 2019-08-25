@@ -46,46 +46,46 @@ typedef enum {
 
 /* field dofs */
 typedef struct FIELD {
-   PetscScalar   p[MAXAP];
-   PetscScalar   m[MAXCP];
+   PetscReal   p[MAXAP];
+   PetscReal   m[MAXCP];
 } FIELD;
 
 /* composition dofs */
 typedef struct STATE {
-   PetscScalar   c[MAXAP*MAXCP];
+   PetscReal   c[MAXAP*MAXCP];
 } STATE;
 
 /* output dofs */
 typedef struct O_DOFS {
-   PetscScalar   ***o;
+   PetscReal   ***o;
 } O_DOFS;
 
 /* Float to int conversion */
 typedef union F2I {
-   PetscScalar   f[MAXTP];
-   uint16_t      i[MAXAP];
+   PetscReal   f[MAXTP];
+   uint16_t    i[MAXAP];
 } F2I;
 
 /* RK coefficients */
 typedef struct RK {
     PetscInt n, *i;
-    PetscScalar *enthalpy;
+    PetscReal *enthalpy;
 } RK;
 
 /* CALPHAD energy parameters container */
 typedef struct CALPHAD {
-    PetscScalar ref, RT;
-    PetscScalar *unary;
+    PetscReal ref, RT;
+    PetscReal *unary;
     RK *binary, *ternary;
-    PetscScalar *mobilityc;
+    PetscReal *mobilityc;
 } CALPHAD;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
-    PetscScalar ref;
-    PetscScalar *ceq;
-    PetscScalar *unary, *binary;
-    PetscScalar *mobilityc;
+    PetscReal ref;
+    PetscReal *ceq;
+    PetscReal *unary, *binary;
+    PetscReal *mobilityc;
 } QUAD;
 
 /* Energy container */
@@ -97,15 +97,15 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscScalar molarvolume;
-    PetscScalar *c0;
+    PetscReal molarvolume;
+    PetscReal *c0;
     CHEMFE energy;
 } MATERIAL;
 
 /* Phase container */
 typedef struct INTERFACE {
-    PetscScalar energy, mobility;
-    PetscScalar *potential, *mobilityc;
+    PetscReal energy, mobility;
+    PetscReal *potential, *mobilityc;
 } INTERFACE;
 
 /* solution parameters */
