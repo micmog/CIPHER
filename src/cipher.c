@@ -96,8 +96,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                 PetscInt interfacekj = (PetscInt) user->interfacelist[  slist[k][j][i].i[gk+1]*user->np
                                                                                       + slist[k][j][i].i[gj+1]         ];
                                 INTERFACE *currentinterface = &user->interface[interfacekj];
-                                caplflux  [gk] -= currentinterface->energy*phidel[gj];
-                                caplflux  [gj] -= currentinterface->energy*phidel[gk];
+                                caplflux  [gk] -= currentinterface->energy*phidel         [gj];
+                                caplflux  [gj] -= currentinterface->energy*phidel         [gk];
                                 caplsource[gk] -= currentinterface->energy*fdof[k][j][i].p[gj];
                                 caplsource[gj] -= currentinterface->energy*fdof[k][j][i].p[gk];
                             }
@@ -260,6 +260,12 @@ PetscErrorCode PostStep(TS ts)
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
+                /* update material state */
+                PetscScalar phiUP[slist[k][j][i].i[0]];
+                memcpy(phiUP,fdof[k][j][i].p,slist[k][j][i].i[0]*sizeof(PetscScalar));
+                SimplexProjection(fdof[k][j][i].p,phiUP,slist[k][j][i].i[0]);
+                Composition(matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
+
                 /* update active phase superset */
                 PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
                 uint16_t setunion[MAXAP], setintersection[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
@@ -274,24 +280,21 @@ PetscErrorCode PostStep(TS ts)
                 }
                 
                 /* initialize new phase states */
-                PetscScalar phi[gslist[k][j][i].i[0]], composition[gslist[k][j][i].i[0]*user->nc];
+                PetscScalar phiSS[gslist[k][j][i].i[0]], compSS[gslist[k][j][i].i[0]*user->nc];
                 for (PetscInt g=0; g<gslist[k][j][i].i[0];  g++) {
-                    phi[g] = 0.0;
+                    phiSS[g] = 0.0;
                     MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[gslist[k][j][i].i[g+1]]];
-                    memcpy(&composition[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar));
+                    memcpy(&compSS[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscScalar));
                 }
                 
                 /* reorder dofs to new active phase superset */
                 SetIntersection(setintersection,injectionA,injectionB,slist[k][j][i].i,gslist[k][j][i].i);
                 for (PetscInt g=0; g<setintersection[0];  g++) {
-                    phi[injectionB[g]] = fdof[k][j][i].p[injectionA[g]];
-                    memcpy(&composition[injectionB[g]*user->nc],&matstate[k][j][i].c[injectionA[g]*user->nc],user->nc*sizeof(PetscScalar));
+                    phiSS[injectionB[g]] = fdof[k][j][i].p[injectionA[g]];
+                    memcpy(&compSS[injectionB[g]*user->nc],&matstate[k][j][i].c[injectionA[g]*user->nc],user->nc*sizeof(PetscScalar));
                 }
-                memcpy(fdof[k][j][i].p,phi,gslist[k][j][i].i[0]*sizeof(PetscScalar));
-                memcpy(matstate[k][j][i].c,composition,gslist[k][j][i].i[0]*user->nc*sizeof(PetscScalar));
-
-                /* update material state */
-                Composition(matstate[k][j][i].c,fdof[k][j][i].m,gslist[k][j][i].i,user);
+                memcpy(fdof[k][j][i].p,phiSS,gslist[k][j][i].i[0]*sizeof(PetscScalar));
+                memcpy(matstate[k][j][i].c,compSS,gslist[k][j][i].i[0]*user->nc*sizeof(PetscScalar));
             }
         }
     }        
@@ -477,34 +480,13 @@ int main(int argc,char **args)
   ierr = TSSetDM(ts,da_solution); CHKERRQ(ierr);
   ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
   ierr = TSSetType(ts,TSRK); CHKERRQ(ierr);
+  ierr = TSSetTolerances(ts,user.ptol,NULL,user.ctol,NULL); CHKERRQ(ierr);
+  
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+   Set up and perform time integration 
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetFromOptions(ts); CHKERRQ(ierr);  
   ierr = SetUpProblem(da_solution,solution,&user); CHKERRQ(ierr);
-  
-  /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-   Initialize solution
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  PetscInt xs, ys, zs, xm, ym, zm;
-  Vec tolerance;
-  FIELD ***tol;    
-  ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
-  zm+=zs; ym+=ys; xm+=xs; 
-  ierr = DMGetGlobalVector(da_solution,&tolerance); CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da_solution,tolerance,&tol); CHKERRQ(ierr);
-  for (PetscInt k=zs; k<zm; k++) {
-      for (PetscInt j=ys; j<ym; j++) {
-          for (PetscInt i=xs; i<xm; i++) {
-              for (PetscInt g=0; g<MAXAP;  g++) tol[k][j][i].p[g] = user.ptol;
-              for (PetscInt c=0; c<MAXCP;  c++) tol[k][j][i].m[c] = user.ctol;
-          }
-      }
-  }        
-  ierr = DMDAVecRestoreArray(da_solution,tolerance,&tol); CHKERRQ(ierr);
-  ierr = TSSetTolerances(ts,PETSC_DECIDE,tolerance,0.0,NULL); CHKERRQ(ierr);
-  ierr = DMRestoreGlobalVector(da_solution,&tolerance); CHKERRQ(ierr);
-
-/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-   Perform time integration 
-   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSolve(ts,solution); CHKERRQ(ierr);
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
