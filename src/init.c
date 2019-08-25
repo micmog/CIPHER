@@ -786,8 +786,6 @@ PetscErrorCode SetUpProblem(DM da_solution, Vec solution, AppCtx *user)
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
-                galist[k][j][i].i[0]=1;
-                galist[k][j][i].i[1]=user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)];
                 for (PetscInt g=0; g<slist[k][j][i].i[0]; g++) {
                     currentmaterial = &user->material[user->phasematerialmapping[slist[k][j][i].i[g+1]]];
                     if (slist[k][j][i].i[g+1] == user->phasevoxelmapping[i+user->resolution[0]*(j+user->resolution[1]*k)]) {

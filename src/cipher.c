@@ -34,8 +34,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     /* Isotropic FD stencil coefficients from https://arxiv.org/abs/1202.3299 */
     PetscReal    fdcoeff0 = -152.0/36.0, fdcoeff1 = 16.0/36.0, fdcoeff2 = 4.0/36.0, fdcoeff3 = 1.0/36.0; 
     PetscReal    fdcoeff[3][3][3] = {{{fdcoeff3, fdcoeff2, fdcoeff3},{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff3, fdcoeff2, fdcoeff3}},
-                                       {{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff1, fdcoeff0, fdcoeff1},{fdcoeff2, fdcoeff1, fdcoeff2}},
-                                       {{fdcoeff3, fdcoeff2, fdcoeff3},{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff3, fdcoeff2, fdcoeff3}}};
+                                     {{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff1, fdcoeff0, fdcoeff1},{fdcoeff2, fdcoeff1, fdcoeff2}},
+                                     {{fdcoeff3, fdcoeff2, fdcoeff3},{fdcoeff2, fdcoeff1, fdcoeff2},{fdcoeff3, fdcoeff2, fdcoeff3}}};
     
     
     PetscFunctionBeginUser;
@@ -197,7 +197,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     }       
     ierr = DMDAVecRestoreArray(user->da_matstate,matstate0,&matstate); CHKERRQ(ierr);
     ierr = DMRestoreGlobalVector(user->da_matstate,&matstate0); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist ); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(da_solution,F,&rhs); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(da_solution,localX,&fdof); CHKERRQ(ierr);
     ierr = DMRestoreLocalVector(da_solution,&localX); CHKERRQ(ierr);
