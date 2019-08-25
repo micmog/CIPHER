@@ -227,16 +227,25 @@ PetscErrorCode PostStep(TS ts)
     zm+=zs; ym+=ys; xm+=xs; 
     
     /* Determine active phase set */
-    ierr = DMDAVecGetArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_phaseID,gactivephaseset,&galist); CHKERRQ(ierr);
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
+                /* update material state */
+                PetscReal phiUP[slist[k][j][i].i[0]], interpolant[slist[k][j][i].i[0]];
+                memcpy(phiUP,fdof[k][j][i].p,slist[k][j][i].i[0]*sizeof(PetscReal));
+                SimplexProjection(fdof[k][j][i].p,phiUP,slist[k][j][i].i[0]);
+                EvalInterpolant(interpolant,fdof[k][j][i].p,slist[k][j][i].i[0]);
+                Composition(matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
+
+                /* update active set */
                 galist[k][j][i].i[0] = 0;
                 for (PetscInt g=0; g<slist[k][j][i].i[0];  g++) {
-                    if (fdof[k][j][i].p[g] > TOL) {
+                    if (interpolant[g] > TOL) {
                         galist[k][j][i].i[++galist[k][j][i].i[0]] = slist[k][j][i].i[g+1];
                     }
                 }
@@ -248,7 +257,8 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
     ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
 
     /* Determine active phase super set, reorder dofs in solution, update composition, initialize new phase frac & comp */
     ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
@@ -260,12 +270,6 @@ PetscErrorCode PostStep(TS ts)
     for (PetscInt k=zs; k<zm; k++) {
         for (PetscInt j=ys; j<ym; j++) {
             for (PetscInt i=xs; i<xm; i++) {
-                /* update material state */
-                PetscReal phiUP[slist[k][j][i].i[0]];
-                memcpy(phiUP,fdof[k][j][i].p,slist[k][j][i].i[0]*sizeof(PetscReal));
-                SimplexProjection(fdof[k][j][i].p,phiUP,slist[k][j][i].i[0]);
-                Composition(matstate[k][j][i].c,fdof[k][j][i].m,slist[k][j][i].i,user);
-
                 /* update active phase superset */
                 PetscInt ie=i+1,iw=i-1,jn=j+1,js=j-1,kt=k+1,kb=k-1;
                 uint16_t setunion[MAXAP], setintersection[MAXAP], injectionA[MAXAP], injectionB[MAXAP];
