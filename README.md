@@ -7,11 +7,11 @@ CIPHER is a phase-field simulation code for microstructure evolution in multi-co
 - Local truccation error estimates and adaptive time stepping.
 - Designed for large number of phases (10-10000), with constant computational complexity, i.e. computational cost is independent of the number of phases.
 - Efficient grand-canonical-based phase-field implementation with direct use of Compound-Energy-Formalism and other CALPHAD thermodynamic models for multi-component systems [1].
-- MPI parallelization and scalable.
+- MPI parallelization and scalable implementation.
 
 ## Requirements
 
-This software requires PETSc v3.11 and assumes PETSC_DIR and PETSC_ARCH environment variables have been set [2]. Also included is the Roaring BitMap implementation from [3].
+This software requires PETSc v3.11 and assumes PETSC_DIR and PETSC_ARCH environment variables have been set [2].
 
 ## Usage
 
@@ -31,7 +31,7 @@ export PATH=CIPHER_DIR/bin:$PATH
 # navigate to examples folder
 cd examples/GrainBoundaryPrecipitate
 # run example
-cipher.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-3 -ctol 1e-5 -kI 0.2 -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface -outfreq 10000 -outfile GrainBoundaryPrecipitate
+cipher.exe -finaltime 100000.0 -mintimestep 1e-9 -maxtimestep 1e+3 -l 5 -ptol 1e-3 -ctol 1e-3 -ts_rk_type 2a -ts_adapt_monitor -ts_adapt_type dsp -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface -outfreq 10000 -outfile GrainBoundaryPrecipitate
 ```
 
 ## Contact
