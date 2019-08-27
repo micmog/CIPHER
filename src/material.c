@@ -112,7 +112,6 @@ void Chemicalpotential(PetscReal *chempot, const PetscReal *composition, const P
  */
 static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    for (PetscInt c=0; c<numcomps; c++) assert(composition[c] + TOL > 0.0);
     const CALPHAD *currentcalphad = &energy.calphad;
     const RK *currentbinary = &currentcalphad->binary[0];
     const RK *currentternary = &currentcalphad->ternary[0];

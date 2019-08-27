@@ -15,7 +15,6 @@ static char help[] = "Solves multi phase field equations \n";
 /* User-defined routines */
 extern PetscErrorCode RHSFunction(TS,PetscReal,Vec,Vec,void *);
 extern PetscErrorCode PostStep(TS);
-extern PetscErrorCode CheckException(TSAdapt,TS,PetscReal,Vec,PetscBool *);
 
 /*
  RHSFunction - Evaluates RHS function, F(x)
@@ -25,7 +24,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
 {
     PetscErrorCode ierr;
     AppCtx         *user = (AppCtx*) ptr;
-    DM             da_solution;
     Vec            localX, matstate0;
     FIELD          ***fdof, ***rhs; 
     STATE          ***matstate;
@@ -41,19 +39,18 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     
     PetscFunctionBeginUser;
 
-    ierr = TSGetDM(ts,&da_solution); CHKERRQ(ierr);
-    ierr = DMGetLocalVector(da_solution,&localX); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalBegin(da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
-    ierr = DMDAVecGetArrayRead(da_solution,localX,&fdof); CHKERRQ(ierr);
+    ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(user->da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
+    ierr = DMDAVecGetArrayRead(user->da_solution,localX,&fdof); CHKERRQ(ierr);
     ierr = VecZeroEntries(F); CHKERRQ(ierr);
-    ierr = DMDAVecGetArray(da_solution,F,&rhs); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_solution,F,&rhs); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMGetGlobalVector(user->da_matstate,&matstate0); CHKERRQ(ierr);
     ierr = VecCopy(user->matstate,matstate0); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,matstate0,&matstate); CHKERRQ(ierr);
 
-    ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
+    ierr = DMDAGetCorners(user->da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
     zm+=zs; ym+=ys; xm+=xs; 
     /* Compute function over RHS on active cells */
     for (PetscInt k=zs; k<zm; k++) {
@@ -90,7 +87,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
                     /* update composition for given chemical potential */
                     user->rejectstage = Composition(matstate[k][j][i].c,chemicalpotential,slist[k][j][i].i,user);
-                    if (user->rejectstage) goto BREAK_LOOP;
                     
                     /* more than 1 phase active at this point neighbourhood */
                     memset(rhs[k][j][i].p,0.0,MAXAP*sizeof(PetscReal));
@@ -215,13 +211,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
         }
     }       
-    BREAK_LOOP: 
     ierr = DMDAVecRestoreArray(user->da_matstate,matstate0,&matstate); CHKERRQ(ierr);
     ierr = DMRestoreGlobalVector(user->da_matstate,&matstate0); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(da_solution,F,&rhs); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArrayRead(da_solution,localX,&fdof); CHKERRQ(ierr);
-    ierr = DMRestoreLocalVector(da_solution,&localX); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_solution,F,&rhs); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArrayRead(user->da_solution,localX,&fdof); CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
     PetscFunctionReturn(0);
 }
 
@@ -232,7 +227,6 @@ PetscErrorCode PostStep(TS ts)
 {
     PetscErrorCode    ierr;
     AppCtx            *user;
-    DM                da_solution;
     Vec               solution, gactivephaseset, gactivephasesuperset;
     FIELD             ***fdof;
     STATE             ***matstate;
@@ -241,14 +235,13 @@ PetscErrorCode PostStep(TS ts)
   
     PetscFunctionBeginUser;    
     
-    ierr = TSGetDM(ts,&da_solution); CHKERRQ(ierr);
     ierr = TSGetSolution(ts, &solution);CHKERRQ(ierr);    
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
-    ierr = DMDAGetCorners(da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
+    ierr = DMDAGetCorners(user->da_solution,&xs,&ys,&zs,&xm,&ym,&zm); CHKERRQ(ierr);
     zm+=zs; ym+=ys; xm+=xs; 
     
     /* Determine active phase set */
-    ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
@@ -299,10 +292,10 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_solution,solution,&fdof); CHKERRQ(ierr);
 
     /* Determine active phase super set, reorder dofs in solution, update composition, initialize new phase frac & comp */
-    ierr = DMDAVecGetArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(user->da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecGetArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
     ierr = DMGetGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);
@@ -349,7 +342,7 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephasesuperset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
     ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephasesuperset); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephaseset,&alist); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArray(da_solution,solution,&fdof); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArray(user->da_solution,solution,&fdof); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArray(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
     ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
     
@@ -365,7 +358,7 @@ PetscErrorCode PostStep(TS ts)
            ierr = DMGetGlobalVector(user->da_output,&Xout[c]); CHKERRQ(ierr);
            ierr = DMDAVecGetArray(user->da_output,Xout[c],&xout[c].o); CHKERRQ(ierr);
        }
-       ierr = DMDAVecGetArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
+       ierr = DMDAVecGetArrayRead(user->da_solution,solution,&fdof); CHKERRQ(ierr);
        ierr = DMDAVecGetArrayRead(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
        ierr = DMDAVecGetArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
        for (PetscInt k=zs; k<zm; k++) {
@@ -389,7 +382,7 @@ PetscErrorCode PostStep(TS ts)
        }       
        ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
        ierr = DMDAVecRestoreArrayRead(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
-       ierr = DMDAVecRestoreArrayRead(da_solution,solution,&fdof); CHKERRQ(ierr);
+       ierr = DMDAVecRestoreArrayRead(user->da_solution,solution,&fdof); CHKERRQ(ierr);
        sprintf(name, "%s_%d.vtr",user->outfile,user->step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output to %s\n",name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);
@@ -409,25 +402,11 @@ PetscErrorCode PostStep(TS ts)
     PetscFunctionReturn(0);
 }
 
-/*
- CheckException - Exception handling
- */
-PetscErrorCode CheckException(TSAdapt adapt, TS ts, PetscReal ftime, Vec X, PetscBool *accept)
-{
-    AppCtx *user;         
-    PetscErrorCode ierr;
-    ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
-    *accept = !user->rejectstage;
-    ierr = MPI_Allreduce(MPI_IN_PLACE,accept,1,MPI_INT,MPI_LAND,PETSC_COMM_WORLD);
-    PetscFunctionReturn(0);
-}
-
 int main(int argc,char **args)
 {
   /* user-defined work context */
   AppCtx         user;         
-  /* solution grid */
-  DM             da_solution;
+  /* solution vector */
   Vec            solution;
   /* time stepping context */
   TS             ts;
@@ -477,11 +456,10 @@ int main(int argc,char **args)
                       PETSC_DECIDE,PETSC_DECIDE,PETSC_DECIDE,
                       MAXAP+MAXCP,1,
                       NULL,NULL,NULL,
-                      &da_solution); CHKERRQ(ierr);
-  ierr = DMSetFromOptions(da_solution); CHKERRQ(ierr);
-  ierr = DMSetUp(da_solution); CHKERRQ(ierr);
-  ierr = DMSetApplicationContext(da_solution,&user); CHKERRQ(ierr);
-  ierr = DMCreateGlobalVector(da_solution,&solution); CHKERRQ(ierr);
+                      &user.da_solution); CHKERRQ(ierr);
+  ierr = DMSetFromOptions(user.da_solution); CHKERRQ(ierr);
+  ierr = DMSetUp(user.da_solution); CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(user.da_solution,&solution); CHKERRQ(ierr);
   
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Create aux distributed array (DMDA) to manage bitwise data
@@ -538,18 +516,16 @@ int main(int argc,char **args)
   ierr = TSSetPostStep(ts,PostStep); CHKERRQ(ierr);
   ierr = TSGetAdapt(ts,&adapt); CHKERRQ(ierr);
   ierr = TSAdaptSetType(adapt,TSADAPTDSP); CHKERRQ(ierr);
-  ierr = TSAdaptSetCheckStage(adapt,CheckException);
-  ierr = TSSetDM(ts,da_solution); CHKERRQ(ierr);
+  ierr = TSSetDM(ts,user.da_solution); CHKERRQ(ierr);
   ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
   ierr = TSSetType(ts,TSRK); CHKERRQ(ierr);
   ierr = TSSetTolerances(ts,user.ptol,NULL,user.ctol,NULL); CHKERRQ(ierr);
-  ierr = TSSetMaxStepRejections(ts,INT_MAX); CHKERRQ(ierr);
   
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Set up and perform time integration 
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSetFromOptions(ts); CHKERRQ(ierr);  
-  ierr = SetUpProblem(da_solution,solution,&user); CHKERRQ(ierr);
+  ierr = SetUpProblem(user.da_solution,solution,&user); CHKERRQ(ierr);
   ierr = TSSolve(ts,solution); CHKERRQ(ierr);
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -557,7 +533,7 @@ int main(int argc,char **args)
    are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = VecDestroy(&solution); CHKERRQ(ierr);
-  ierr = DMDestroy(&da_solution); CHKERRQ(ierr);
+  ierr = DMDestroy(&user.da_solution); CHKERRQ(ierr);
   ierr = VecDestroy(&user.activephasesuperset); CHKERRQ(ierr);
   ierr = VecDestroy(&user.activephaseset); CHKERRQ(ierr);
   ierr = DMDestroy(&user.da_phaseID); CHKERRQ(ierr);

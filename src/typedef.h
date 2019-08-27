@@ -125,7 +125,7 @@ typedef struct AppCtx {
     PetscReal ptol, ctol;
     PetscErrorCode rejectstage;
     /* aux grids and vecs */
-    DM da_phaseID, da_matstate, da_output;
+    DM da_solution, da_phaseID, da_matstate, da_output;
     Vec activephaseset, activephasesuperset, matstate;
     /* phase material parameters */
     MATERIAL *material;
