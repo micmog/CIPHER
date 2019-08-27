@@ -117,8 +117,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                 caplsource[gk] -= currentinterface->energy*fdof[k][j][i].p[gj];
                                 caplsource[gj] -= currentinterface->energy*fdof[k][j][i].p[gk];
                             }
-                            caplflux  [gk] *= 8.0*user->len/PETSC_PI/PETSC_PI;
-                            caplsource[gk] *= 8.0/user->len;
+                            caplflux  [gk] *= 8.0*user->params.interfacewidth/PETSC_PI/PETSC_PI;
+                            caplsource[gk] *= 8.0/user->params.interfacewidth;
                         }   
                     
                         /* chemical driving force */ 
@@ -347,8 +347,8 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
     
     /* write output */
-    ierr = TSGetStepNumber(ts, &user->step);CHKERRQ(ierr);
-    if (user->step%user->outputfreq == 0) {
+    ierr = TSGetStepNumber(ts, &user->params.step);CHKERRQ(ierr);
+    if (user->params.step%user->params.outputfreq == 0) {
        Vec               Xout[user->nc+1];
        O_DOFS            xout[user->nc+1];
        char              name[256];
@@ -383,7 +383,7 @@ PetscErrorCode PostStep(TS ts)
        ierr = DMDAVecRestoreArrayRead(user->da_phaseID,user->activephasesuperset,&slist); CHKERRQ(ierr);
        ierr = DMDAVecRestoreArrayRead(user->da_matstate,user->matstate,&matstate); CHKERRQ(ierr);
        ierr = DMDAVecRestoreArrayRead(user->da_solution,solution,&fdof); CHKERRQ(ierr);
-       sprintf(name, "%s_%d.vtr",user->outfile,user->step);
+       sprintf(name, "%s_%d.vtr",user->params.outfile,user->params.step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output to %s\n",name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD,name,FILE_MODE_WRITE,&viewer);
        ierr = DMDAVecRestoreArray(user->da_output,Xout[0],&xout[0].o); CHKERRQ(ierr);
@@ -412,7 +412,6 @@ int main(int argc,char **args)
   TS             ts;
   TSAdapt        adapt;
   /* numerical parameters */
-  PetscReal      finaltime;
   PetscErrorCode ierr;
       
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -428,21 +427,6 @@ int main(int argc,char **args)
   ierr = SetUpInterface(&user); CHKERRQ(ierr);
   utility_init(&user);
   material_init(&user);
-  finaltime = 10.0;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-finaltime",&finaltime,NULL); CHKERRQ(ierr);
-  user.dt = 0.5;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-mintimestep",&user.dt,NULL); CHKERRQ(ierr);
-  user.dtmax = 10.0;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-maxtimestep",&user.dtmax,NULL); CHKERRQ(ierr);
-  user.len = 4.0;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-l",&user.len,NULL); CHKERRQ(ierr);
-  user.ptol = TOL;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-ptol",&user.ptol,NULL); CHKERRQ(ierr);
-  user.ctol = TOL;
-  ierr = PetscOptionsGetReal(NULL,NULL,"-ctol",&user.ctol,NULL); CHKERRQ(ierr);
-  user.outputfreq = 1;
-  ierr = PetscOptionsGetInt(NULL,NULL,"-outfreq",&user.outputfreq,NULL); CHKERRQ(ierr);
-  ierr = PetscOptionsGetString(NULL,NULL,"-outfile",user.outfile,128,NULL);
   user.rejectstage = 0;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -510,16 +494,17 @@ int main(int argc,char **args)
   ierr = TSSetApplicationContext(ts, &user);CHKERRQ(ierr);
   ierr = TSSetProblemType(ts,TS_NONLINEAR); CHKERRQ(ierr);
   ierr = TSSetRHSFunction(ts,NULL,RHSFunction,&user); CHKERRQ(ierr);
-  ierr = TSSetMaxTime(ts,finaltime); CHKERRQ(ierr);
+  ierr = TSSetMaxTime(ts,user.params.finaltime); CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP); CHKERRQ(ierr);
-  ierr = TSSetTimeStep(ts,user.dt); CHKERRQ(ierr);
+  ierr = TSSetTimeStep(ts,user.params.timestep); CHKERRQ(ierr);
   ierr = TSSetPostStep(ts,PostStep); CHKERRQ(ierr);
   ierr = TSGetAdapt(ts,&adapt); CHKERRQ(ierr);
   ierr = TSAdaptSetType(adapt,TSADAPTDSP); CHKERRQ(ierr);
+  ierr = TSAdaptSetStepLimits(adapt,user.params.mintimestep,user.params.maxtimestep); CHKERRQ(ierr);
   ierr = TSSetDM(ts,user.da_solution); CHKERRQ(ierr);
   ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
   ierr = TSSetType(ts,TSRK); CHKERRQ(ierr);
-  ierr = TSSetTolerances(ts,user.ptol,NULL,user.ctol,NULL); CHKERRQ(ierr);
+  ierr = TSSetTolerances(ts,user.params.abstol,NULL,user.params.reltol,NULL); CHKERRQ(ierr);
   
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Set up and perform time integration 

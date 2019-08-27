@@ -248,3 +248,16 @@
   4 of 3
   116510 of 2
 </voxel_phase_mapping>
+<solution_parameters>
+  finaltime 72000.0 
+  timestep0 1e-3
+  timestepmin 1e-9
+  timestepmax 1e+2 
+  interfacewidth 5 
+  feorder_phase 1 
+  feorder_chem 1 
+  reltol 1e-4 
+  abstol 1e-4 
+  outputfreq 1000
+  output GBP
+</solution_parameters>

@@ -104,25 +104,38 @@ typedef struct MATERIAL {
     CHEMFE energy;
 } MATERIAL;
 
-/* Phase container */
+/* interface container */
 typedef struct INTERFACE {
     PetscReal energy, mobility;
     PetscReal *potential, *mobilityc;
 } INTERFACE;
+
+/* solution params */
+typedef struct SOLUTIONPARAMS {
+    /* time parameters */
+  PetscReal finaltime, timestep, mintimestep, maxtimestep;
+  PetscInt  step;
+    /* phase field parameters */
+  PetscReal interfacewidth;
+    /* discretisation parameters */
+  PetscInt  feorder_phase, feorder_chem;
+    /* tolerances */
+  PetscReal reltol, abstol;
+    /* output parameters */
+  PetscInt  outputfreq;
+  char      outfile[128];
+} SOLUTIONPARAMS;
 
 /* solution parameters */
 typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
     PetscInt np, nmat, nf, nc;
     char **componentname;
-    /* grid size and resolution */
-    PetscReal len;
+    /* grid resolution */
     PetscInt resolution[3];
     /* time step */
-    PetscReal dt, dtmax, time;
     PetscInt step;
-    /* tolerances */
-    PetscReal ptol, ctol;
+    /* exception flag */
     PetscErrorCode rejectstage;
     /* aux grids and vecs */
     DM da_solution, da_phaseID, da_matstate, da_output;
@@ -134,9 +147,8 @@ typedef struct AppCtx {
     /* interface material parameters */
     INTERFACE *interface;
     uint16_t *interfacelist;
-    /* output */
-    PetscInt outputfreq;
-    char outfile[128];
+    /* solution params */
+    SOLUTIONPARAMS params;
 } AppCtx;
 
 #undef TYPEDEF_IMPORT

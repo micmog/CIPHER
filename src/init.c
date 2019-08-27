@@ -516,6 +516,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         tok = strtok_r(NULL, "\n", &savetok);
     }
     assert(ctrm == user->np && tok == NULL);
+    free(substr);    
 
     substr = Extract(buffer, "<voxel_phase_mapping>", "</voxel_phase_mapping>");
     tok = strtok_r(substr, "\n", &savetok);
@@ -551,7 +552,85 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     }
     assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
     free(substr);    
-    free(buffer);    
+
+    substr = Extract(buffer, "<solution_parameters>", "</solution_parameters>");
+    tok = strtok_r(substr, "\n", &savetok);
+    /* default solution parameters */
+    user->params.finaltime = 1.0;
+    user->params.timestep = TOL;
+    user->params.mintimestep = TOL;
+    user->params.maxtimestep = LARGE;
+    user->params.step = 0;    
+    user->params.interfacewidth = 5;
+    user->params.feorder_phase = 1;
+    user->params.feorder_chem = 1;
+    user->params.reltol = 1e-6;
+    user->params.abstol = 1e-6;
+    user->params.outputfreq = 1;
+    strncpy(user->params.outfile, "output", 128);
+    /* initialise solution parameters */
+    while (tok !=NULL) {
+        // process the line
+        if (strstr(tok, "finaltime") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.finaltime);
+        }
+        if (strstr(tok, "timestep0") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.timestep);
+        }
+        if (strstr(tok, "timestepmin") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.mintimestep);
+        }
+        if (strstr(tok, "timestepmax") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.maxtimestep);
+        }
+        if (strstr(tok, "interfacewidth") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.interfacewidth);
+        }    
+        if (strstr(tok, "feorder_phase") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.feorder_phase);
+        }    
+        if (strstr(tok, "feorder_chem") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.feorder_chem);
+        }    
+        if (strstr(tok, "reltol") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.reltol);
+        }
+        if (strstr(tok, "abstol") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.abstol);
+        }
+        if (strstr(tok, "outputfreq") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.outputfreq);
+        }    
+        if (strstr(tok, "outfile") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->params.outfile);
+        }    
+        //advance the token
+        tok = strtok_r(NULL, "\n", &savetok);
+    }
+    free(substr);    
+    free(buffer);   
     PetscFunctionReturn(0);
 }
 
