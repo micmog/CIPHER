@@ -25,9 +25,10 @@
 #define LARGE 1.0e+6
 #define TOL   1.0e-8
 /* max active phases... depends on neighbourhood */
-#define MAXTP 3
+#define MAXFP 3
+#define MAXIP 4*MAXFP
 #define MAXCP 4
-#define MAXAP 12
+#define MAXAP 5
 
 /* Types declarations */
 
@@ -59,13 +60,14 @@ typedef struct STATE {
 
 /* output dofs */
 typedef struct O_DOFS {
-   PetscReal   ***o;
+   PetscReal   p;
+   PetscReal   c[MAXCP];
 } O_DOFS;
 
 /* Float to int conversion */
 typedef union F2I {
-   PetscReal   f[MAXTP];
-   uint16_t    i[MAXAP];
+   PetscReal   f[MAXFP];
+   uint16_t    i[MAXIP];
 } F2I;
 
 /* RK coefficients */
@@ -113,17 +115,19 @@ typedef struct INTERFACE {
 /* solution params */
 typedef struct SOLUTIONPARAMS {
     /* time parameters */
-  PetscReal finaltime, timestep, mintimestep, maxtimestep;
-  PetscInt  step;
+    PetscReal finaltime, timestep, mintimestep, maxtimestep;
+    PetscInt  step;
     /* phase field parameters */
-  PetscReal interfacewidth;
+    PetscReal interfacewidth;
     /* discretisation parameters */
-  PetscInt  feorder_phase, feorder_chem;
+    PetscInt  feorder_phase, feorder_chem;
+    /* AMR parameters */
+    PetscInt  maxnrefine, amrinterval;
     /* tolerances */
-  PetscReal reltol, abstol;
+    PetscReal reltol, abstol;
     /* output parameters */
-  PetscInt  outputfreq;
-  char      outfile[128];
+    PetscInt  outputfreq;
+    char      outfile[128];
 } SOLUTIONPARAMS;
 
 /* solution parameters */
@@ -138,8 +142,8 @@ typedef struct AppCtx {
     /* exception flag */
     PetscErrorCode rejectstage;
     /* aux grids and vecs */
-    DM da_solution, da_phaseID, da_matstate, da_output;
-    Vec activephaseset, activephasesuperset, matstate;
+    DM da_solution, da_fvmgeom, da_phaseID, da_matstate, da_output;
+    Vec activephaseset, activephasesuperset, fvmgeom, matstate;
     /* phase material parameters */
     MATERIAL *material;
     uint16_t *phasevoxelmapping, *phasematerialmapping;
