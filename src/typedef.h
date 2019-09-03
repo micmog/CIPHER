@@ -144,6 +144,8 @@ typedef struct AppCtx {
     /* aux grids and vecs */
     DM da_solution, da_fvmgeom, da_phaseID, da_matstate, da_output;
     Vec activephaseset, activephasesuperset, fvmgeom, matstate;
+    PetscInt *localcells, nlocalcells;
+    PetscInt *localfaces, nlocalfaces;
     /* phase material parameters */
     MATERIAL *material;
     uint16_t *phasevoxelmapping, *phasematerialmapping;
