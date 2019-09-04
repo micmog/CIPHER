@@ -29,6 +29,22 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     Vec               localX, matstate0;
     PetscScalar       *fdof;
     PetscScalar       *rhs, *mat, *superset, *fvmgeom;
+    FIELD             *ucell, *nucell, *fcell, lcell;
+    F2I               *slist, *nslist;
+    STATE             *mcell;
+    PetscInt          conesize, nsupp;
+    PetscScalar       *edgel, *nedgel, celledge, ncelledge, cellvol, cfactor;
+    PetscReal         interpolant[MAXAP], caplflux[MAXAP], caplsource[MAXAP];
+    PetscReal         chemsource[MAXAP], rhs_unconstrained[MAXAP], cvgdot_phase[MAXAP];
+    PetscBool         active[MAXAP];
+    PetscReal         interfacepotential[MAXCP], chemicalpotential[MAXCP];
+    PetscReal         mobilitycv[MAXCP], cavgdot[MAXCP];
+    PetscReal         dcdm[MAXCP*MAXCP], dmdc[MAXCP*MAXCP];
+    const PetscInt    *cone, *scells;
+    uint16_t          setintersect[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
+    PetscReal         nactivephases, intval, rhsval;
+    PetscInt          localcell, cell, face, supp, g, gj, gk, c, cj, ci, interfacekj;
+    INTERFACE         *currentinterface;
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -44,90 +60,83 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = VecGetArray(user->fvmgeom,&fvmgeom); CHKERRQ(ierr);
 
     /* Loop over cells and compute local contribution to the RHS */
-    for (PetscInt localcell = 0; localcell < user->nlocalcells; ++localcell) {
-        PetscInt cell = user->localcells[localcell];
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
         /* get fields */
-        FIELD *ucell = NULL, *fcell = NULL, *lcell = calloc(1,sizeof(FIELD));
-        F2I *slist = NULL;
-        STATE *mcell = NULL;
-        PetscScalar *edgel = NULL;
         
+        slist = NULL; ucell = NULL; fcell = NULL; mcell = NULL;
         ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
         ierr = DMPlexPointLocalRead(user->da_solution,cell,fdof,&ucell);
         ierr = DMPlexPointGlobalRef(user->da_solution,cell,rhs,&fcell);
         ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
-        ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
-        PetscScalar celledge = edgel[0], cellvol = FastPow(celledge,3);
         
         /* calculate phase interpolants */
-        PetscReal interpolant[slist->i[0]];
         EvalInterpolant(interpolant,ucell->p,slist->i[0]);
                 
         /* update material state */
-        PetscReal interfacepotential[user->nc], chemicalpotential[user->nc-1];
         memset(interfacepotential,0,user->nc*sizeof(PetscScalar));
         memcpy(chemicalpotential,ucell->m,(user->nc-1)*sizeof(PetscScalar));
         
         /* get chemical part of diffusion potential */
-        for (PetscInt gk=0; gk<slist->i[0]; gk++) {
-            for (PetscInt gj=gk+1; gj<slist->i[0]; gj++) {
-                PetscInt interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
-                INTERFACE *currentinterface = &user->interface[interfacekj];
-                PetscReal val = sqrt(interpolant[gk]*interpolant[gj]);
-                for (PetscInt c=0; c<user->nc; c++) {
-                    interfacepotential[c] += val*currentinterface->potential[c];
+        for (gk=0; gk<slist->i[0]; gk++) {
+            for (gj=gk+1; gj<slist->i[0]; gj++) {
+                interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                currentinterface = &user->interface[interfacekj];
+                intval = sqrt(interpolant[gk]*interpolant[gj]);
+                for (c=0; c<user->nc; c++) {
+                    interfacepotential[c] += intval*currentinterface->potential[c];
                 }
             }
         }    
-        for (PetscInt c=0; c<user->nc-1; c++) 
+        for (c=0; c<user->nc-1; c++) 
             chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
         
         /* update composition for given chemical potential */
         user->rejectstage = Composition(mcell->c,chemicalpotential,slist->i,user);
     
-        if (slist->i[0] > 1) {
+        if (slist->i[0] > 1 && user->nc > 1) {
             /* get laplacian from neighbouring cells */
-            PetscInt conesize;
-            const PetscInt *cone;
             ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
             ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-            for (PetscInt face=0; face<conesize; face++) {
-                PetscInt nsupp;
-                const PetscInt *scells;
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
+            celledge = edgel[0]; cellvol = celledge*celledge*celledge;
+            memset(lcell.p,0,MAXAP*sizeof(PetscReal));
+            memset(lcell.m,0,MAXCP*sizeof(PetscReal));
+            for (face=0; face<conesize; face++) {
                 ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
                 ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
-                for (PetscInt supp=0; supp<nsupp; supp++) {
+                for (supp=0; supp<nsupp; supp++) {
                     if (cell != scells[supp]) {
-                        F2I *nslist = NULL;
-                        FIELD *nucell = NULL;
-                        PetscScalar *nedgel = NULL;
+                        nslist = NULL; nucell = NULL; nedgel = NULL;
                         ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],superset,&nslist);
                         ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
                         ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
-                        PetscScalar ncelledge = nedgel[0], farea = FastPow(ncelledge < celledge ? ncelledge : celledge,2);
-                        PetscScalar delta = (ncelledge + celledge)/2.0;
+                        ncelledge = nedgel[0];
+                        cfactor  = ncelledge < celledge ? ncelledge : celledge;
+                        cfactor *= 2.0/(ncelledge + celledge)/cellvol;
             
                         /* get common active phases */
-                        uint16_t setintersect[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
                         SetIntersection(setintersect,injectionL,injectionR,slist->i,nslist->i);
             
                         /* compute fluxes */
-                        for (PetscInt g=0; g<setintersect[0]; g++) 
-                            lcell->p[injectionL[g]] += farea*(nucell->p[injectionR[g]] - ucell->p[injectionL[g]])/delta/cellvol;
+                        for (g=0; g<setintersect[0]; g++) 
+                            lcell.p[injectionL[g]] += cfactor*(nucell->p[injectionR[g]] - ucell->p[injectionL[g]]);
+                        for (c=0; c<user->nc-1; c++) 
+                            lcell.m[           c ] += cfactor*(nucell->m[           c ] - ucell->m[           c ]);
                     }
                 }
             }
     
             /* phase capillary driving force */ 
-            PetscReal caplflux[slist->i[0]], caplsource[slist->i[0]];
             memset(caplflux  ,0,slist->i[0]*sizeof(PetscReal));
             memset(caplsource,0,slist->i[0]*sizeof(PetscReal));
-            for (PetscInt gk=0; gk<slist->i[0]; gk++) {
-                for (PetscInt gj=gk+1; gj<slist->i[0]; gj++) {
-                    PetscInt interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
-                    INTERFACE *currentinterface = &user->interface[interfacekj];
-                    caplflux  [gk] -= currentinterface->energy*lcell->p[gj];
-                    caplflux  [gj] -= currentinterface->energy*lcell->p[gk];
+            for (gk=0; gk<slist->i[0]; gk++) {
+                for (gj=gk+1; gj<slist->i[0]; gj++) {
+                    interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    caplflux  [gk] -= currentinterface->energy*lcell.p[gj];
+                    caplflux  [gj] -= currentinterface->energy*lcell.p[gk];
                     caplsource[gk] -= currentinterface->energy*ucell->p[gj];
                     caplsource[gj] -= currentinterface->energy*ucell->p[gk];
                 }
@@ -136,23 +145,21 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            PetscReal chemsource[slist->i[0]];
             Chemenergy(chemsource,mcell->c,ucell->m,slist->i,user);
             MatMulInterpolantDerivative(chemsource,ucell->p,slist->i[0]);
 
             /* build unconstrained RHS to calculate active set */ 
-            PetscReal rhs_unconstrained[slist->i[0]], nactivephases = 0.0;
-            PetscBool active[slist->i[0]];
+            nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist->i[0]*sizeof(PetscReal));
-            for (PetscInt gk=0; gk<slist->i[0]; gk++) {
-                for (PetscInt gj=gk+1; gj<slist->i[0]; gj++) {
-                    PetscInt interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
-                        INTERFACE *currentinterface = &user->interface[interfacekj];
-                        PetscReal val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                                    + (caplsource[gk] - caplsource[gj])
-                                                                    + (chemsource[gj] - chemsource[gk])
-                                                                    * sqrt(interpolant[gk]*interpolant[gj]));
-                        rhs_unconstrained[gk] += val; rhs_unconstrained[gj] -= val;
+            for (gk=0; gk<slist->i[0]; gk++) {
+                for (gj=gk+1; gj<slist->i[0]; gj++) {
+                    interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                         + (caplsource[gk] - caplsource[gj])
+                                                         + (chemsource[gj] - chemsource[gk])
+                                                         * sqrt(interpolant[gk]*interpolant[gj]));
+                    rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (ucell->p[gk] >       TOL && ucell->p         [gk] < 1.0 - TOL)
                              || (ucell->p[gk] <       TOL && rhs_unconstrained[gk] > 0.0      )
@@ -161,76 +168,181 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
 
             /* build constrained RHS from active set*/ 
-            for (PetscInt gk=0; gk<slist->i[0]; gk++) {
+            for (gk=0; gk<slist->i[0]; gk++) {
                 if (active[gk]) {
-                    for (PetscInt gj=gk+1; gj<slist->i[0]; gj++) {
+                    for (gj=gk+1; gj<slist->i[0]; gj++) {
                         if (active[gj]) {
-                            PetscInt interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
-                            INTERFACE *currentinterface = &user->interface[interfacekj];
-                            PetscReal val = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                                        + (caplsource[gk] - caplsource[gj])
-                                                                        + (chemsource[gj] - chemsource[gk])
-                                                                        * sqrt(interpolant[gk]*interpolant[gj]));
-                            fcell->p[gk] += val; fcell->p[gj] -= val;
+                            interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                            currentinterface = &user->interface[interfacekj];
+                            rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                              + (caplsource[gk] - caplsource[gj])
+                                                              + (chemsource[gj] - chemsource[gk])
+                                                              * sqrt(interpolant[gk]*interpolant[gj]));
+                            fcell->p[gk] += rhsval; fcell->p[gj] -= rhsval;
                         }
                     }
                     fcell->p[gk] /= nactivephases;
                 }        
             }
-        }
-
-        if (user->nc > 1) {
+            
+            /* calculate solute mobility matrix (volume-fixed frame of reference) */
+            CompositionMobility(mobilitycv,mcell->c,interpolant,slist->i,user);
+  
+            /* calculate avg composition rate */
+            for (c=0; c<user->nc-1; c++) {
+                cavgdot[c] = mobilitycv[c]*lcell.m[c];
+                for (g =0; g<slist->i[0];  g++) cvgdot_phase[g] = mcell->c[g*user->nc+c];
+                MatMulInterpolantDerivative(cvgdot_phase,ucell->p,slist->i[0]);
+                for (g =0; g<slist->i[0];  g++) cavgdot[c] -= fcell->p[g]*cvgdot_phase[g];
+            }
+  
+            /* calculate composition tangent wrt chemical potential */
+            CompositionTangent(dcdm ,mcell->c,interpolant,slist->i,user);
+            Invertmatrix(dmdc,dcdm);
+  
+            /* chemical potential RHS */
+            for (cj=0; cj<user->nc-1; cj++) {
+                for (ci=0; ci<user->nc-1; ci++) {
+                    fcell->m[cj] += dmdc[cj*(user->nc-1)+ci]*cavgdot[ci];
+                }
+            }
+        } else if (slist->i[0] > 1) {
             /* get laplacian from neighbouring cells */
-            PetscInt conesize;
-            const PetscInt *cone;
             ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
             ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-            for (PetscInt face=0; face<conesize; face++) {
-                PetscInt nsupp;
-                const PetscInt *scells;
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
+            celledge = edgel[0]; cellvol = celledge*celledge*celledge;
+            memset(lcell.p,0,MAXAP*sizeof(PetscReal));
+            for (face=0; face<conesize; face++) {
                 ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
                 ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
-                for (PetscInt supp=0; supp<nsupp; supp++) {
+                for (supp=0; supp<nsupp; supp++) {
                     if (cell != scells[supp]) {
-                        /* compute fluxes */
-                        FIELD *nucell = NULL;
-                        PetscScalar *nedgel = NULL;
+                        nslist = NULL; nucell = NULL; nedgel = NULL;
+                        ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],superset,&nslist);
                         ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
                         ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
-                        PetscScalar ncelledge = nedgel[0], farea = FastPow(ncelledge < celledge ? ncelledge : celledge,2);
-                        PetscScalar delta = (ncelledge + celledge)/2.0;
-                        for (PetscInt c=0; c<user->nc-1; c++) 
-                            lcell->m[c] += farea*(nucell->m[c] - ucell->m[c])/delta/cellvol;
+                        ncelledge = nedgel[0];
+                        cfactor  = ncelledge < celledge ? ncelledge : celledge;
+                        cfactor *= 2.0/(ncelledge + celledge)/cellvol;
+            
+                        /* get common active phases */
+                        SetIntersection(setintersect,injectionL,injectionR,slist->i,nslist->i);
+            
+                        /* compute fluxes */
+                        for (g=0; g<setintersect[0]; g++) 
+                            lcell.p[injectionL[g]] += cfactor*(nucell->p[injectionR[g]] - ucell->p[injectionL[g]]);
+                    }
+                }
+            }
+    
+            /* phase capillary driving force */ 
+            memset(caplflux  ,0,slist->i[0]*sizeof(PetscReal));
+            memset(caplsource,0,slist->i[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist->i[0]; gk++) {
+                for (gj=gk+1; gj<slist->i[0]; gj++) {
+                    interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    caplflux  [gk] -= currentinterface->energy*lcell.p[gj];
+                    caplflux  [gj] -= currentinterface->energy*lcell.p[gk];
+                    caplsource[gk] -= currentinterface->energy*ucell->p[gj];
+                    caplsource[gj] -= currentinterface->energy*ucell->p[gk];
+                }
+                caplflux  [gk] *= 8.0*user->params.interfacewidth/PETSC_PI/PETSC_PI;
+                caplsource[gk] *= 8.0/user->params.interfacewidth;
+            }   
+
+            /* phase chemical driving force */ 
+            Chemenergy(chemsource,mcell->c,ucell->m,slist->i,user);
+            MatMulInterpolantDerivative(chemsource,ucell->p,slist->i[0]);
+
+            /* build unconstrained RHS to calculate active set */ 
+            nactivephases = 0.0;
+            memset(rhs_unconstrained,0,slist->i[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist->i[0]; gk++) {
+                for (gj=gk+1; gj<slist->i[0]; gj++) {
+                    interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                         + (caplsource[gk] - caplsource[gj])
+                                                         + (chemsource[gj] - chemsource[gk])
+                                                         * sqrt(interpolant[gk]*interpolant[gj]));
+                        rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
+                }
+                active[gk] =    (ucell->p[gk] >       TOL && ucell->p         [gk] < 1.0 - TOL)
+                             || (ucell->p[gk] <       TOL && rhs_unconstrained[gk] > 0.0      )
+                             || (ucell->p[gk] > 1.0 - TOL && rhs_unconstrained[gk] < 0.0      );
+                if (active[gk]) nactivephases += 1.0;
+            }
+
+            /* build constrained RHS from active set*/ 
+            for (gk=0; gk<slist->i[0]; gk++) {
+                if (active[gk]) {
+                    for (gj=gk+1; gj<slist->i[0]; gj++) {
+                        if (active[gj]) {
+                            interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                            currentinterface = &user->interface[interfacekj];
+                            rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                                 + (caplsource[gk] - caplsource[gj])
+                                                                 + (chemsource[gj] - chemsource[gk])
+                                                                 * sqrt(interpolant[gk]*interpolant[gj]));
+                            fcell->p[gk] += rhsval; fcell->p[gj] -= rhsval;
+                        }
+                    }
+                    fcell->p[gk] /= nactivephases;
+                }        
+            }
+        } else if (user->nc > 1) {
+            /* get laplacian from neighbouring cells */
+            ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
+            ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
+            celledge = edgel[0]; cellvol = celledge*celledge*celledge;
+            memset(lcell.m,0,MAXCP*sizeof(PetscReal));
+            for (face=0; face<conesize; face++) {
+                ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
+                ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
+                for (supp=0; supp<nsupp; supp++) {
+                    if (cell != scells[supp]) {
+                        /* compute fluxes */
+                        nucell = NULL; nedgel = NULL;
+                        ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
+                        ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
+                        ncelledge = nedgel[0];
+                        cfactor  = ncelledge < celledge ? ncelledge : celledge;
+                        cfactor *= 2.0/(ncelledge + celledge)/cellvol;
+            
+                        /* compute fluxes */
+                        for (c=0; c<user->nc-1; c++) 
+                            lcell.m[c] += cfactor*(nucell->m[c] - ucell->m[c]);
                     }
                 }
             }
 
             /* calculate solute mobility matrix (volume-fixed frame of reference) */
-            PetscReal mobilitycv[user->nc-1];
             CompositionMobility(mobilitycv,mcell->c,interpolant,slist->i,user);
   
             /* calculate avg composition rate */
-            PetscReal cavgdot[user->nc-1], cvgdot_phase[slist->i[0]];
-            for (PetscInt c=0; c<user->nc-1; c++) {
-                cavgdot[c] = mobilitycv[c]*lcell->m[c];
-                for (PetscInt g =0; g<slist->i[0];  g++) cvgdot_phase[g] = mcell->c[g*user->nc+c];
+            for (c=0; c<user->nc-1; c++) {
+                cavgdot[c] = mobilitycv[c]*lcell.m[c];
+                for (g =0; g<slist->i[0];  g++) cvgdot_phase[g] = mcell->c[g*user->nc+c];
                 MatMulInterpolantDerivative(cvgdot_phase,ucell->p,slist->i[0]);
-                for (PetscInt g =0; g<slist->i[0];  g++) cavgdot[c] -= fcell->p[g]*cvgdot_phase[g];
+                for (g =0; g<slist->i[0];  g++) cavgdot[c] -= fcell->p[g]*cvgdot_phase[g];
             }
   
             /* calculate composition tangent wrt chemical potential */
-            PetscReal dcdm[(user->nc-1)*(user->nc-1)], dmdc[(user->nc-1)*(user->nc-1)];
             CompositionTangent(dcdm ,mcell->c,interpolant,slist->i,user);
             Invertmatrix(dmdc,dcdm);
   
             /* chemical potential RHS */
-            for (PetscInt cj=0; cj<user->nc-1; cj++) {
-                for (PetscInt ci=0; ci<user->nc-1; ci++) {
+            for (cj=0; cj<user->nc-1; cj++) {
+                for (ci=0; ci<user->nc-1; ci++) {
                     fcell->m[cj] += dmdc[cj*(user->nc-1)+ci]*cavgdot[ci];
                 }
             }
         }
-        free(lcell);
     }
     
     /* Restore FVM residuals */
@@ -253,6 +365,18 @@ PetscErrorCode PostStep(TS ts)
     AppCtx         *user;
     Vec            solution, gactivephaseset;
     PetscScalar    *fdof, *mat, *activeset, *superset, *gsuperset;
+    FIELD          *ucell;
+    F2I            *slist, *galist, *gslist, *nalist;
+    STATE          *mcell;
+    PetscInt       conesize, nsupp;
+    const PetscInt *cone, *scells;
+    PetscReal      intval;
+    PetscReal      phiUP[MAXAP], interpolant[MAXAP], phiSS[MAXAP], compSS[MAXAP*MAXCP];
+    PetscReal      interfacepotential[MAXCP], chemicalpotential[MAXCP];
+    PetscInt       localcell, cell, face, supp, g, gj, gk, c, interfacekj;
+    INTERFACE      *currentinterface;
+    MATERIAL       *currentmaterial;
+    uint16_t       setunion[MAXIP], setintersection[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
     
     PetscFunctionBeginUser;    
     ierr = TSGetSolution(ts, &solution);CHKERRQ(ierr);    
@@ -264,13 +388,10 @@ PetscErrorCode PostStep(TS ts)
     ierr = VecGetArray(user->activephasesuperset,&superset); CHKERRQ(ierr);
     ierr = VecGetArray(solution,&fdof);
     ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
-    for (PetscInt localcell = 0; localcell < user->nlocalcells; ++localcell) {
-        PetscInt cell = user->localcells[localcell];
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
         /* get cell state */
-        FIELD *ucell = NULL;
-        STATE *mcell = NULL;
-        F2I *slist = NULL, *galist = NULL;
-        
+        ucell = NULL; mcell = NULL; slist = NULL; galist = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
         ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
         ierr = DMPlexPointGlobalRef(user->da_phaseID,cell,activeset,&galist);
@@ -278,27 +399,25 @@ PetscErrorCode PostStep(TS ts)
 
         if (slist->i[0] > 1) {
             /* project phase fields back to Gibbs simplex */
-            PetscReal phiUP[slist->i[0]], interpolant[slist->i[0]];
             memcpy(phiUP,ucell->p,slist->i[0]*sizeof(PetscReal));
             SimplexProjection(ucell->p,phiUP,slist->i[0]);
             EvalInterpolant(interpolant,ucell->p,slist->i[0]);
     
             /* update material state */
-            PetscReal interfacepotential[user->nc], chemicalpotential[user->nc-1];
             memset(interfacepotential,0,user->nc*sizeof(PetscScalar));
             memcpy(chemicalpotential,ucell->m,(user->nc-1)*sizeof(PetscScalar));
             /* get chemical part of diffusion potential */
-            for (PetscInt gk=0; gk<slist->i[0]; gk++) {
-                for (PetscInt gj=gk+1; gj<slist->i[0]; gj++) {
-                    PetscInt interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
-                    INTERFACE *currentinterface = &user->interface[interfacekj];
-                    PetscReal val = sqrt(interpolant[gk]*interpolant[gj]);
-                    for (PetscInt c=0; c<user->nc; c++) {
-                        interfacepotential[c] += val*currentinterface->potential[c];
+            for (gk=0; gk<slist->i[0]; gk++) {
+                for (gj=gk+1; gj<slist->i[0]; gj++) {
+                    interfacekj = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    intval = sqrt(interpolant[gk]*interpolant[gj]);
+                    for (c=0; c<user->nc; c++) {
+                        interfacepotential[c] += intval*currentinterface->potential[c];
                     }
                 }
             }    
-            for (PetscInt c=0; c<user->nc-1; c++) 
+            for (c=0; c<user->nc-1; c++) 
                 chemicalpotential[c] -= (interfacepotential[c] - interfacepotential[user->nc-1]);
         
             /* update composition for given chemical potential */
@@ -306,7 +425,7 @@ PetscErrorCode PostStep(TS ts)
         
             /* update active set */
             galist->i[0] = 0;
-            for (PetscInt g=0; g<slist->i[0];  g++) {
+            for (g=0; g<slist->i[0];  g++) {
                 if (interpolant[g] > TOL) {
                     galist->i[++(galist->i[0])] = slist->i[g+1];
                 }
@@ -335,52 +454,41 @@ PetscErrorCode PostStep(TS ts)
     ierr = VecGetArray(user->activephasesuperset,&superset); CHKERRQ(ierr);
     ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
     ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
-    for (PetscInt localcell = 0; localcell < user->nlocalcells; ++localcell) {
-        PetscInt cell = user->localcells[localcell];
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
         /* get cell state */
-        FIELD *ucell = NULL;
-        STATE *mcell = NULL;
-        F2I *slist = NULL, *gslist = NULL;
-        
+        ucell = NULL; mcell = NULL; slist = NULL; gslist = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
         ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
         ierr = DMPlexPointGlobalRef(user->da_phaseID,cell,gsuperset,&gslist);
         ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
 
         /* add union of neighbouring cells */
-        PetscInt conesize;
-        const PetscInt *cone;
         ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
-        assert(conesize == 6);
         ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-        for (PetscInt face=0; face<conesize; face++) {
-            PetscInt nsupp;
-            const PetscInt *scells;
+        for (face=0; face<conesize; face++) {
             ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
             ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
-            for (PetscInt supp=0; supp<nsupp; supp++) {
+            for (supp=0; supp<nsupp; supp++) {
                 if (cell != scells[supp]) {
-                    F2I *nalist = NULL;
+                    nalist = NULL;
                     ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],activeset,&nalist);
-                    uint16_t setunion[MAXIP], injectionA[MAXIP], injectionB[MAXIP];
-                    SetUnion(setunion,injectionA,injectionB,gslist->i,nalist->i);
+                    SetUnion(setunion,injectionL,injectionR,gslist->i,nalist->i);
                     memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
                 }
             }
         }
 
         /* initialize new phase states */
-        PetscReal phiSS[gslist->i[0]], compSS[gslist->i[0]*user->nc];
-        for (PetscInt g=0; g<gslist->i[0];  g++) {
+        for (g=0; g<gslist->i[0];  g++) {
             phiSS[g] = 0.0;
-            MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[gslist->i[g+1]]];
+            currentmaterial = &user->material[user->phasematerialmapping[gslist->i[g+1]]];
             memcpy(&compSS[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal));
         }
         
         /* reorder dofs to new active phase superset */
-        uint16_t setintersection[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
         SetIntersection(setintersection,injectionL,injectionR,slist->i,gslist->i);
-        for (PetscInt g=0; g<setintersection[0];  g++) {
+        for (g=0; g<setintersection[0];  g++) {
             phiSS[injectionR[g]] = ucell->p[injectionL[g]];
             memcpy(&compSS[injectionR[g]*user->nc],&mcell->c[injectionL[g]*user->nc],user->nc*sizeof(PetscReal));
         }
@@ -404,23 +512,18 @@ PetscErrorCode PostStep(TS ts)
        PetscScalar       *xout;
        char              name[256];
        PetscViewer       viewer;
-       PetscSection      output_gsec;
+       O_DOFS            *ocell;
        
-       ierr = DMGetGlobalSection(user->da_output,&output_gsec);       
        ierr = DMGetGlobalVector(user->da_output,&Xout); CHKERRQ(ierr);
        ierr = PetscObjectSetName((PetscObject) Xout, "output");CHKERRQ(ierr);
        ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
        ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
        ierr = VecGetArray(user->activephasesuperset,&superset); CHKERRQ(ierr);
        ierr = VecGetArray(Xout,&xout); CHKERRQ(ierr);
-       for (PetscInt localcell = 0; localcell < user->nlocalcells; ++localcell) {
-           PetscInt cell = user->localcells[localcell];
+       for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+           cell = user->localcells[localcell];
            /* get cell state */
-           FIELD *ucell = NULL;
-           STATE *mcell = NULL;
-           F2I *slist = NULL;
-           O_DOFS *ocell;
-        
+           ucell = NULL; mcell = NULL; slist = NULL; ocell = NULL;
            ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
            ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
            ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
@@ -428,15 +531,15 @@ PetscErrorCode PostStep(TS ts)
        
            PetscReal max = -LARGE, interpolant[slist->i[0]];
            EvalInterpolant(interpolant,ucell->p,slist->i[0]);
-           for (PetscInt g=0; g<slist->i[0]; g++) {
+           for (g=0; g<slist->i[0]; g++) {
                if (interpolant[g] > max) {
                   max = interpolant[g];
                   ocell->p = (PetscReal) slist->i[g+1];
                }
            }
-           for (PetscInt c=0; c<user->nc; c++) {
+           for (c=0; c<user->nc; c++) {
                ocell->c[c] = 0.0;
-               for (PetscInt g=0; g<slist->i[0]; g++)
+               for (g=0; g<slist->i[0]; g++)
                    ocell->c[c] += interpolant[g]*mcell->c[g*user->nc+c];        
            }
        }
