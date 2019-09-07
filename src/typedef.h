@@ -28,7 +28,7 @@
 #define MAXFP 3
 #define MAXIP 4*MAXFP
 #define MAXCP 4
-#define MAXAP 5
+#define MAXAP 10
 
 /* Types declarations */
 
