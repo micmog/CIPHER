@@ -1,10 +1,15 @@
 <header>
-  n_interfaces 1
+  n_interfaces 2
 </header>
 <interface 1>
-  energy 5.0e+8
-  mobility 1.0e-11
+  energy 0.7071067812
+  mobility 1.0
 </interface 1>
+<interface 2>
+  energy 1.0
+  mobility 1.0
+</interface 2>
 <interface_mapping>
-  2500 of 1
+  50 of 1
+  2450 of 2
 </interface_mapping>

@@ -3,8 +3,23 @@
   n_phases 50
   n_materials 1
   n_components 1
-  componentnames xx
+  componentnames ti
 </header>
+<solution_parameters>
+  finaltime 1000000.0 
+  timestep0 1e-9
+  timestepmin 1e-9
+  timestepmax 1e+9 
+  interfacewidth 4 
+  feorder_phase 1 
+  feorder_chem 1
+  maxnrefine 0
+  amrinterval 1000000 
+  reltol 1e-4 
+  abstol 1e-4 
+  outputfreq 500
+  outfile 50Grains
+</solution_parameters>
 <material 1>
   chemicalenergy_type none
   molarvolume 1e-6
