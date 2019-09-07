@@ -42,8 +42,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         dcdm[MAXCP*MAXCP], dmdc[MAXCP*MAXCP];
     const PetscInt    *cone, *scells;
     uint16_t          setintersect[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
-    PetscReal         nactivephases, intval, rhsval;
-    PetscInt          localcell, cell, face, supp, g, gj, gk, c, cj, ci, interfacekj;
+    PetscReal         nactivephases, intval, rhsval, triplejunctionenergy;
+    PetscInt          localcell, cell, face, supp; 
+    PetscInt          g, gi, gj, gk, c, ci, cj, interfacekj, interfaceji, interfaceki;
     INTERFACE         *currentinterface;
     
     /* Gather FVM residuals */
@@ -139,6 +140,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     caplflux  [gj] -= currentinterface->energy*lcell.p[gk];
                     caplsource[gk] -= currentinterface->energy*ucell->p[gj];
                     caplsource[gj] -= currentinterface->energy*ucell->p[gk];
+                    for (gi=gj+1; gi<slist->i[0]; gi++) {
+                        triplejunctionenergy = currentinterface->energy;
+                        interfaceji = (PetscInt) user->interfacelist[slist->i[gj+1]*user->np + slist->i[gi+1]];
+                        currentinterface = &user->interface[interfaceji];
+                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
+                                               triplejunctionenergy : currentinterface->energy;
+                        interfaceki = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gi+1]];
+                        currentinterface = &user->interface[interfaceki];
+                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
+                                               triplejunctionenergy : currentinterface->energy;
+                        caplsource[gk] -= triplejunctionenergy*ucell->p[gj]*ucell->p[gi];
+                        caplsource[gj] -= triplejunctionenergy*ucell->p[gk]*ucell->p[gi];
+                        caplsource[gi] -= triplejunctionenergy*ucell->p[gk]*ucell->p[gj];
+                    }
                 }
                 caplflux  [gk] *= 8.0*user->params.interfacewidth/PETSC_PI/PETSC_PI;
                 caplsource[gk] *= 8.0/user->params.interfacewidth;
@@ -248,6 +263,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     caplflux  [gj] -= currentinterface->energy*lcell.p[gk];
                     caplsource[gk] -= currentinterface->energy*ucell->p[gj];
                     caplsource[gj] -= currentinterface->energy*ucell->p[gk];
+                    for (gi=gj+1; gi<slist->i[0]; gi++) {
+                        triplejunctionenergy = currentinterface->energy;
+                        interfaceji = (PetscInt) user->interfacelist[slist->i[gj+1]*user->np + slist->i[gi+1]];
+                        currentinterface = &user->interface[interfaceji];
+                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
+                                               triplejunctionenergy : currentinterface->energy;
+                        interfaceki = (PetscInt) user->interfacelist[slist->i[gk+1]*user->np + slist->i[gi+1]];
+                        currentinterface = &user->interface[interfaceki];
+                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
+                                               triplejunctionenergy : currentinterface->energy;
+                        caplsource[gk] -= triplejunctionenergy*ucell->p[gj]*ucell->p[gi];
+                        caplsource[gj] -= triplejunctionenergy*ucell->p[gk]*ucell->p[gi];
+                        caplsource[gi] -= triplejunctionenergy*ucell->p[gk]*ucell->p[gj];
+                    }
                 }
                 caplflux  [gk] *= 8.0*user->params.interfacewidth/PETSC_PI/PETSC_PI;
                 caplsource[gk] *= 8.0/user->params.interfacewidth;
