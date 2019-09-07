@@ -7,8 +7,6 @@ static char help[] = "Solves multi phase field equations \n";
 #include <petscdm.h>
 #include <petscdmplex.h>
 #include <petscdmforest.h>
-#include <petsc/private/dmpleximpl.h>
-#include <petsc/private/isimpl.h>     /* for inline access to atlasOff */
 #include <petscds.h>
 #include <petscts.h>
 #include "init.h"
@@ -47,18 +45,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         nactivephases, intval, rhsval;
     PetscInt          localcell, cell, face, supp, g, gj, gk, c, cj, ci, interfacekj;
     INTERFACE         *currentinterface;
-    PetscSection      solution_lsec, matstate_lsec, phaseID_lsec, fvmgeom_lsec;
-    PetscSection      solution_gsec, matstate_gsec, phaseID_gsec, fvmgeom_gsec;
-    
-    /* Get sections */
-    ierr = DMGetSection(user->da_solution,&solution_lsec);
-    ierr = DMGetSection(user->da_matstate,&matstate_lsec);
-    ierr = DMGetSection(user->da_phaseID ,&phaseID_lsec );
-    ierr = DMGetSection(user->da_fvmgeom ,&fvmgeom_lsec );
-    ierr = DMGetGlobalSection(user->da_solution,&solution_gsec);
-    ierr = DMGetGlobalSection(user->da_matstate,&matstate_gsec);
-    ierr = DMGetGlobalSection(user->da_phaseID ,&phaseID_gsec );
-    ierr = DMGetGlobalSection(user->da_fvmgeom ,&fvmgeom_gsec );
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -76,12 +62,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     /* Loop over cells and compute local contribution to the RHS */
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
-
         /* get fields */
-        slist = (F2I   *) (superset +   phaseID_lsec->atlasOff[cell -   phaseID_lsec->pStart]);
-        ucell = (FIELD *) (fdof     +  solution_lsec->atlasOff[cell -  solution_lsec->pStart]);
-        fcell = (FIELD *) (rhs      +  solution_gsec->atlasOff[cell -  solution_gsec->pStart] - user->da_solution->map->rstart);
-        mcell = (STATE *) (mat      +  matstate_gsec->atlasOff[cell -  matstate_gsec->pStart] - user->da_matstate->map->rstart);
+        
+        slist = NULL; ucell = NULL; fcell = NULL; mcell = NULL;
+        ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
+        ierr = DMPlexPointLocalRead(user->da_solution,cell,fdof,&ucell);
+        ierr = DMPlexPointGlobalRef(user->da_solution,cell,rhs,&fcell);
+        ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
         
         /* calculate phase interpolants */
         EvalInterpolant(interpolant,ucell->p,slist->i[0]);
@@ -111,7 +98,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             /* get laplacian from neighbouring cells */
             ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
             ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-            edgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[cell -  fvmgeom_lsec->pStart]);
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
             celledge = edgel[0]; cellvol = celledge*celledge*celledge;
             memset(lcell.p,0,MAXAP*sizeof(PetscReal));
             memset(lcell.m,0,MAXCP*sizeof(PetscReal));
@@ -120,9 +108,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
                 for (supp=0; supp<nsupp; supp++) {
                     if (cell != scells[supp]) {
-                        nslist = (F2I *) (superset +  phaseID_lsec->atlasOff[scells[supp] -  phaseID_lsec->pStart]);
-                        nucell = (FIELD *) (fdof +  solution_lsec->atlasOff[scells[supp] -  solution_lsec->pStart]);
-                        nedgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[scells[supp] -  fvmgeom_lsec->pStart]);
+                        nslist = NULL; nucell = NULL; nedgel = NULL;
+                        ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],superset,&nslist);
+                        ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
+                        ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
                         ncelledge = nedgel[0];
                         cfactor  = ncelledge < celledge ? ncelledge : celledge;
                         cfactor *= 2.0/(ncelledge + celledge)/cellvol;
@@ -221,7 +210,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             /* get laplacian from neighbouring cells */
             ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
             ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-            edgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[cell -  fvmgeom_lsec->pStart]);
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
             celledge = edgel[0]; cellvol = celledge*celledge*celledge;
             memset(lcell.p,0,MAXAP*sizeof(PetscReal));
             for (face=0; face<conesize; face++) {
@@ -229,9 +219,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
                 for (supp=0; supp<nsupp; supp++) {
                     if (cell != scells[supp]) {
-                        nslist = (F2I *) (superset +  phaseID_lsec->atlasOff[scells[supp] -  phaseID_lsec->pStart]);
-                        nucell = (FIELD *) (fdof +  solution_lsec->atlasOff[scells[supp] -  solution_lsec->pStart]);
-                        nedgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[scells[supp] -  fvmgeom_lsec->pStart]);
+                        nslist = NULL; nucell = NULL; nedgel = NULL;
+                        ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],superset,&nslist);
+                        ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
+                        ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
                         ncelledge = nedgel[0];
                         cfactor  = ncelledge < celledge ? ncelledge : celledge;
                         cfactor *= 2.0/(ncelledge + celledge)/cellvol;
@@ -306,7 +297,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             /* get laplacian from neighbouring cells */
             ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
             ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
-            edgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[cell -  fvmgeom_lsec->pStart]);
+            edgel = NULL;
+            ierr = DMPlexPointLocalRead(user->da_fvmgeom,cell,fvmgeom,&edgel);
             celledge = edgel[0]; cellvol = celledge*celledge*celledge;
             memset(lcell.m,0,MAXCP*sizeof(PetscReal));
             for (face=0; face<conesize; face++) {
@@ -316,8 +308,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     if (cell != scells[supp]) {
                         /* compute fluxes */
                         nucell = NULL; nedgel = NULL;
-                        nucell = (FIELD *) (fdof +  solution_lsec->atlasOff[scells[supp] -  solution_lsec->pStart]);
-                        nedgel = (PetscScalar *) (fvmgeom +  fvmgeom_lsec->atlasOff[scells[supp] -  fvmgeom_lsec->pStart]);
+                        ierr = DMPlexPointLocalRead(user->da_solution,scells[supp],fdof,&nucell);
+                        ierr = DMPlexPointLocalRead(user->da_fvmgeom,scells[supp],fvmgeom,&nedgel);
                         ncelledge = nedgel[0];
                         cfactor  = ncelledge < celledge ? ncelledge : celledge;
                         cfactor *= 2.0/(ncelledge + celledge)/cellvol;
@@ -385,21 +377,11 @@ PetscErrorCode PostStep(TS ts)
     INTERFACE      *currentinterface;
     MATERIAL       *currentmaterial;
     uint16_t       setunion[MAXIP], setintersection[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
-    PetscSection   solution_lsec, matstate_lsec, phaseID_lsec;
-    PetscSection   solution_gsec, matstate_gsec, phaseID_gsec;
     
     PetscFunctionBeginUser;    
     ierr = TSGetSolution(ts, &solution);CHKERRQ(ierr);    
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
       
-    /* Get sections */
-    ierr = DMGetSection(user->da_solution,&solution_lsec);
-    ierr = DMGetSection(user->da_matstate,&matstate_lsec);
-    ierr = DMGetSection(user->da_phaseID ,&phaseID_lsec );
-    ierr = DMGetGlobalSection(user->da_solution,&solution_gsec);
-    ierr = DMGetGlobalSection(user->da_matstate,&matstate_gsec);
-    ierr = DMGetGlobalSection(user->da_phaseID ,&phaseID_gsec );
-  
     /* Determine active phase set, update composition */
     ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
     ierr = VecGetArray(gactivephaseset,&activeset); CHKERRQ(ierr);
@@ -408,12 +390,12 @@ PetscErrorCode PostStep(TS ts)
     ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
-        /* get fields */
-        slist = (F2I *) (superset +   phaseID_lsec->atlasOff[cell - phaseID_lsec->pStart]);
-        galist = (F2I *) (activeset +   phaseID_gsec->atlasOff[cell - phaseID_gsec->pStart] - user->da_phaseID->map->rstart);
-        ucell = (FIELD *) (fdof +  solution_gsec->atlasOff[cell - solution_gsec->pStart] - user->da_solution->map->rstart);
-        mcell = (STATE *) (mat +  matstate_gsec->atlasOff[cell - matstate_gsec->pStart] - user->da_matstate->map->rstart);
-        
+        /* get cell state */
+        ucell = NULL; mcell = NULL; slist = NULL; galist = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
+        ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
+        ierr = DMPlexPointGlobalRef(user->da_phaseID,cell,activeset,&galist);
+        ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
 
         if (slist->i[0] > 1) {
             /* project phase fields back to Gibbs simplex */
@@ -474,11 +456,12 @@ PetscErrorCode PostStep(TS ts)
     ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
-        /* get fields */
-        slist = (F2I *) (superset +   phaseID_lsec->atlasOff[cell - phaseID_lsec->pStart]);
-        gslist = (F2I *) (gsuperset +   phaseID_gsec->atlasOff[cell - phaseID_gsec->pStart] - user->da_phaseID->map->rstart);
-        ucell = (FIELD *) (fdof +  solution_gsec->atlasOff[cell - solution_gsec->pStart] - user->da_solution->map->rstart);
-        mcell = (STATE *) (mat +  matstate_gsec->atlasOff[cell - matstate_gsec->pStart] - user->da_matstate->map->rstart);
+        /* get cell state */
+        ucell = NULL; mcell = NULL; slist = NULL; gslist = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
+        ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
+        ierr = DMPlexPointGlobalRef(user->da_phaseID,cell,gsuperset,&gslist);
+        ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
 
         /* add union of neighbouring cells */
         ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
@@ -488,7 +471,8 @@ PetscErrorCode PostStep(TS ts)
             ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
             for (supp=0; supp<nsupp; supp++) {
                 if (cell != scells[supp]) {
-                    nalist = (F2I *) (activeset + phaseID_lsec->atlasOff[scells[supp] - phaseID_lsec->pStart]);
+                    nalist = NULL;
+                    ierr = DMPlexPointLocalRead(user->da_phaseID,scells[supp],activeset,&nalist);
                     SetUnion(setunion,injectionL,injectionR,gslist->i,nalist->i);
                     memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
                 }
@@ -528,10 +512,8 @@ PetscErrorCode PostStep(TS ts)
        PetscScalar       *xout;
        char              name[256];
        PetscViewer       viewer;
-       PetscSection      output_gsec;
        O_DOFS            *ocell;
        
-       ierr = DMGetGlobalSection(user->da_output,&output_gsec);       
        ierr = DMGetGlobalVector(user->da_output,&Xout); CHKERRQ(ierr);
        ierr = PetscObjectSetName((PetscObject) Xout, "output");CHKERRQ(ierr);
        ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
@@ -540,11 +522,12 @@ PetscErrorCode PostStep(TS ts)
        ierr = VecGetArray(Xout,&xout); CHKERRQ(ierr);
        for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
            cell = user->localcells[localcell];
-           /* get fields */
-           slist = (F2I *) (superset + phaseID_lsec->atlasOff[cell - phaseID_lsec->pStart]);
-           ucell = (FIELD *) (fdof +  solution_gsec->atlasOff[cell - solution_gsec->pStart] - user->da_solution->map->rstart);
-           mcell = (STATE *) (mat +  matstate_gsec->atlasOff[cell - matstate_gsec->pStart] - user->da_matstate->map->rstart);
-           ocell = (O_DOFS *) (xout +  output_gsec->atlasOff[cell - output_gsec->pStart] - user->da_output->map->rstart);
+           /* get cell state */
+           ucell = NULL; mcell = NULL; slist = NULL; ocell = NULL;
+           ierr = DMPlexPointGlobalRef(user->da_solution,cell,fdof,&ucell);
+           ierr = DMPlexPointGlobalRef(user->da_matstate,cell,mat,&mcell);
+           ierr = DMPlexPointLocalRead(user->da_phaseID,cell,superset,&slist);
+           ierr = DMPlexPointGlobalRef(user->da_output,cell,xout,&ocell);
        
            PetscReal max = -LARGE, interpolant[slist->i[0]];
            EvalInterpolant(interpolant,ucell->p,slist->i[0]);
