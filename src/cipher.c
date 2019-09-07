@@ -951,9 +951,12 @@ int main(int argc,char **args)
   {
     ierr = PetscFVSetComponentName(output_fvm,0,"phase id");CHKERRQ(ierr);
     for (PetscInt c=1; c < 1+MAXCP; c++) {
-        char compname[256]  = "unknown";
-        if (c <= ctx.nc)
-        ierr = PetscSNPrintf(compname,sizeof(compname),"chemical potential %s",ctx.componentname[c-1]);CHKERRQ(ierr);
+        char compname[256];
+        if (c <= ctx.nc) {
+            ierr = PetscSNPrintf(compname,sizeof(compname),"composition %s",ctx.componentname[c-1]);CHKERRQ(ierr);
+        } else {
+            ierr = PetscSNPrintf(compname,sizeof(compname),"unknown field %d",c);CHKERRQ(ierr);
+        }
         ierr = PetscFVSetComponentName(output_fvm,c,compname);CHKERRQ(ierr);
     }
   }
