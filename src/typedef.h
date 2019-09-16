@@ -25,10 +25,20 @@
 #define LARGE 1.0e+6
 #define TOL   1.0e-8
 /* max active phases... depends on neighbourhood */
-#define MAXFP 3
+#define MAXFP 4 
 #define MAXIP 4*MAXFP
-#define MAXCP 4
-#define MAXAP 10
+#define MAXCP 5
+#define MAXAP 15
+
+/* field offsets */
+#define AS_OFFSET 0 
+#define AS_SIZE   MAXFP 
+#define PF_OFFSET AS_OFFSET+AS_SIZE
+#define PF_SIZE   MAXAP 
+#define DP_OFFSET PF_OFFSET+PF_SIZE 
+#define DP_SIZE   MAXCP 
+#define CP_OFFSET DP_OFFSET+DP_SIZE 
+#define CP_SIZE   MAXAP*MAXCP 
 
 /* Types declarations */
 
@@ -47,11 +57,15 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
+/* phase field dofs */
+typedef struct PFIELD {
+   PetscReal   p[PF_SIZE];
+} PFIELD;
+
 /* field dofs */
-typedef struct FIELD {
-   PetscReal   p[MAXAP];
-   PetscReal   m[MAXCP];
-} FIELD;
+typedef struct DFIELD {
+   PetscReal   d[DP_SIZE];
+} DFIELD;
 
 /* composition dofs */
 typedef struct STATE {
@@ -119,15 +133,15 @@ typedef struct SOLUTIONPARAMS {
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
-    /* discretisation parameters */
-    PetscInt  feorder_phase, feorder_chem;
     /* AMR parameters */
-    PetscInt  maxnrefine, amrinterval;
+    PetscInt  initrefine, maxnrefine, amrinterval;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */
     PetscInt  outputfreq;
     char      outfile[128];
+    char      petscoptions[PETSC_MAX_PATH_LEN];
+    PetscViewer viewer;
 } SOLUTIONPARAMS;
 
 /* solution parameters */
@@ -137,15 +151,19 @@ typedef struct AppCtx {
     char **componentname;
     /* grid resolution */
     PetscInt resolution[3];
+    PetscReal size[3];
     /* time step */
     PetscInt step;
     /* exception flag */
     PetscErrorCode rejectstage;
     /* aux grids and vecs */
-    DM da_solution, da_fvmgeom, da_phaseID, da_matstate, da_output;
-    Vec activephaseset, activephasesuperset, fvmgeom, matstate;
-    PetscInt *localcells, nlocalcells;
+    DM da_solution, da_solforest;
+    DM da_matstate, da_matforest;
+    Vec matstate;
+    DM da_output;
+    PetscInt *localcells, nlocalcells, ninteriorcells;
     PetscInt *localfaces, nlocalfaces;
+    PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
     uint16_t *phasevoxelmapping, *phasematerialmapping;

@@ -7,6 +7,7 @@
 #include <petscdm.h>
 #include <petscdmplex.h>
 #include <petscdmforest.h>
+#include <petscviewerhdf5.h>
 #include "material.h"
 #include "utility.h"
 #include "typedef.h"
@@ -58,6 +59,9 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     user->resolution[0] = 1;
     user->resolution[1] = 1;
     user->resolution[2] = 1;
+    user->size[0] = 1.0;
+    user->size[1] = 1.0;
+    user->size[2] = 1.0;
     user->nc = 1;
     user->np = 1;
     user->nmat = 1;
@@ -74,6 +78,16 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             mtok = strtok_r(NULL, " ", &savemtok);
             user->resolution[2] = atoi(strtok_r(NULL, " ", &savemtok));
             user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
+        }
+        if (strstr(tok, "size") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            mtok = strtok_r(NULL, " ", &savemtok);
+            user->size[0] = atof(strtok_r(NULL, " ", &savemtok));
+            mtok = strtok_r(NULL, " ", &savemtok);
+            user->size[1] = atof(strtok_r(NULL, " ", &savemtok));
+            mtok = strtok_r(NULL, " ", &savemtok);
+            user->size[2] = atof(strtok_r(NULL, " ", &savemtok));
         }
         if (strstr(tok, "n_phases") != NULL) {
             char *mtok, *savemtok;
@@ -563,12 +577,13 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     user->params.maxtimestep = LARGE;
     user->params.step = 0;    
     user->params.interfacewidth = 5;
-    user->params.feorder_phase = 1;
-    user->params.feorder_chem = 1;
+    user->params.initrefine = 1;
+    user->params.maxnrefine = 1;
     user->params.reltol = 1e-6;
     user->params.abstol = 1e-6;
     user->params.outputfreq = 1;
     strncpy(user->params.outfile, "output", 128);
+    sprintf(user->params.petscoptions, "-dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf",user->size[0],user->size[1],user->size[2]);
     /* initialise solution parameters */
     while (tok !=NULL) {
         // process the line
@@ -597,15 +612,10 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.interfacewidth);
         }    
-        if (strstr(tok, "feorder_phase") != NULL) {
+        if (strstr(tok, "initrefine") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.feorder_phase);
-        }    
-        if (strstr(tok, "feorder_chem") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.feorder_chem);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.initrefine);
         }    
         if (strstr(tok, "maxnrefine") != NULL) {
             char *mtok, *savemtok;
@@ -636,6 +646,12 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->params.outfile);
+        }    
+        if (strstr(tok, "petscoptions") != NULL) {
+            char *mtok, *savemtok, strval[PETSC_MAX_PATH_LEN];
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%s", strval);
+            strcat(user->params.petscoptions,strval);
         }    
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
@@ -814,114 +830,101 @@ PetscErrorCode SetUpInterface(AppCtx *user)
 PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 {
     PetscErrorCode    ierr;
-    Vec               gactivephaseset;
-    PetscScalar       *fdof, *mat, *activeset, *superset;
-    PetscInt          cell, cstart, cend, face, fstart, fend;
-    DMLabel           plabel = NULL, ghostlabel = NULL;
+    Vec               solutionl;
+    PetscScalar       *fdof, *fdofl, *offset, *mat;
+    PetscInt          localcell, cell, face, phase, g;
+    PetscInt          conesize, supp, nsupp;
+    const PetscInt    *cone, *scells;
+    DMLabel           plabel = NULL;
+    F2I               *gslist, *nalist;
+    PFIELD            *pcell;
+    DFIELD            *dcell;
+    STATE             *mcell;
+    uint16_t          setunion[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
+    MATERIAL          *currentmaterial;
 
     PetscFunctionBeginUser;  
     ierr = DMGetLabel(user->da_solution, "phase", &plabel);
-    ierr = DMGetLabel(user->da_solution, "ghost", &ghostlabel);
-    ierr = DMPlexGetHeightStratum(user->da_solution, 0, &cstart, &cend); CHKERRQ(ierr);
-    ierr = DMPlexGetHeightStratum(user->da_solution, 1, &fstart, &fend); CHKERRQ(ierr);
     
     /* Determine active phase set */
-    ierr = DMGetGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);
-    ierr = VecGetArray(gactivephaseset,&activeset); CHKERRQ(ierr);
-    for (cell = cstart; cell < cend; ++cell) {
-        PetscInt ghost;
-        ierr = DMLabelGetValue(ghostlabel, cell, &ghost);
-        if (ghost <= 0) {
-            PetscInt phase;
-            F2I *galist=NULL;
-            ierr = DMLabelGetValue(plabel, cell, &phase);
-            ierr = DMPlexPointGlobalRef(user->da_phaseID, cell, activeset, &galist);
-            galist->i[0] = 1;
-            galist->i[1] = phase;
-        }    
+    ierr = VecGetArray(solution, &fdof); CHKERRQ(ierr);
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
+
+        /* set cell fields */
+        ierr = DMLabelGetValue(plabel, cell, &phase);
+        ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
+        gslist = (F2I *) &offset[AS_OFFSET];
+        gslist->i[0] = 1; gslist->i[1] = phase;
     }        
-    ierr = VecRestoreArray(gactivephaseset, &activeset);
-    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephaseset); CHKERRQ(ierr);
+    ierr = VecRestoreArray(solution, &fdof);
+    ierr = DMGetLocalVector(user->da_solution,&solutionl); CHKERRQ(ierr);  
+    ierr = DMGlobalToLocalBegin(user->da_solution,solution,INSERT_VALUES,solutionl); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->da_solution,solution,INSERT_VALUES,solutionl); CHKERRQ(ierr);
 
     /* Determine superset with neighbouring active phase sets */
-    ierr = VecGetArray(gactivephaseset,&superset); CHKERRQ(ierr);
-    ierr = VecGetArray(user->activephaseset,&activeset); CHKERRQ(ierr);
-    for (face = fstart; face < fend; ++face) {
-        PetscInt ghost, nsupp, nchild;
-        ierr = DMLabelGetValue(ghostlabel, face, &ghost);
-        ierr = DMPlexGetSupportSize(user->da_phaseID, face, &nsupp);
-        ierr = DMPlexGetTreeChildren(user->da_phaseID, face, &nchild, NULL);
-        
-        /* Skip ghost, boundary or parent faces */
-        if (ghost < 0 && nsupp > 1 && nchild == 0) {
-            const PetscInt *scells;
-            F2I *alistL=NULL, *alistR=NULL;
-            
-            /* get neighbouring cells & active sets */
-            ierr = DMPlexGetSupport(user->da_phaseID, face, &scells);
-            ierr = DMPlexPointLocalRead(user->da_phaseID, scells[0], activeset, &alistL);
-            ierr = DMPlexPointLocalRead(user->da_phaseID, scells[1], activeset, &alistR);
-            
-            /* add union to neighbouring cells that are not ghost cells */
-            ierr = DMLabelGetValue(ghostlabel,scells[0],&ghost);
-            if (ghost <= 0) {
-                F2I *gslist=NULL;
-                uint16_t setunion[MAXIP], injectionA[MAXIP], injectionB[MAXIP];
-                ierr = DMPlexPointGlobalRef(user->da_phaseID, scells[0], superset, &gslist);
-                SetUnion(setunion,injectionA,injectionB,gslist->i,alistR->i);
-                memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
+    ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
+    ierr = VecGetArray(solutionl,&fdofl); CHKERRQ(ierr);
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
+
+        /* get cell state */
+        offset = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
+        gslist = (F2I *) &offset[AS_OFFSET];
+
+        /* add union of neighbouring cells */
+        ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
+        ierr = DMPlexGetCone    (user->da_solution,cell,&cone    );
+        for (face=0; face<conesize; face++) {
+            ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
+            ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
+            for (supp=0; supp<nsupp; supp++) {
+                if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
+                    offset = NULL;
+                    ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdofl, &offset); CHKERRQ(ierr);
+                    nalist = (F2I *) &offset[AS_OFFSET];
+                    SetUnion(setunion,injectionL,injectionR,gslist->i,nalist->i);
+                    memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
+                }
             }
-            ierr = DMLabelGetValue(ghostlabel,scells[1],&ghost);
-            if (ghost <= 0) {
-                F2I *gslist=NULL;
-                uint16_t setunion[MAXIP], injectionA[MAXIP], injectionB[MAXIP];
-                ierr = DMPlexPointGlobalRef(user->da_phaseID, scells[1], superset, &gslist);
-                SetUnion(setunion,injectionA,injectionB,gslist->i,alistL->i);
-                memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
-            }
-        }    
-    }
-    ierr = VecRestoreArray(gactivephaseset,&superset); CHKERRQ(ierr);
-    ierr = VecRestoreArray(user->activephaseset,&activeset); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalBegin(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
-    ierr = DMGlobalToLocalEnd(user->da_phaseID,gactivephaseset,INSERT_VALUES,user->activephasesuperset); CHKERRQ(ierr);
-    ierr = DMRestoreGlobalVector(user->da_phaseID,&gactivephaseset); CHKERRQ(ierr);  
+        }
+    }    
+    ierr = VecRestoreArray(solutionl,&fdofl); CHKERRQ(ierr);
+    ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(user->da_solution,&solutionl); CHKERRQ(ierr);  
 
     /* Set initial phase field values */
     ierr = VecGetArray(solution, &fdof);
-    ierr = VecGetArray(user->matstate,&mat); CHKERRQ(ierr);
-    ierr = VecGetArray(user->activephasesuperset,&superset); CHKERRQ(ierr);
-    for (cell = cstart; cell < cend; ++cell) {
-        PetscInt ghost;
-        ierr = DMLabelGetValue(ghostlabel, cell, &ghost);
-        if (ghost <= 0) {
-            /* get cell state */
-            FIELD *ucell = NULL;
-            STATE *mcell = NULL;
-            F2I *slist = NULL;
-            PetscInt phase;
-            ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &ucell);
-            ierr = DMPlexPointGlobalRef(user->da_matstate, cell, mat , &mcell);
-            ierr = DMPlexPointLocalRead(user->da_phaseID, cell, superset, &slist);
-            ierr = DMLabelGetValue(plabel, cell, &phase);
-        
-            /* set initial conditions */
-            for (PetscInt g=0; g<slist->i[0]; g++) {
-                MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[slist->i[g+1]]];
-                if (slist->i[g+1] == phase) {
-                    ucell->p[g] = 1.0;
-                } else {
-                    ucell->p[g] = 0.0;
-                }
-                memcpy(&mcell->c[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
+    ierr = VecGetArray(user->matstate, &mat);
+    for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+        cell = user->localcells[localcell];
+
+        /* get cell state */
+        offset = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
+        gslist = (F2I    *) &offset[AS_OFFSET];
+        pcell  = (PFIELD *) &offset[PF_OFFSET];
+        dcell  = (DFIELD *) &offset[DP_OFFSET];
+        mcell = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_matstate, cell, mat,  &mcell); CHKERRQ(ierr);
+        PetscInt phase;
+        ierr = DMLabelGetValue(plabel, cell, &phase);
+    
+        /* set initial conditions */
+        for (g=0; g<gslist->i[0]; g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[gslist->i[g+1]]];
+            if (gslist->i[g+1] == phase) {
+                pcell->p[g] = 1.0;
+            } else {
+                pcell->p[g] = 0.0;
             }
-            Chemicalpotential(ucell->m,mcell->c,ucell->p,slist->i,user);
-        }    
+            memcpy(&mcell->c[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
+        }
+        Chemicalpotential(dcell->d,mcell->c,pcell->p,gslist->i,user);
     }        
-    ierr = VecRestoreArray(user->activephasesuperset,&superset); CHKERRQ(ierr);
+    ierr = VecRestoreArray(user->matstate, &mat);
     ierr = VecRestoreArray(solution, &fdof);
-    ierr = VecRestoreArray(user->matstate,&mat); CHKERRQ(ierr);
     PetscFunctionReturn(0);
 }
 
