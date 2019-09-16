@@ -1,11 +1,26 @@
 <header>
   grid a 64 b 64 c 64
+  size a 64 b 64 c 64
   n_phases 3
   n_materials 2
   n_components 4
   componentnames al cu mg zn
   interpolation_type cubic
 </header>
+<solution_parameters>
+  finaltime 72000.0 
+  timestep0 1e-9
+  timestepmin 1e-9
+  timestepmax 1e+2 
+  interfacewidth 1 
+  initrefine 5
+  maxnrefine 7
+  amrinterval 50 
+  reltol 1e-4 
+  abstol 1e-4 
+  outputfreq 100
+  outfile GBP
+</solution_parameters>
 <material 1>
   chemicalenergy_type calphaddis
   RT 3267.402
@@ -248,18 +263,3 @@
   4 of 3
   116510 of 2
 </voxel_phase_mapping>
-<solution_parameters>
-  finaltime 72000.0 
-  timestep0 1e-9
-  timestepmin 1e-9
-  timestepmax 1e+2 
-  interfacewidth 5 
-  feorder_phase 1 
-  feorder_chem 1
-  maxnrefine 0
-  amrinterval 1000000 
-  reltol 1e-4 
-  abstol 1e-4 
-  outputfreq 1000
-  outfile GBP
-</solution_parameters>
