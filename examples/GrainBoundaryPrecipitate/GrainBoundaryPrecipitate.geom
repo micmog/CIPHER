@@ -20,6 +20,7 @@
   abstol 1e-4 
   outputfreq 100
   outfile GBP
+  petscoptions -ts_adapt_monitor
 </solution_parameters>
 <material 1>
   chemicalenergy_type calphaddis

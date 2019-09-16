@@ -19,6 +19,7 @@
   abstol 1e-4 
   outputfreq 100
   outfile 50Grains
+  petscoptions -ts_adapt_monitor
 </solution_parameters>
 <material 1>
   chemicalenergy_type none
