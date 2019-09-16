@@ -583,7 +583,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     user->params.abstol = 1e-6;
     user->params.outputfreq = 1;
     strncpy(user->params.outfile, "output", 128);
-    sprintf(user->params.petscoptions, "-dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf",user->size[0],user->size[1],user->size[2]);
+    sprintf(user->params.petscoptions, "-dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf ",user->size[0],user->size[1],user->size[2]);
     /* initialise solution parameters */
     while (tok !=NULL) {
         // process the line
