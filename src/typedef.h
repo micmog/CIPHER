@@ -23,22 +23,14 @@
 /* Constants declarations */
 
 #define LARGE 1.0e+6
-#define TOL   1.0e-8
+#define TOL   1.0e-6
 /* max active phases... depends on neighbourhood */
-#define MAXFP 4 
-#define MAXIP 4*MAXFP
 #define MAXCP 5
 #define MAXAP 15
 
 /* field offsets */
-#define AS_OFFSET 0 
-#define AS_SIZE   MAXFP 
-#define PF_OFFSET AS_OFFSET+AS_SIZE
-#define PF_SIZE   MAXAP 
-#define DP_OFFSET PF_OFFSET+PF_SIZE 
-#define DP_SIZE   MAXCP 
-#define CP_OFFSET DP_OFFSET+DP_SIZE 
-#define CP_SIZE   MAXAP*MAXCP 
+PetscInt AS_SIZE, PF_SIZE, DP_SIZE, CP_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
 
 /* Types declarations */
 
@@ -56,33 +48,6 @@ typedef enum {
    CUBIC_INTERPOLATION,
    NONE_INTERPOLATION
 } interpolation_t;
-
-/* phase field dofs */
-typedef struct PFIELD {
-   PetscReal   p[PF_SIZE];
-} PFIELD;
-
-/* field dofs */
-typedef struct DFIELD {
-   PetscReal   d[DP_SIZE];
-} DFIELD;
-
-/* composition dofs */
-typedef struct STATE {
-   PetscReal   c[MAXAP*MAXCP];
-} STATE;
-
-/* output dofs */
-typedef struct O_DOFS {
-   PetscReal   p;
-   PetscReal   c[MAXCP];
-} O_DOFS;
-
-/* Float to int conversion */
-typedef union F2I {
-   PetscReal   f[MAXFP];
-   uint16_t    i[MAXIP];
-} F2I;
 
 /* RK coefficients */
 typedef struct RK {
@@ -134,7 +99,7 @@ typedef struct SOLUTIONPARAMS {
     /* phase field parameters */
     PetscReal interfacewidth;
     /* AMR parameters */
-    PetscInt  initrefine, maxnrefine, amrinterval;
+    PetscInt  initrefine, initcoarsen, maxnrefine, amrinterval;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */
@@ -147,10 +112,11 @@ typedef struct SOLUTIONPARAMS {
 /* solution parameters */
 typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
-    PetscInt np, nmat, nf, nc;
+    PetscInt npf, ndp, ncp;
+    PetscInt nf, nmat;
     char **componentname;
     /* grid resolution */
-    PetscInt resolution[3];
+    PetscInt dim, resolution[3];
     PetscReal size[3];
     /* time step */
     PetscInt step;

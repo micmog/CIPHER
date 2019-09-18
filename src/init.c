@@ -56,44 +56,46 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     substr = Extract(buffer, "<header>", "</header>");
     tok = strtok_r(substr, "\n", &savetok);
     /* initialise header information */
+    user->dim = 3;
     user->resolution[0] = 1;
     user->resolution[1] = 1;
     user->resolution[2] = 1;
     user->size[0] = 1.0;
     user->size[1] = 1.0;
     user->size[2] = 1.0;
-    user->nc = 1;
-    user->np = 1;
+    user->ncp = 1;
+    user->npf = 1;
     user->nmat = 1;
     user->interpolation = LINEAR_INTERPOLATION;
     while (tok !=NULL) {
         // process the line
+        if (strstr(tok, "dimension") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->dim);
+        }    
         if (strstr(tok, "grid") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->resolution[0] = atoi(strtok_r(NULL, " ", &savemtok));
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->resolution[1] = atoi(strtok_r(NULL, " ", &savemtok));
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->resolution[2] = atoi(strtok_r(NULL, " ", &savemtok));
+            for (PetscInt dim=0; dim<user->dim; ++dim) {
+                mtok = strtok_r(NULL, " ", &savemtok);
+                user->resolution[dim] = atoi(strtok_r(NULL, " ", &savemtok));
+            }
             user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
         }
         if (strstr(tok, "size") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->size[0] = atof(strtok_r(NULL, " ", &savemtok));
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->size[1] = atof(strtok_r(NULL, " ", &savemtok));
-            mtok = strtok_r(NULL, " ", &savemtok);
-            user->size[2] = atof(strtok_r(NULL, " ", &savemtok));
+            for (PetscInt dim=0; dim<user->dim; ++dim) {
+                mtok = strtok_r(NULL, " ", &savemtok);
+                user->size[dim] = atof(strtok_r(NULL, " ", &savemtok));
+            }
         }
         if (strstr(tok, "n_phases") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->np);
-            user->phasematerialmapping = malloc(user->np*sizeof(uint16_t));
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->npf);
+            user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
         }    
         if (strstr(tok, "n_materials") != NULL) {
             char *mtok, *savemtok;
@@ -104,17 +106,18 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         if (strstr(tok, "n_components") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->nc);
-            user->componentname = (char **) malloc(user->nc*sizeof(char *));
-            for (PetscInt c=0; c<user->nc; c++) {
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->ncp);
+            user->componentname = (char **) malloc(user->ncp*sizeof(char *));
+            for (PetscInt c=0; c<user->ncp; c++) {
                 user->componentname[c] = (char *) malloc(2*sizeof(char));
                 sprintf(user->componentname[c],"%d",c+1); 
             }
+            user->ndp = user->ncp-1;
         }    
         if (strstr(tok, "componentnames") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            for (PetscInt c=0; c<user->nc; c++) {
+            for (PetscInt c=0; c<user->ncp; c++) {
                 sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->componentname[c]);
             }
         }
@@ -137,32 +140,45 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         tok = strtok_r(NULL, "\n", &savetok);
     }
     /* header information sanity checks */
-    assert(user->resolution[0] > 0  );
-    assert(user->resolution[1] > 0  );
-    assert(user->resolution[2] > 0  );
-    assert(user->nc         >  0    );
-    assert(user->nc         <= MAXCP);
-    assert(user->np         >  0    );
-    assert(user->nmat       >  0    );
+    assert(user->resolution[0] >  0    );
+    assert(user->resolution[1] >  0    );
+    assert(user->resolution[2] >  0    );
+    assert(user->size[0]       >  0    );
+    assert(user->size[1]       >  0    );
+    assert(user->size[2]       >  0    );
+    assert(user->ncp           >  0    );
+    assert(user->ncp           <= MAXCP);
+    assert(user->npf           >  0    );
+    assert(user->nmat          >  0    );
     assert(user->interpolation != NONE_INTERPOLATION);
     free(substr);
     
+    /* field offsets */
+    AS_OFFSET = 0;
+    AS_SIZE   = 1+(MAXAP < user->npf ? MAXAP : user->npf);
+    PF_OFFSET = AS_OFFSET+AS_SIZE;
+    PF_SIZE   = MAXAP < user->npf ? MAXAP : user->npf;
+    DP_OFFSET = PF_OFFSET+PF_SIZE;
+    DP_SIZE   = user->ncp-1;
+    CP_OFFSET = 0;
+    CP_SIZE   = MAXAP*user->ncp;
+
     /* initialise material information */
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
         currentmaterial->model = NONE_CHEMENERGY;
-        currentmaterial->c0 = malloc(user->nc*sizeof(PetscReal));
-        memset(currentmaterial->c0,0,user->nc*sizeof(PetscReal));
+        currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+        memset(currentmaterial->c0,0,user->ncp*sizeof(PetscReal));
         QUAD *currentquad = &currentmaterial->energy.quad;
-        currentquad->ceq = malloc(user->nc*sizeof(PetscReal));
-        currentquad->unary = malloc(user->nc*sizeof(PetscReal));
-        currentquad->binary = malloc(user->nc*sizeof(PetscReal));
-        currentquad->mobilityc = malloc(user->nc*sizeof(PetscReal));
+        currentquad->ceq = malloc(user->ncp*sizeof(PetscReal));
+        currentquad->unary = malloc(user->ncp*sizeof(PetscReal));
+        currentquad->binary = malloc(user->ncp*sizeof(PetscReal));
+        currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
         CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-        currentcalphad->unary = malloc(user->nc*sizeof(PetscReal));
-        currentcalphad->binary = (RK *) malloc(user->nc*(user->nc-1)*sizeof(struct RK)/2);
-        currentcalphad->ternary = (RK *) malloc(user->nc*(user->nc-1)*(user->nc-2)*sizeof(struct RK)/6);
-        currentcalphad->mobilityc = malloc(user->nc*sizeof(PetscReal));
+        currentcalphad->unary = malloc(user->ncp*sizeof(PetscReal));
+        currentcalphad->binary = (RK *) malloc(user->ncp*(user->ndp)*sizeof(struct RK)/2);
+        currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ndp)*(user->ncp-2)*sizeof(struct RK)/6);
+        currentcalphad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -183,22 +199,22 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 if (strstr(mtok, "quadratic") != NULL) {
                     currentmaterial->model = QUADRATIC_CHEMENERGY;
                     currentquad->ref = 0.0;
-                    memset(currentquad->ceq,0,user->nc*sizeof(PetscReal));
-                    memset(currentquad->unary,0,user->nc*sizeof(PetscReal));
-                    memset(currentquad->binary,0,user->nc*sizeof(PetscReal));
-                    memset(currentquad->mobilityc,0,user->nc*sizeof(PetscReal));
+                    memset(currentquad->ceq,0,user->ncp*sizeof(PetscReal));
+                    memset(currentquad->unary,0,user->ncp*sizeof(PetscReal));
+                    memset(currentquad->binary,0,user->ncp*sizeof(PetscReal));
+                    memset(currentquad->mobilityc,0,user->ncp*sizeof(PetscReal));
                 } else if (strstr(mtok, "calphaddis") != NULL) {
                     currentmaterial->model = CALPHAD_CHEMENERGY;
                     currentcalphad->ref = 0.0;
                     currentcalphad->RT = 2436.002; // default is room temperature
-                    memset(currentcalphad->unary,0,user->nc*sizeof(PetscReal));
-                    memset(currentcalphad->mobilityc,0,user->nc*sizeof(PetscReal));
+                    memset(currentcalphad->unary,0,user->ncp*sizeof(PetscReal));
+                    memset(currentcalphad->mobilityc,0,user->ncp*sizeof(PetscReal));
                     RK *currentbinary = &currentcalphad->binary[0];
                     RK *currentternary = &currentcalphad->ternary[0];
-                    for (PetscInt ck=0; ck<user->nc; ck++) {
-                        for (PetscInt cj=ck+1; cj<user->nc; cj++,currentbinary++) {
+                    for (PetscInt ck=0; ck<user->ncp; ck++) {
+                        for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
                             currentbinary->n = 0;
-                            for (PetscInt ci=cj+1; ci<user->nc; ci++,currentternary++) { 
+                            for (PetscInt ci=cj+1; ci<user->ncp; ci++,currentternary++) { 
                                 currentternary->n = 0;
                             }    
                         }
@@ -237,7 +253,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* initial composition */
             if (strstr(tok, "c0") != NULL) {
@@ -252,7 +268,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* equillibrium composition */
             if (strstr(tok, "quad_ceq") != NULL) {
@@ -268,7 +284,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "quad_refenthalpy") != NULL) {
@@ -295,7 +311,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "quad_binaryenthalpy") != NULL) {
@@ -310,7 +326,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "calphad_refenthalpy") != NULL) {
@@ -337,7 +353,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             /* F_chem parameters for each material */
             if (strstr(tok, "calphad_nbinaryenthalpy") != NULL) {
@@ -345,10 +361,10 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r( tok, " ", &savemtok);
                 PetscInt cj = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt ci = atoi(strtok_r(NULL, " ", &savemtok))-1;
-                assert(cj < ci && ci < user->nc);
+                assert(cj < ci && ci < user->ncp);
                 PetscInt offset = 0;
-                for (PetscInt cjj=0;cjj<user->nc;cjj++) {
-                    for (PetscInt cii=cjj+1;cii<user->nc;cii++,offset++) {
+                for (PetscInt cjj=0;cjj<user->ncp;cjj++) {
+                    for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
                         if (cjj == cj && cii == ci) break;
                     }
                 }
@@ -365,10 +381,10 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r( tok, " ", &savemtok);
                 PetscInt cj = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt ci = atoi(strtok_r(NULL, " ", &savemtok))-1;
-                assert(cj < ci && ci < user->nc);
+                assert(cj < ci && ci < user->ncp);
                 PetscInt offset = 0;
-                for (PetscInt cjj=0;cjj<user->nc;cjj++) {
-                    for (PetscInt cii=cjj+1;cii<user->nc;cii++,offset++) {
+                for (PetscInt cjj=0;cjj<user->ncp;cjj++) {
+                    for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
                         if (cjj == cj && cii == ci) break;
                     }
                 }
@@ -391,11 +407,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 PetscInt ck = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt cj = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt ci = atoi(strtok_r(NULL, " ", &savemtok))-1;
-                assert(ck < cj && cj < ci && ci < user->nc);
+                assert(ck < cj && cj < ci && ci < user->ncp);
                 PetscInt offset = 0;
-                for (PetscInt ckk=0;ckk<user->nc;ckk++) {
-                    for (PetscInt cjj=ckk+1;cjj<user->nc;cjj++) {
-                        for (PetscInt cii=cjj+1;cii<user->nc;cii++,offset++) {
+                for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
+                    for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
+                        for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
                             if (ckk == ck && cjj == cj && cii == ci) break;
                         }
                     }
@@ -416,11 +432,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 PetscInt ck = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt cj = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt ci = atoi(strtok_r(NULL, " ", &savemtok))-1;
-                assert(ck < cj && cj < ci && ci < user->nc);
+                assert(ck < cj && cj < ci && ci < user->ncp);
                 PetscInt offset = 0;
-                for (PetscInt ckk=0;ckk<user->nc;ckk++) {
-                    for (PetscInt cjj=ckk+1;cjj<user->nc;cjj++) {
-                        for (PetscInt cii=cjj+1;cii<user->nc;cii++,offset++) {
+                for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
+                    for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
+                        for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
                             if (ckk == ck && cjj == cj && cii == ci) break;
                         }
                     }
@@ -447,11 +463,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 PetscInt ck = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt cj = atoi(strtok_r(NULL, " ", &savemtok))-1;
                 PetscInt ci = atoi(strtok_r(NULL, " ", &savemtok))-1;
-                assert(ck < cj && cj < ci && ci < user->nc);
+                assert(ck < cj && cj < ci && ci < user->ncp);
                 PetscInt offset = 0;
-                for (PetscInt ckk=0;ckk<user->nc;ckk++) {
-                    for (PetscInt cjj=ckk+1;cjj<user->nc;cjj++) {
-                        for (PetscInt cii=cjj+1;cii<user->nc;cii++,offset++) {
+                for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
+                    for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
+                        for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
                             if (ckk == ck && cjj == cj && cii == ci) break;
                         }
                     }
@@ -473,23 +489,23 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         }
         /* material information sanity checks */
         assert(currentmaterial->molarvolume > 0.0);
-        for (PetscInt c=0;c<user->nc;c++) {
+        for (PetscInt c=0;c<user->ncp;c++) {
             assert(currentmaterial->c0[c] > 0.0);
         }
         if        (currentmaterial->model == QUADRATIC_CHEMENERGY) {
             QUAD *currentquad = &currentmaterial->energy.quad;
-            for (PetscInt c=0;c<user->nc;c++) {
+            for (PetscInt c=0;c<user->ncp;c++) {
                 assert(currentquad->ceq[c] > 0.0);
                 assert(currentquad->mobilityc[c] > 0.0);
             }
         } else if (currentmaterial->model ==   CALPHAD_CHEMENERGY) {
             CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
             assert(currentcalphad->RT > 0.0);
-            for (PetscInt c=0;c<user->nc;c++) {
+            for (PetscInt c=0;c<user->ncp;c++) {
                 assert(currentcalphad->mobilityc[c] > 0.0);
             }
         } else if (currentmaterial->model ==      NONE_CHEMENERGY) {
-            assert(user->nc == 1);
+            assert(user->ncp == 1);
         }
         free(substr);
     }
@@ -497,7 +513,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     substr = Extract(buffer, "<phase_material_mapping>", "</phase_material_mapping>");
     tok = strtok_r(substr, "\n", &savetok);
     PetscInt ctrm=0;
-    while (tok != NULL && ctrm < user->np) {
+    while (tok != NULL && ctrm < user->npf) {
         // process the line
         if (strstr(tok, "of") != NULL) {
             char stra[128], strb[128];
@@ -530,7 +546,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
-    assert(ctrm == user->np && tok == NULL);
+    assert(ctrm == user->npf && tok == NULL);
     free(substr);    
 
     substr = Extract(buffer, "<voxel_phase_mapping>", "</voxel_phase_mapping>");
@@ -578,12 +594,17 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     user->params.step = 0;    
     user->params.interfacewidth = 5;
     user->params.initrefine = 1;
+    user->params.initcoarsen = 0;
     user->params.maxnrefine = 1;
     user->params.reltol = 1e-6;
     user->params.abstol = 1e-6;
     user->params.outputfreq = 1;
     strncpy(user->params.outfile, "output", 128);
-    sprintf(user->params.petscoptions, "-dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf ",user->size[0],user->size[1],user->size[2]);
+    if (user->dim == 2) {
+        sprintf(user->params.petscoptions, " -dm_p4est_brick_bounds 0.0,%lf,0.0,%lf --dm_p4est_brick_size 2,2 ",user->size[0],user->size[1]);
+    } else {
+        sprintf(user->params.petscoptions, " -dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf --dm_p4est_brick_size 2,2,2 ",user->size[0],user->size[1],user->size[2]);
+    }
     /* initialise solution parameters */
     while (tok !=NULL) {
         // process the line
@@ -616,6 +637,11 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.initrefine);
+        }    
+        if (strstr(tok, "initcoarsen") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.initcoarsen);
         }    
         if (strstr(tok, "maxnrefine") != NULL) {
             char *mtok, *savemtok;
@@ -709,10 +735,10 @@ PetscErrorCode SetUpInterface(AppCtx *user)
             for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
                 currentinterface->energy = 0.0;
                 currentinterface->mobility = 0.0;
-                currentinterface->potential = malloc(user->nc*sizeof(PetscReal));
-                currentinterface->mobilityc = malloc(user->nc*sizeof(PetscReal));
-                memset(currentinterface->potential,0,user->nc*sizeof(PetscReal));
-                memset(currentinterface->mobilityc,0,user->nc*sizeof(PetscReal));
+                currentinterface->potential = malloc(user->ncp*sizeof(PetscReal));
+                currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
+                memset(currentinterface->potential,0,user->ncp*sizeof(PetscReal));
+                memset(currentinterface->mobilityc,0,user->ncp*sizeof(PetscReal));
             }    
                 
         }
@@ -752,7 +778,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             if (strstr(tok, "mobilityc") != NULL) {
                 char *mtok, *savemtok;
@@ -766,19 +792,19 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                     c++;
                 }
-                assert(c == user->nc);
+                assert(c == user->ncp);
             }
             //advance the token
             tok = strtok_r(NULL, "\n", &savetok);
         }
         free(substr);
     }
-    user->interfacelist = malloc(user->np*user->np*sizeof(uint16_t));
+    user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));
     
     substr = Extract(buffer, "<interface_mapping>", "</interface_mapping>");
     tok = strtok_r(substr, "\n", &savetok);
     PetscInt ctr=0;
-    while (tok != NULL && ctr < user->np*user->np) {
+    while (tok != NULL && ctr < user->npf*user->npf) {
         // process the line
         if (strstr(tok, "of") != NULL) {
             char stra[128], strb[128];
@@ -786,7 +812,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
             sscanf(tok, "%s of %s", stra, strb);
             sof = atoi(stra); interface = atoi(strb);
             for (PetscInt j=ctr;j<ctr+sof;j++) {
-                PetscInt row = j/user->np, col = j%user->np;
+                PetscInt row = j/user->npf, col = j%user->npf;
                 if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
             }
             ctr+=sof;
@@ -797,13 +823,13 @@ PetscErrorCode SetUpInterface(AppCtx *user)
             interfacefrom = atoi(stra); interfaceto = atoi(strb);
             if (interfacefrom < interfaceto) {
                 for (interface=interfacefrom;interface<=interfaceto;interface++) {
-                    PetscInt row = ctr/user->np, col = ctr%user->np;
+                    PetscInt row = ctr/user->npf, col = ctr%user->npf;
                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
                     ctr++;
                 }    
             } else {
                 for (interface=interfacefrom;interface>=interfaceto;interface--) {
-                    PetscInt row = ctr/user->np, col = ctr%user->np;
+                    PetscInt row = ctr/user->npf, col = ctr%user->npf;
                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
                     ctr++;
                 }    
@@ -811,14 +837,14 @@ PetscErrorCode SetUpInterface(AppCtx *user)
         }
         else {
             PetscInt interface = atoi(tok);
-            PetscInt row = ctr/user->np, col = ctr%user->np;
+            PetscInt row = ctr/user->npf, col = ctr%user->npf;
             if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
             ctr++;
         }
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
     }
-    assert(ctr == user->np*user->np);
+    assert(ctr == user->npf*user->npf);
     free(substr);
     free(buffer);    
     PetscFunctionReturn(0);
@@ -831,16 +857,16 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 {
     PetscErrorCode    ierr;
     Vec               solutionl;
-    PetscScalar       *fdof, *fdofl, *offset, *mat;
+    PetscScalar       *fdof, *fdofl, *offset, *offsetg, *mat;
     PetscInt          localcell, cell, face, phase, g;
     PetscInt          conesize, supp, nsupp;
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
-    F2I               *gslist, *nalist;
-    PFIELD            *pcell;
-    DFIELD            *dcell;
-    STATE             *mcell;
-    uint16_t          setunion[MAXIP], injectionL[MAXIP], injectionR[MAXIP];
+    uint16_t          gslist[AS_SIZE], nalist[AS_SIZE];
+    PetscScalar       *pcell;
+    PetscScalar       *dcell;
+    PetscScalar       *mcell;
+    uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
 
     PetscFunctionBeginUser;  
@@ -853,9 +879,9 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 
         /* set cell fields */
         ierr = DMLabelGetValue(plabel, cell, &phase);
+        offset = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
-        gslist = (F2I *) &offset[AS_OFFSET];
-        gslist->i[0] = 1; gslist->i[1] = phase;
+        offset[AS_OFFSET+0] = 1.0; offset[AS_OFFSET+1] = (PetscScalar) phase;
     }        
     ierr = VecRestoreArray(solution, &fdof);
     ierr = DMGetLocalVector(user->da_solution,&solutionl); CHKERRQ(ierr);  
@@ -869,9 +895,9 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         cell = user->localcells[localcell];
 
         /* get cell state */
-        offset = NULL;
-        ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
-        gslist = (F2I *) &offset[AS_OFFSET];
+        offsetg = NULL;
+        ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offsetg); CHKERRQ(ierr);
+        F2IFUNC(gslist,&offsetg[AS_OFFSET]);
 
         /* add union of neighbouring cells */
         ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
@@ -883,12 +909,13 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
                 if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
                     offset = NULL;
                     ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdofl, &offset); CHKERRQ(ierr);
-                    nalist = (F2I *) &offset[AS_OFFSET];
-                    SetUnion(setunion,injectionL,injectionR,gslist->i,nalist->i);
-                    memcpy(gslist->i,setunion,MAXIP*sizeof(uint16_t));
+                    F2IFUNC(nalist,&offset[AS_OFFSET]);
+                    SetUnion(setunion,injectionL,injectionR,gslist,nalist);
+                    memcpy(gslist,setunion,(setunion[0]+1)*sizeof(uint16_t));
                 }
             }
         }
+        I2FFUNC(&offsetg[AS_OFFSET],gslist);
     }    
     ierr = VecRestoreArray(solutionl,&fdofl); CHKERRQ(ierr);
     ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
@@ -903,25 +930,25 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         /* get cell state */
         offset = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
-        gslist = (F2I    *) &offset[AS_OFFSET];
-        pcell  = (PFIELD *) &offset[PF_OFFSET];
-        dcell  = (DFIELD *) &offset[DP_OFFSET];
+        F2IFUNC(gslist,&offset[AS_OFFSET]);
+        pcell  = &offset[PF_OFFSET];
+        dcell  = &offset[DP_OFFSET];
         mcell = NULL;
         ierr = DMPlexPointGlobalRef(user->da_matstate, cell, mat,  &mcell); CHKERRQ(ierr);
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
         /* set initial conditions */
-        for (g=0; g<gslist->i[0]; g++) {
-            currentmaterial = &user->material[user->phasematerialmapping[gslist->i[g+1]]];
-            if (gslist->i[g+1] == phase) {
-                pcell->p[g] = 1.0;
+        for (g=0; g<gslist[0]; g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
+            if (gslist[g+1] == phase) {
+                pcell[g] = 1.0;
             } else {
-                pcell->p[g] = 0.0;
+                pcell[g] = 0.0;
             }
-            memcpy(&mcell->c[g*user->nc],currentmaterial->c0,user->nc*sizeof(PetscReal)); 
+            memcpy(&mcell[g*user->ncp],currentmaterial->c0,user->ncp*sizeof(PetscReal)); 
         }
-        Chemicalpotential(dcell->d,mcell->c,pcell->p,gslist->i,user);
+        Chemicalpotential(dcell,mcell,pcell,gslist,user);
     }        
     ierr = VecRestoreArray(user->matstate, &mat);
     ierr = VecRestoreArray(solution, &fdof);

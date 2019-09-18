@@ -20,6 +20,8 @@
 #endif
 
 /* Function prototypes */
+EXTERN void F2IFUNC(uint16_t *,PetscScalar *);
+EXTERN void I2FFUNC(PetscScalar *,uint16_t *);
 EXTERN char *Extract(const char *const, const char *const, const char *const);
 EXTERN PetscReal FastPow(PetscReal, unsigned);
 EXTERN PetscReal FastSqrt(PetscReal);

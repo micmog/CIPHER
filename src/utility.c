@@ -22,6 +22,22 @@ static void (*Interpolant          )(PetscReal *, const PetscReal *, const uint1
 static void (*InterpolantDerivative)(PetscReal *, const PetscReal *, const uint16_t);
 
 /*
+ Set conversion routines
+ */
+void F2IFUNC(uint16_t *IARRAY,PetscScalar *FARRAY) {
+    IARRAY[0] = (uint16_t) round(FARRAY[0]);
+    for (int MACROIDX = 1; MACROIDX <= IARRAY[0]; ++MACROIDX) {
+        IARRAY[MACROIDX] = (uint16_t) round(FARRAY[MACROIDX]);
+    }
+}
+void I2FFUNC(PetscScalar *FARRAY,uint16_t *IARRAY) {
+    FARRAY[0] = (PetscScalar) IARRAY[0];
+    for (int MACROIDX = 1; MACROIDX <= IARRAY[0]; ++MACROIDX) {
+        FARRAY[MACROIDX] = (PetscScalar) IARRAY[MACROIDX];
+    }
+}
+
+/*
  Extract string between tags
  */
 char *Extract(const char *const string, const char *const left, const char *const right)
@@ -517,13 +533,13 @@ void SimplexProjection(PetscReal *out, PetscReal *in, int size)
  */
 void utility_init(const AppCtx *user)
 {
-    if        (user->nc-1 == 1) {
+    if        (user->ndp == 1) {
         Invertmatrixf = &Invert1x1;
-    } else if (user->nc-1 == 2) {
+    } else if (user->ndp == 2) {
         Invertmatrixf = &Invert2x2;
-    } else if (user->nc-1 == 3) {
+    } else if (user->ndp == 3) {
         Invertmatrixf = &Invert3x3;
-    } else if (user->nc-1 == 4) {
+    } else if (user->ndp == 4) {
         Invertmatrixf = &Invert4x4;
     } else {
         Invertmatrixf = &Invertnxn;

@@ -95,14 +95,14 @@ static void Chemicalpotential_none(PetscReal *chempot, const PetscReal *composit
  */
 void Chemicalpotential(PetscReal *chempot, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(chempot,0,(user->nc-1)*sizeof(PetscReal));
+    memset(chempot,0,(user->ndp)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
-        PetscReal chempotk[user->nc];
-        memset(chempotk,0,user->nc*sizeof(PetscReal));
+        PetscReal chempotk[user->ncp];
+        memset(chempotk,0,user->ncp*sizeof(PetscReal));
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemicalpotential(chempotk,&composition[g*user->nc],currentmaterial->energy,user->nc);
-        for (PetscInt ck=0; ck<user->nc-1; ck++) {  
-            chempot[ck] += phasefrac[g]*(chempotk[ck] - chempotk[user->nc-1]);
+        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemicalpotential(chempotk,&composition[g*user->ncp],currentmaterial->energy,user->ncp);
+        for (PetscInt ck=0; ck<user->ndp; ck++) {  
+            chempot[ck] += phasefrac[g]*(chempotk[ck] - chempotk[user->ndp]);
         }                              
     }
 }
@@ -159,8 +159,8 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
 {
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemenergy(&chemenergy[g],&composition[g*user->nc],currentmaterial->energy,user->nc);
-        for (PetscInt c=0; c<user->nc-1; c++) chemenergy[g] -= chempot[c]*composition[g*user->nc+c];
+        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemenergy(&chemenergy[g],&composition[g*user->ncp],currentmaterial->energy,user->ncp);
+        for (PetscInt c=0; c<user->ndp; c++) chemenergy[g] -= chempot[c]*composition[g*user->ncp+c];
         chemenergy[g] /= currentmaterial->molarvolume;    
     }
 }
@@ -273,7 +273,7 @@ PetscErrorCode Composition(PetscReal *composition, const PetscReal *chempot, con
 {
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        if (Matfunc[user->phasematerialmapping[phaseID[g+1]]].Composition(&composition[g*user->nc],chempot,currentmaterial->energy,user->nc))
+        if (Matfunc[user->phasematerialmapping[phaseID[g+1]]].Composition(&composition[g*user->ncp],chempot,currentmaterial->energy,user->ncp))
             return 1;
     }
     return 0;
@@ -325,14 +325,14 @@ static void CompositionTangent_none(PetscReal *compositiontangent, const PetscRe
  */
 void CompositionTangent(PetscReal *compositiontangent, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(compositiontangent,0,(user->nc-1)*(user->nc-1)*sizeof(PetscReal));
+    memset(compositiontangent,0,(user->ndp)*(user->ndp)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        PetscReal compositiontangentg[(user->nc-1)*(user->nc-1)];
-        Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionTangent(compositiontangentg,&composition[g*user->nc],currentmaterial->energy,user->nc);
-        for (PetscInt cj=0; cj<user->nc-1; cj++) {
-            for (PetscInt ci=0; ci<user->nc-1; ci++) {
-                compositiontangent[cj*(user->nc-1) + ci] += phasefrac[g]*compositiontangentg[cj*(user->nc-1) + ci];
+        PetscReal compositiontangentg[(user->ndp)*(user->ndp)];
+        Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionTangent(compositiontangentg,&composition[g*user->ncp],currentmaterial->energy,user->ncp);
+        for (PetscInt cj=0; cj<user->ndp; cj++) {
+            for (PetscInt ci=0; ci<user->ndp; ci++) {
+                compositiontangent[cj*(user->ndp) + ci] += phasefrac[g]*compositiontangentg[cj*(user->ndp) + ci];
             }
         }
     }
@@ -375,12 +375,12 @@ static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *comp
  */
 void CompositionMobility(PetscReal *mobilityc, const PetscReal *composition, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
 {
-    memset(mobilityc,0,(user->nc-1)*sizeof(PetscReal));
+    memset(mobilityc,0,(user->ndp)*sizeof(PetscReal));
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        PetscReal mobilitycg[user->nc-1];
-        Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionMobility(mobilitycg,&composition[g*user->nc],currentmaterial->energy,user->nc);
-        for (PetscInt c=0; c<user->nc-1; c++) {
+        PetscReal mobilitycg[user->ndp];
+        Matfunc[user->phasematerialmapping[phaseID[g+1]]].CompositionMobility(mobilitycg,&composition[g*user->ncp],currentmaterial->energy,user->ncp);
+        for (PetscInt c=0; c<user->ndp; c++) {
             mobilityc[c] += phasefrac[g]*mobilitycg[c];
         }
     }
