@@ -83,7 +83,7 @@ For questions, comments, bug-reports or contributions please email Dr. Pratheek 
 ## References
 
 [1] Grand-canonical phase-field implementation: https://arxiv.org/abs/1906.10503  
-[2] p4est: http://www.p4est.org
+[2] p4est: http://www.p4est.org    
 [3] PETSc: https://www.mcs.anl.gov/petsc/  
 
 ## License
