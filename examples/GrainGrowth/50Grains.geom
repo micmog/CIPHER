@@ -14,9 +14,10 @@
   timestepmin 1e-9
   timestepmax 1e+9 
   interfacewidth 4
-  initrefine 5
-  maxnrefine 5
-  initcoarsen 5
+  initblocksize 4 4 4
+  initrefine 4
+  maxnrefine 4
+  initcoarsen 4
   amrinterval 50 
   reltol 1e-4 
   abstol 1e-4 
