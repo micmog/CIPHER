@@ -1,4 +1,5 @@
 <header>
+  dimension 3
   grid a 64 b 64 c 64
   size a 64 b 64 c 64
   n_phases 3
@@ -15,10 +16,11 @@
   interfacewidth 1 
   initrefine 5
   maxnrefine 7
-  amrinterval 50 
+  initcoarsen 4
+  amrinterval 200 
   reltol 1e-4 
   abstol 1e-4 
-  outputfreq 100
+  outputfreq 5000
   outfile GBP
   petscoptions -ts_adapt_monitor
 </solution_parameters>

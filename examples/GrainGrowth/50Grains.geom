@@ -1,23 +1,26 @@
 <header>
+  dimension 3
   grid a 64 b 64 c 64
-  size a 1 b 1 c 1
+  size a 64 b 64 c 64
   n_phases 50
   n_materials 1
   n_components 1
   componentnames ti
+  interpolation_type cubic
 </header>
 <solution_parameters>
   finaltime 1000000.0 
   timestep0 1e-9
   timestepmin 1e-9
   timestepmax 1e+9 
-  interfacewidth 0.015625
+  interfacewidth 4
   initrefine 5
-  maxnrefine 7
+  maxnrefine 5
+  initcoarsen 5
   amrinterval 50 
   reltol 1e-4 
   abstol 1e-4 
-  outputfreq 100
+  outputfreq 500
   outfile 50Grains
   petscoptions -ts_adapt_monitor
 </solution_parameters>
