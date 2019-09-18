@@ -91,15 +91,18 @@ typedef struct INTERFACE {
     PetscReal *potential, *mobilityc;
 } INTERFACE;
 
-/* solution params */
+/* AMR solparams */
+typedef struct AMRPARAMS {
+    PetscInt  initrefine, initcoarsen, maxnrefine, amrinterval, *initblocksize;
+} AMRPARAMS;
+
+/* solution solparams */
 typedef struct SOLUTIONPARAMS {
     /* time parameters */
     PetscReal finaltime, timestep, mintimestep, maxtimestep;
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
-    /* AMR parameters */
-    PetscInt  initrefine, initcoarsen, maxnrefine, amrinterval;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */
@@ -116,8 +119,8 @@ typedef struct AppCtx {
     PetscInt nf, nmat;
     char **componentname;
     /* grid resolution */
-    PetscInt dim, resolution[3];
-    PetscReal size[3];
+    PetscInt dim, *resolution;
+    PetscReal *size;
     /* time step */
     PetscInt step;
     /* exception flag */
@@ -137,8 +140,10 @@ typedef struct AppCtx {
     /* interface material parameters */
     INTERFACE *interface;
     uint16_t *interfacelist;
-    /* solution params */
-    SOLUTIONPARAMS params;
+    /* solution solparams */
+    SOLUTIONPARAMS solparams;
+    /* AMR solparams */
+    AMRPARAMS amrparams;
 } AppCtx;
 
 #undef TYPEDEF_IMPORT

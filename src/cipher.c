@@ -187,8 +187,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
                     }
                 }
-                caplflux  [gk] *= 8.0*user->params.interfacewidth/PETSC_PI/PETSC_PI;
-                caplsource[gk] *= 8.0/user->params.interfacewidth;
+                caplflux  [gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
+                caplsource[gk] *= 8.0/user->solparams.interfacewidth;
             }   
 
             /* phase chemical driving force */ 
@@ -430,15 +430,15 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
     
     /* write output */
-    ierr = TSGetStepNumber(ts, &user->params.step);CHKERRQ(ierr);
-    if (user->params.step%user->params.outputfreq == 0) {
+    ierr = TSGetStepNumber(ts, &user->solparams.step);CHKERRQ(ierr);
+    if (user->solparams.step%user->solparams.outputfreq == 0) {
        Vec               Xout;
        PetscScalar       *xout, *phase, *composition;
        char              name[256];
        PetscViewer       viewer;
        
        ierr = DMGetGlobalVector(user->da_output,&Xout); CHKERRQ(ierr);
-       sprintf(name, "step %d",user->params.step);
+       sprintf(name, "step %d",user->solparams.step);
        ierr = PetscObjectSetName((PetscObject) Xout, name);CHKERRQ(ierr);
        ierr = VecZeroEntries(Xout);
        ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
@@ -477,7 +477,7 @@ PetscErrorCode PostStep(TS ts)
        ierr = VecRestoreArray(user->matstate,&mat); CHKERRQ(ierr);
        ierr = VecRestoreArray(Xout,&xout); CHKERRQ(ierr);
 
-       sprintf(name, "%s_%d.vtu",user->params.outfile,user->params.step);
+       sprintf(name, "%s_%d.vtu",user->solparams.outfile,user->solparams.step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output to %s\n",name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD, name, FILE_MODE_WRITE, &viewer);CHKERRQ(ierr);
        ierr = PetscViewerPushFormat(viewer, PETSC_VIEWER_VTK_VTU);CHKERRQ(ierr);
@@ -499,13 +499,13 @@ static PetscErrorCode InitializeTS(DM dm, AppCtx *user, TS *ts)
   ierr = TSSetDM(*ts, dm);CHKERRQ(ierr);
   ierr = TSSetApplicationContext(*ts, user);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(*ts, NULL, RHSFunction, user);CHKERRQ(ierr);
-  ierr = TSSetMaxTime(*ts,user->params.finaltime);CHKERRQ(ierr);
+  ierr = TSSetMaxTime(*ts,user->solparams.finaltime);CHKERRQ(ierr);
   ierr = TSSetExactFinalTime(*ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetPostStep(*ts,PostStep); CHKERRQ(ierr);
   ierr = TSGetAdapt(*ts,&adapt); CHKERRQ(ierr);
   ierr = TSAdaptSetType(adapt,TSADAPTDSP); CHKERRQ(ierr);
-  ierr = TSAdaptSetStepLimits(adapt,user->params.mintimestep,user->params.maxtimestep); CHKERRQ(ierr);
-  ierr = TSSetTolerances(*ts,user->params.abstol,NULL,user->params.reltol,NULL); CHKERRQ(ierr);
+  ierr = TSAdaptSetStepLimits(adapt,user->solparams.mintimestep,user->solparams.maxtimestep); CHKERRQ(ierr);
+  ierr = TSSetTolerances(*ts,user->solparams.abstol,NULL,user->solparams.reltol,NULL); CHKERRQ(ierr);
   ierr = TSSetFromOptions(*ts);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -543,14 +543,14 @@ int main(int argc,char **args)
    Create distributed mesh (DMPLEX) to manage 
    parallel vectors for the multi-phase field PDE
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = PetscOptionsInsertString(NULL,ctx.params.petscoptions);
+  ierr = PetscOptionsInsertString(NULL,ctx.solparams.petscoptions);
 
   /* Create and distribute mesh */
   ierr = DMCreate(PETSC_COMM_WORLD,&ctx.da_solforest);CHKERRQ(ierr);
   ierr = DMSetType(ctx.da_solforest,ctx.dim == 2 ? DMP4EST : DMP8EST);CHKERRQ(ierr);
   ierr = DMForestSetTopology(ctx.da_solforest,"brick");CHKERRQ(ierr);
-  ierr = DMForestSetInitialRefinement(ctx.da_solforest,ctx.params.initrefine);CHKERRQ(ierr);
-  ierr = DMForestSetMaximumRefinement(ctx.da_solforest,ctx.params.maxnrefine);CHKERRQ(ierr);
+  ierr = DMForestSetInitialRefinement(ctx.da_solforest,ctx.amrparams.initrefine);CHKERRQ(ierr);
+  ierr = DMForestSetMaximumRefinement(ctx.da_solforest,ctx.amrparams.maxnrefine);CHKERRQ(ierr);
   ierr = DMForestSetPartitionOverlap(ctx.da_solforest,1);CHKERRQ(ierr);
   ierr = DMSetFromOptions(ctx.da_solforest);CHKERRQ(ierr);
   ierr = DMSetUp(ctx.da_solforest);CHKERRQ(ierr);
@@ -629,7 +629,7 @@ int main(int argc,char **args)
     for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
         PetscReal cvolume;
         ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
-        ctx.cellgeom[cell] = ctx.dim == 2 ? sqrt(cvolume) : cbrt(cvolume);
+        ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
     }
   }
   
@@ -651,7 +651,10 @@ int main(int argc,char **args)
         for (dim=0; dim<ctx.dim; ++dim) {
             ioff[dim] = (PetscInt) (cg->centroid[dim]*ctx.resolution[dim]/ctx.size[dim]);
         }
-        off  = (ioff[2]*ctx.resolution[1] + ioff[1])*ctx.resolution[0] + ioff[0];
+        off = ioff[ctx.dim-1];
+        for (dim=ctx.dim-1; dim>0; --dim) {
+            off = (off*ctx.resolution[dim-1] + ioff[dim-1]);
+        }
         ierr = DMSetLabelValue(ctx.da_solution, "phase", cell, ctx.phasevoxelmapping[off]);CHKERRQ(ierr);
     }
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
@@ -669,7 +672,7 @@ int main(int argc,char **args)
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Set up and perform time integration 
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  for (PetscInt initcoarseniter = 0; initcoarseniter < ctx.params.initcoarsen; ++initcoarseniter){
+  for (PetscInt initcoarseniter = 0; initcoarseniter < ctx.amrparams.initcoarsen; ++initcoarseniter){
       PetscPrintf(PETSC_COMM_WORLD,"...initial refinement/coarsening (%d)...\n",initcoarseniter);
       /* Adapt mesh */
       PetscInt cell;
@@ -757,7 +760,7 @@ int main(int argc,char **args)
             for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
                 PetscReal cvolume;
                 ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
-                ctx.cellgeom[cell] = ctx.dim == 2 ? sqrt(cvolume) : cbrt(cvolume);
+                ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
             }
           }
           
@@ -779,15 +782,15 @@ int main(int argc,char **args)
 
   PetscReal currenttime = 0.0;
   PetscInt  nsteps = 0;
-  for (;currenttime < ctx.params.finaltime;) {
+  for (;currenttime < ctx.solparams.finaltime;) {
       ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
       ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
-      ierr = TSSetTimeStep(ts,ctx.params.timestep);CHKERRQ(ierr);
-      ierr = TSSetMaxSteps(ts,nsteps+ctx.params.amrinterval);CHKERRQ(ierr);
+      ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
+      ierr = TSSetMaxSteps(ts,nsteps+ctx.amrparams.amrinterval);CHKERRQ(ierr);
       ierr = TSSolve(ts,solution);CHKERRQ(ierr);
       ierr = TSGetSolveTime(ts,&currenttime);CHKERRQ(ierr);
       ierr = TSGetStepNumber(ts,&nsteps);CHKERRQ(ierr);
-      ierr = TSGetTimeStep(ts,&ctx.params.timestep);CHKERRQ(ierr);
+      ierr = TSGetTimeStep(ts,&ctx.solparams.timestep);CHKERRQ(ierr);
       {
           PetscPrintf(PETSC_COMM_WORLD,"...remeshing...\n");
           /* Adapt mesh */
@@ -876,7 +879,7 @@ int main(int argc,char **args)
                 for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
                     PetscReal cvolume;
                     ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
-                    ctx.cellgeom[cell] = ctx.dim == 2 ? sqrt(cvolume) : cbrt(cvolume);
+                    ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
                 }
               }
           

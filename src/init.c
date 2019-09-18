@@ -57,22 +57,28 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     tok = strtok_r(substr, "\n", &savetok);
     /* initialise header information */
     user->dim = 3;
-    user->resolution[0] = 1;
-    user->resolution[1] = 1;
-    user->resolution[2] = 1;
-    user->size[0] = 1.0;
-    user->size[1] = 1.0;
-    user->size[2] = 1.0;
     user->ncp = 1;
     user->npf = 1;
     user->nmat = 1;
     user->interpolation = LINEAR_INTERPOLATION;
+    user->resolution = malloc(user->dim*sizeof(PetscInt));
+    user->size = malloc(user->dim*sizeof(PetscReal));
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        user->resolution[dim] = 1;
+        user->size[dim] = 1.0;
+    }
     while (tok !=NULL) {
         // process the line
         if (strstr(tok, "dimension") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->dim);
+            free(user->resolution); user->resolution = malloc(user->dim*sizeof(PetscInt));
+            free(user->size); user->size = malloc(user->dim*sizeof(PetscReal));
+            for (PetscInt dim=0; dim<user->dim; ++dim) {
+                user->resolution[dim] = 1;
+                user->size[dim] = 1.0;
+            }
         }    
         if (strstr(tok, "grid") != NULL) {
             char *mtok, *savemtok;
@@ -140,16 +146,14 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         tok = strtok_r(NULL, "\n", &savetok);
     }
     /* header information sanity checks */
-    assert(user->resolution[0] >  0    );
-    assert(user->resolution[1] >  0    );
-    assert(user->resolution[2] >  0    );
-    assert(user->size[0]       >  0    );
-    assert(user->size[1]       >  0    );
-    assert(user->size[2]       >  0    );
-    assert(user->ncp           >  0    );
-    assert(user->ncp           <= MAXCP);
-    assert(user->npf           >  0    );
-    assert(user->nmat          >  0    );
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        assert(user->resolution[dim] > 0);
+        assert(user->size[dim] > 0);
+    }
+    assert(user->ncp  >  0    );
+    assert(user->ncp  <= MAXCP);
+    assert(user->npf  >  0    );
+    assert(user->nmat >  0    );
     assert(user->interpolation != NONE_INTERPOLATION);
     free(substr);
     
@@ -586,101 +590,126 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
 
     substr = Extract(buffer, "<solution_parameters>", "</solution_parameters>");
     tok = strtok_r(substr, "\n", &savetok);
-    /* default solution parameters */
-    user->params.finaltime = 1.0;
-    user->params.timestep = TOL;
-    user->params.mintimestep = TOL;
-    user->params.maxtimestep = LARGE;
-    user->params.step = 0;    
-    user->params.interfacewidth = 5;
-    user->params.initrefine = 1;
-    user->params.initcoarsen = 0;
-    user->params.maxnrefine = 1;
-    user->params.reltol = 1e-6;
-    user->params.abstol = 1e-6;
-    user->params.outputfreq = 1;
-    strncpy(user->params.outfile, "output", 128);
-    if (user->dim == 2) {
-        sprintf(user->params.petscoptions, " -dm_p4est_brick_bounds 0.0,%lf,0.0,%lf --dm_p4est_brick_size 2,2 ",user->size[0],user->size[1]);
-    } else {
-        sprintf(user->params.petscoptions, " -dm_p4est_brick_bounds 0.0,%lf,0.0,%lf,0.0,%lf --dm_p4est_brick_size 2,2,2 ",user->size[0],user->size[1],user->size[2]);
+    /* default AMR parameters */
+    user->amrparams.initrefine = 1;
+    user->amrparams.initcoarsen = 0;
+    user->amrparams.maxnrefine = 1;
+    user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        user->amrparams.initblocksize[dim] = 2;
     }
+    /* default solution parameters */
+    user->solparams.finaltime = 1.0;
+    user->solparams.timestep = TOL;
+    user->solparams.mintimestep = TOL;
+    user->solparams.maxtimestep = LARGE;
+    user->solparams.step = 0;    
+    user->solparams.interfacewidth = 5;
+    user->solparams.reltol = 1e-6;
+    user->solparams.abstol = 1e-6;
+    user->solparams.outputfreq = 1;
+    strncpy(user->solparams.outfile, "output", 128);
+    strncpy(user->solparams.petscoptions, "", PETSC_MAX_PATH_LEN);
     /* initialise solution parameters */
     while (tok !=NULL) {
         // process the line
         if (strstr(tok, "finaltime") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.finaltime);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.finaltime);
         }
         if (strstr(tok, "timestep0") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.timestep);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.timestep);
         }
         if (strstr(tok, "timestepmin") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.mintimestep);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.mintimestep);
         }
         if (strstr(tok, "timestepmax") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.maxtimestep);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.maxtimestep);
         }
         if (strstr(tok, "interfacewidth") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.interfacewidth);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.interfacewidth);
+        }    
+        if (strstr(tok, "initblocksize") != NULL) {
+            char *mtok, *savemtok;
+            mtok = strtok_r(tok, " ", &savemtok);
+            for (PetscInt dim=0; dim<user->dim; ++dim) {
+                sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initblocksize[dim]);
+            }
         }    
         if (strstr(tok, "initrefine") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.initrefine);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initrefine);
         }    
         if (strstr(tok, "initcoarsen") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.initcoarsen);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initcoarsen);
         }    
         if (strstr(tok, "maxnrefine") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.maxnrefine);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.maxnrefine);
         }    
         if (strstr(tok, "amrinterval") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.amrinterval);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.amrinterval);
         }    
         if (strstr(tok, "reltol") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.reltol);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.reltol);
         }
         if (strstr(tok, "abstol") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->params.abstol);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.abstol);
         }
         if (strstr(tok, "outputfreq") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->params.outputfreq);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->solparams.outputfreq);
         }    
         if (strstr(tok, "outfile") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->params.outfile);
+            sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->solparams.outfile);
         }    
         if (strstr(tok, "petscoptions") != NULL) {
             char *mtok, *savemtok, strval[PETSC_MAX_PATH_LEN];
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%s", strval);
-            strcat(user->params.petscoptions,strval);
+            strcat(user->solparams.petscoptions,strval);
         }    
         //advance the token
         tok = strtok_r(NULL, "\n", &savetok);
+    }
+    strcat(user->solparams.petscoptions," -dm_p4est_brick_bounds ");
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        char strval[128];
+        sprintf(strval,"0.0,%lf",user->size[dim]);
+        strcat(user->solparams.petscoptions,strval);
+        if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
+    }
+    strcat(user->solparams.petscoptions," -dm_p4est_brick_size ");
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        char strval[128];
+        sprintf(strval,"%d",user->amrparams.initblocksize[dim]);
+        strcat(user->solparams.petscoptions,strval);
+        if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
+    }
+    for (PetscInt dim=0; dim<user->dim; ++dim) {
+        assert(user->amrparams.initblocksize[dim]*FastPow(2,user->amrparams.initrefine) == user->resolution[dim]);
     }
     free(substr);    
     free(buffer);   
