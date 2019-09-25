@@ -543,7 +543,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     user->phasematerialmapping[ctrm++] = m-1;
             }   
         }
-        else {
+        else if (atoi(tok)) {
             assert(atoi(tok) <= user->nmat);
             user->phasematerialmapping[ctrm++] = atoi(tok)-1;
         }
@@ -579,7 +579,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     user->phasevoxelmapping[ctrv++] = p-1;
             }   
         }
-        else {
+        else if (atoi(tok)) {
             user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
         }
         //advance the token
@@ -863,8 +863,7 @@ PetscErrorCode SetUpInterface(AppCtx *user)
                     ctr++;
                 }    
             }   
-        }
-        else {
+        } else if (atoi(tok)) {
             PetscInt interface = atoi(tok);
             PetscInt row = ctr/user->npf, col = ctr%user->npf;
             if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
