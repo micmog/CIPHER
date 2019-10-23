@@ -23,11 +23,14 @@
 /* Constants declarations */
 
 #define LARGE 1.0e+6
-#define TOL   1.0e-8
+#define TOL   1.0e-6
 /* max active phases... depends on neighbourhood */
-#define MAXTP 3
-#define MAXCP 4
-#define MAXAP 12
+#define MAXCP 5
+#define MAXAP 15
+
+/* field offsets */
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE,   EX_SIZE,   AP_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET, EX_OFFSET, AP_OFFSET;
 
 /* Types declarations */
 
@@ -45,28 +48,6 @@ typedef enum {
    CUBIC_INTERPOLATION,
    NONE_INTERPOLATION
 } interpolation_t;
-
-/* field dofs */
-typedef struct FIELD {
-   PetscReal   p[MAXAP];
-   PetscReal   m[MAXCP];
-} FIELD;
-
-/* composition dofs */
-typedef struct STATE {
-   PetscReal   c[MAXAP*MAXCP];
-} STATE;
-
-/* output dofs */
-typedef struct O_DOFS {
-   PetscReal   ***o;
-} O_DOFS;
-
-/* Float to int conversion */
-typedef union F2I {
-   PetscReal   f[MAXTP];
-   uint16_t    i[MAXAP];
-} F2I;
 
 /* RK coefficients */
 typedef struct RK {
@@ -99,34 +80,57 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscReal molarvolume;
+    PetscReal molarvolume, statekineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
 } MATERIAL;
 
-/* Phase container */
+/* interface container */
 typedef struct INTERFACE {
     PetscReal energy, mobility;
     PetscReal *potential, *mobilityc;
 } INTERFACE;
 
+/* AMR solparams */
+typedef struct AMRPARAMS {
+    PetscInt  initrefine, initcoarsen, maxnrefine, minnrefine, amrinterval, *initblocksize;
+} AMRPARAMS;
+
+/* solution solparams */
+typedef struct SOLUTIONPARAMS {
+    /* time parameters */
+    PetscReal finaltime, timestep, mintimestep, maxtimestep;
+    PetscInt  step;
+    /* phase field parameters */
+    PetscReal interfacewidth;
+    /* tolerances */
+    PetscReal reltol, abstol;
+    /* output parameters */
+    PetscInt  outputfreq;
+    char      outfile[128];
+    char      petscoptions[PETSC_MAX_PATH_LEN];
+    PetscViewer viewer;
+} SOLUTIONPARAMS;
+
 /* solution parameters */
 typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
-    PetscInt np, nmat, nf, nc;
+    PetscInt npf, ndp, ncp;
+    PetscInt nf, nmat;
     char **componentname;
-    /* grid size and resolution */
-    PetscReal len;
-    PetscInt resolution[3];
+    /* grid resolution */
+    PetscInt dim, *resolution;
+    PetscReal *size;
     /* time step */
-    PetscReal dt, dtmax, time;
     PetscInt step;
-    /* tolerances */
-    PetscReal ptol, ctol;
+    /* exception flag */
     PetscErrorCode rejectstage;
     /* aux grids and vecs */
-    DM da_solution, da_phaseID, da_matstate, da_output;
-    Vec activephaseset, activephasesuperset, matstate;
+    DM da_solution, da_solforest;
+    DM da_output;
+    PetscInt *localcells, nlocalcells, ninteriorcells;
+    PetscInt *localfaces, nlocalfaces;
+    PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
     uint16_t *phasevoxelmapping, *phasematerialmapping;
@@ -134,9 +138,10 @@ typedef struct AppCtx {
     /* interface material parameters */
     INTERFACE *interface;
     uint16_t *interfacelist;
-    /* output */
-    PetscInt outputfreq;
-    char outfile[128];
+    /* solution solparams */
+    SOLUTIONPARAMS solparams;
+    /* AMR solparams */
+    AMRPARAMS amrparams;
 } AppCtx;
 
 #undef TYPEDEF_IMPORT
