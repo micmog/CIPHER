@@ -32,10 +32,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscScalar       *pcell, *pcellL, *pcellR;
     PetscScalar       *plapl, *plaplL, *plaplR, *pfrhs, fluxp[PF_SIZE];
     PetscReal         *chempot, *chempotL, *chempotR;
-    PetscScalar       *chempot_im, *chempot_imL, *chempot_imR;
-    PetscScalar       *chempot_ex, *chempot_exL, *chempot_exR;
-    PetscReal         *composition, *compositionL, *compositionR;
     PetscReal         *mobilitycv, *mobilitycvL, *mobilitycvR;
+    PetscReal         *composition, *composition0, *chempot_im, chempot_ex[DP_SIZE];
     PetscScalar       *dlapl, *dlaplL, *dlaplR, *dprhs, fluxd[DP_SIZE];
     uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE];
     const PetscInt    *scells;
@@ -51,8 +49,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     MATERIAL          *currentmaterial;
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_CP[user->ncp];
-    PetscReal         composition_global[PF_SIZE*user->ncp*user->ninteriorcells]; 
-    PetscReal         chempot_ex_global[PF_SIZE*user->ndp*user->ninteriorcells]; 
+    PetscReal         composition_global[CP_SIZE*user->ninteriorcells]; 
+    PetscReal         composition0_global[CP_SIZE*user->ninteriorcells]; 
     PetscReal         chempot_global[user->ndp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ndp*user->ninteriorcells]; 
     
@@ -74,22 +72,28 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slist,&offset[AS_OFFSET]);
         pcell = &offset[PF_OFFSET];
         chempot_im = &offset[DP_OFFSET];
-        composition = &composition_global[PF_SIZE*user->ncp*cell];
-        chempot_ex = &chempot_ex_global[PF_SIZE*user->ndp*cell];
-        chempot = &chempot_global[user->ndp*cell];
-        mobilitycv = &mobilitycv_global[user->ndp*cell];
+        chempot = &chempot_global[cell*user->ndp];
+        mobilitycv = &mobilitycv_global[cell*user->ndp];
+        composition = &composition_global[cell*CP_SIZE];
+        composition0 = &composition0_global[cell*CP_SIZE];
 
         EvalInterpolant(interpolant,pcell,slist[0]);
         memset(chempot,0,user->ndp*sizeof(PetscReal));
         memset(mobilitycv,0,user->ndp*sizeof(PetscReal));
         for (g =0; g<slist[0];  g++) {
-            Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],slist[g+1],user);
-            ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition[g*user->ncp],slist[g+1],user);
-            CompositionMobility(work_vec_CP,&composition[g*user->ncp],slist[g+1],user);
+            Composition(&composition0[g*user->ncp],&chempot_im[g*user->ndp],slist[g+1],user);
+            ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition0[g*user->ncp],slist[g+1],user);
+            CompositionMobility(work_vec_CP,&composition0[g*user->ncp],slist[g+1],user);
             for (c=0; c<user->ndp; c++) {
-                chempot[c] += interpolant[g]*(chempot_im[g*user->ndp+c] + chempot_ex[g*user->ndp+c]);
+                chempot[c] += interpolant[g]*(chempot_ex[g*user->ndp+c] + chempot_im[g*user->ndp+c]);
                 mobilitycv[c] += interpolant[g]*work_vec_CP[c];
             }
+        }
+        for (g =0; g<slist[0];  g++) {
+            for (c=0; c<user->ndp; c++) {
+                work_vec_DP[g*user->ndp+c] = chempot[c] - chempot_ex[g*user->ndp+c];
+            }
+            Composition(&composition[g*user->ncp],&work_vec_DP[g*user->ndp],slist[g+1],user);
         }
     }
 
@@ -106,20 +110,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         ierr = DMPlexPointLocalRef(user->da_solution, scells[0], fdof, &offset); CHKERRQ(ierr);
         F2IFUNC(slistL,&offset[AS_OFFSET]);
         pcellL = &offset[PF_OFFSET];
-        chempot_imL = &offset[DP_OFFSET];
-        compositionL = &composition_global[PF_SIZE*user->ncp*scells[0]];
-        chempot_exL = &chempot_ex_global[PF_SIZE*user->ndp*scells[0]];
-        chempotL = &chempot_global[user->ndp*scells[0]];
-        mobilitycvL = &mobilitycv_global[user->ndp*scells[0]];
+        chempotL = &chempot_global[scells[0]*user->ndp];
+        mobilitycvL = &mobilitycv_global[scells[0]*user->ndp];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, scells[1], fdof, &offset); CHKERRQ(ierr);
         F2IFUNC(slistR,&offset[AS_OFFSET]);
         pcellR = &offset[PF_OFFSET];
-        chempot_imR = &offset[DP_OFFSET];
-        compositionR = &composition_global[PF_SIZE*user->ncp*scells[1]];
-        chempot_exR = &chempot_ex_global[PF_SIZE*user->ndp*scells[1]];
-        chempotR = &chempot_global[user->ndp*scells[1]];
-        mobilitycvR = &mobilitycv_global[user->ndp*scells[1]];
+        chempotR = &chempot_global[scells[1]*user->ndp];
+        mobilitycvR = &mobilitycv_global[scells[1]*user->ndp];
         if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
 
         /* get geometric data */
@@ -174,9 +172,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slist,&offset[AS_OFFSET]);
         pcell = &offset[PF_OFFSET];
         chempot_im = &offset[DP_OFFSET];
-        composition = &composition_global[PF_SIZE*user->ncp*cell];
-        chempot_ex = &chempot_ex_global[PF_SIZE*user->ndp*cell];
-        chempot = &chempot_global[user->ndp*cell];
+        chempot = &chempot_global[cell*user->ndp];
+        composition = &composition_global[cell*CP_SIZE];
+        composition0 = &composition0_global[cell*CP_SIZE];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
         plapl = &offset[PF_OFFSET];
@@ -221,7 +219,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            Chemenergy(chemsource,composition,chempot,slist,user);
+            Chemenergy(chemsource,composition0,chempot,slist,user);
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
@@ -264,16 +262,25 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             
         if (user->ndp) {
             /* calculate composition rate */
+            memset(work_vec_CP,0,user->ndp*sizeof(PetscReal));
+            for (g =0; g<slist[0];  g++) {
+                currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+                for (c=0; c<user->ndp; c++) {
+                    work_vec_DP[g*user->ndp+c] = currentmaterial->statekineticcoeff
+                                               * (composition[g*user->ncp+c] - composition0[g*user->ncp+c]);
+                    work_vec_CP[c] += interpolant[g]*work_vec_DP[g*user->ndp+c];
+                }
+            }
             for (g =0; g<slist[0];  g++) {
                 for (c=0; c<user->ndp; c++) {
-                    work_vec_DP[g*user->ndp+c] = dlapl[c];
+                    work_vec_DP[g*user->ndp+c] += dlapl[c] - work_vec_CP[c];
                 }
             }
 
             if (slist[0] > 1) {
                 for (c=0; c<user->ndp; c++) {
                     for (g =0; g<slist[0];  g++) {
-                        work_vec_PF[g] = composition[g*user->ncp+c];
+                        work_vec_PF[g] = composition0[g*user->ncp+c];
                     }
                     MatMulInterpolantDerivative(work_vec_PF,pcell,slist[0]);
                     work_vec_CP[c] = 0.0;
@@ -282,28 +289,25 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     }    
                 }
                 for (g =0; g<slist[0];  g++) {
-                    currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                     for (c=0; c<user->ndp; c++) {
-                        work_vec_DP[g*user->ndp+c] += currentmaterial->statekineticcoeff
-                                                    * (chempot[c] - chempot_ex[g*user->ndp+c] - chempot_im[g*user->ndp+c])
-                                                    - work_vec_CP[c];
+                        work_vec_DP[g*user->ndp+c] -= work_vec_CP[c];
                     }
                 }
             }
   
             for (g =0; g<slist[0];  g++) {
-                ChemicalpotentialImplicitTangent(dmdc,&composition[g*user->ncp],slist[g+1],user);
+                ChemicalpotentialImplicitTangent(dmdc,&composition0[g*user->ncp],slist[g+1],user);
                 MatVecMult_CIPHER(&dprhs[g*user->ndp],dmdc,&work_vec_DP[g*user->ndp],user->ndp);
             }
         }    
     }
 
-    /* Restore state */
+    /* Restore FVM residuals */
     ierr = VecRestoreArray(localX, &fdof);
     ierr = DMRestoreLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
+    ierr = VecRestoreArray(F, &rhs);
     ierr = VecRestoreArray(laplacian,&lap); CHKERRQ(ierr);
     ierr = DMRestoreLocalVector(user->da_solution,&laplacian); CHKERRQ(ierr);
-    ierr = VecRestoreArray(F, &rhs);
     PetscFunctionReturn(0);
 }    
 
@@ -437,7 +441,7 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetStepNumber(ts, &user->solparams.step);CHKERRQ(ierr);
     if (user->solparams.step%user->solparams.outputfreq == 0) {
        Vec               Xout;
-       PetscScalar       *xout, *phase, *avgcomp, composition[DP_SIZE], interpolant[PF_SIZE];
+       PetscScalar       *xout, *phase, *avgcomp, composition[CP_SIZE], interpolant[PF_SIZE];
        char              name[256];
        PetscViewer       viewer;
        
@@ -467,11 +471,13 @@ PetscErrorCode PostStep(TS ts)
                   max = interpolant[g];
                   phase[0] = (PetscScalar) slist[g+1];
                }
+           }
+           for (g =0; g<slist[0];  g++) {
                Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],slist[g+1],user);
                for (c=0; c<user->ncp; c++) {
                    avgcomp[c] += interpolant[g]*composition[g*user->ncp+c];
                }    
-            }
+           }
        }
        ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
        ierr = VecRestoreArray(Xout,&xout); CHKERRQ(ierr);

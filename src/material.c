@@ -19,7 +19,7 @@ typedef struct MATFUNC {
     void (*ChemicalpotentialImplicit) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
     void (*ChemicalpotentialImplicitTangent) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
     void (*ChemicalpotentialJacobian) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
-    PetscErrorCode  (*Composition) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
+    void (*Composition) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
     void (*CompositionTangent) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
     void (*CompositionMobility) (PetscReal *, const PetscReal *, const CHEMFE, const PetscInt);
 } MATFUNC;
@@ -287,7 +287,7 @@ static void ChemicalpotentialImplicit_quad(PetscReal *chempot, const PetscReal *
 {
     memset(chempot,0,numcomps*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
-    for (PetscInt c=0; c<numcomps; c++)
+    for (PetscInt c=0; c<numcomps-1; c++)
         chempot[c] = currentquad->unary[c] + 2.0*currentquad->binary[c]*(composition[c] - currentquad->ceq[c]);
 }
 
@@ -335,8 +335,12 @@ static void ChemicalpotentialImplicitTangent_quad(PetscReal *chempottangent, con
 {
     memset(chempottangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
-    for (PetscInt c=0; c<numcomps-1; c++)
-        chempottangent[c*(numcomps-1)+c] = 2.0*currentquad->binary[c];
+    for (PetscInt ck=0; ck<numcomps-1; ck++) {  
+        chempottangent[ck*(numcomps-1)+ck] = 2.0*currentquad->binary[ck];
+        for (PetscInt cj=0; cj<numcomps-1; cj++) {
+            chempottangent[ck*(numcomps-1)+cj] += 2.0*currentquad->binary[numcomps-1];
+        }
+    }
 }
 
 /*
@@ -385,12 +389,12 @@ void ChemicalpotentialTangent(PetscReal *chempottangent, const PetscReal *compos
 /*
  Composition - Semi-implicit concentration per phase
  */
-static PetscErrorCode Composition_calphad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static void Composition_calphad(PetscReal *composition, const PetscReal *chempot_im, const CHEMFE energy, const PetscInt numcomps)
 {
     const CALPHAD *currentcalphad = &energy.calphad;
     PetscReal sumexp = 0.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
-        composition[c] = exp((chempot[c] - currentcalphad->unary[c] + currentcalphad->unary[numcomps-1])/currentcalphad->RT);
+        composition[c] = exp((chempot_im[c] - currentcalphad->unary[c] + currentcalphad->unary[numcomps-1])/currentcalphad->RT);
         sumexp += composition[c];
     }
     composition[numcomps-1] = 1.0;
@@ -398,53 +402,38 @@ static PetscErrorCode Composition_calphad(PetscReal *composition, const PetscRea
         composition[c] /= (1.0 + sumexp);   
         composition[numcomps-1] -= composition[c];
     } 
-    for (PetscInt c=0; c<numcomps; c++) {
-        if (composition[c] < 0.0 || isnan(composition[c])) {
-            return 1;
-        }    
-    }
-    return 0;    
 }
 
 /*
  Composition - Semi-implicit concentration per phase
  */
-static PetscErrorCode Composition_quad(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static void Composition_quad(PetscReal *composition, const PetscReal *chempot_im, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
-    PetscReal rhs[numcomps];
     composition[numcomps-1] = 1.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
-        rhs[c] = 0.5*chempot[c] - 0.5*currentquad->unary[c] + currentquad->binary[c]*currentquad->ceq[c];
-        composition[c] = rhs[c]/currentquad->binary[c];
+        composition[c] = currentquad->ceq[c] + 0.5*(chempot_im[c] - currentquad->unary[c])/currentquad->binary[c];
         composition[numcomps-1] -= composition[c];
     }
-    return 0;
 }
 
 /*
  Composition - const concentration per phase
  */
-static PetscErrorCode Composition_none(PetscReal *composition, const PetscReal *chempot, const CHEMFE energy, const PetscInt numcomps)
+static void Composition_none(PetscReal *composition, const PetscReal *chempot_im, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(composition,0,numcomps*sizeof(PetscReal));
     composition[numcomps-1] = 1.0;
-    return 0;
 }
 
 /*
  Composition - Semi-implicit concentration per phase
  */
-PetscErrorCode Composition(PetscReal *composition, const PetscReal *chempot, const uint16_t phaseID, const AppCtx *user)
+void Composition(PetscReal *composition, const PetscReal *chempot_im, const uint16_t phaseID, const AppCtx *user)
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
-    if (Matfunc[user->phasematerialmapping[phaseID]].Composition(composition,chempot,currentmaterial->energy,user->ncp)) {
-        return 1;
-    } else {
-        return 0;
-    }
+    Matfunc[user->phasematerialmapping[phaseID]].Composition(composition,chempot_im,currentmaterial->energy,user->ncp);
 }
-
 
 /*
  Composition tangent wrt chemical potential

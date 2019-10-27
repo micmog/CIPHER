@@ -29,8 +29,8 @@
 #define MAXAP 15
 
 /* field offsets */
-PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE,   EX_SIZE,   AP_SIZE;
-PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET, EX_OFFSET, AP_OFFSET;
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
 
 /* Types declarations */
 

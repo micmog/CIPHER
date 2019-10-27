@@ -34,7 +34,7 @@ EXTERN void ChemicalpotentialImplicit(PetscReal *, const PetscReal *, const uint
 EXTERN void ChemicalpotentialImplicitTangent(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
 EXTERN void Chemicalpotential(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
 EXTERN void ChemicalpotentialTangent(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
-EXTERN PetscErrorCode  Composition(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
+EXTERN void Composition(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
 EXTERN void CompositionTangent(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
 EXTERN void CompositionMobility(PetscReal *, const PetscReal *, const uint16_t, const AppCtx *);
 EXTERN void material_init(const AppCtx *);

@@ -164,12 +164,9 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
     DP_OFFSET = PF_OFFSET+PF_SIZE;
     DP_SIZE   = PF_SIZE*user->ndp;
+    
     CP_OFFSET = 0;
     CP_SIZE   = PF_SIZE*user->ncp;
-    EX_OFFSET = CP_OFFSET+CP_SIZE;
-    EX_SIZE   = PF_SIZE*user->ndp;
-    AP_OFFSET = EX_OFFSET+EX_SIZE;
-    AP_SIZE   = user->ndp;
 
     /* initialise material information */
     currentmaterial = &user->material[0];
