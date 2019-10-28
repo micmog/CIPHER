@@ -1,15 +1,36 @@
 <header>
+  dimension 3
   grid a 64 b 64 c 64
+  size a 64 b 64 c 64
   n_phases 3
   n_materials 2
   n_components 4
   componentnames al cu mg zn
   interpolation_type cubic
 </header>
+<solution_parameters>
+  finaltime 72000.0 
+  timestep0 1e-9
+  timestepmin 1e-9
+  timestepmax 1e+2 
+  interfacewidth 4
+  initblocksize 2 2 2
+  initrefine 5
+  maxnrefine 5
+  minnrefine 3
+  initcoarsen 3
+  amrinterval 200 
+  reltol 1e-4 
+  abstol 1e-4 
+  outputfreq 5000
+  outfile GBP
+  petscoptions -ts_adapt_monitor
+</solution_parameters>
 <material 1>
   chemicalenergy_type calphaddis
   RT 3267.402
   molarvolume 1e-6
+  statekineticcoeff 1e+1
   mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6 
   c0 0.90 0.02 0.04 0.04
   calphad_refenthalpy 0.0
@@ -33,6 +54,7 @@
 <material 2>
   chemicalenergy_type quadratic
   molarvolume 1e-6
+  statekineticcoeff 1e+1
   mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6 
   c0 0.16757 0.04471 0.33333 0.45439   
   quad_ceq 0.16757 0.04471 0.33333 0.45439   
