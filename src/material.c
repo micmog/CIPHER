@@ -485,10 +485,19 @@ void CompositionTangent(PetscReal *compositiontangent, const PetscReal *composit
  */
 static void CompositionMobility_calphad(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     const CALPHAD *currentcalphad = &energy.calphad;
-    for (PetscInt c=0; c<numcomps-1; c++) {
-        mobilityc[c] = currentcalphad->mobilityc[c];
+    PetscScalar summobility = 0.0, val;
+    for (PetscInt ck=0; ck<numcomps; ck++) {
+        summobility += composition[ck]*currentcalphad->mobilityc[ck];
+    }        
+    for (PetscInt ck=0; ck<numcomps-1; ck++) {
+        mobilityc[ck*(numcomps-1)+ck] = composition[ck]*(currentcalphad->mobilityc[ck] + composition[ck]*(summobility - 2.0*currentcalphad->mobilityc[ck]));
+        for (PetscInt cj=ck+1; cj<numcomps-1; cj++) {
+            val = composition[ck]*composition[cj]*(summobility - currentcalphad->mobilityc[cj] - currentcalphad->mobilityc[ck]);
+            mobilityc[ck*(numcomps-1)+cj] = val; 
+            mobilityc[cj*(numcomps-1)+ck] = val; 
+        }        
     }        
 }
 
@@ -497,10 +506,19 @@ static void CompositionMobility_calphad(PetscReal *mobilityc, const PetscReal *c
  */
 static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
-    for (PetscInt c=0; c<numcomps-1; c++) {
-        mobilityc[c] = currentquad->mobilityc[c];
+    PetscScalar summobility = 0.0, val;
+    for (PetscInt ck=0; ck<numcomps; ck++) {
+        summobility += composition[ck]*currentquad->mobilityc[ck];
+    }        
+    for (PetscInt ck=0; ck<numcomps-1; ck++) {
+        mobilityc[ck*(numcomps-1)+ck] = composition[ck]*(currentquad->mobilityc[ck] + composition[ck]*(summobility - 2.0*currentquad->mobilityc[ck]));
+        for (PetscInt cj=ck+1; cj<numcomps-1; cj++) {
+            val = composition[ck]*composition[cj]*(summobility - currentquad->mobilityc[cj] - currentquad->mobilityc[ck]);
+            mobilityc[ck*(numcomps-1)+cj] = val; 
+            mobilityc[cj*(numcomps-1)+ck] = val; 
+        }        
     }        
 }
 
@@ -509,7 +527,7 @@ static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *comp
  */
 static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *composition, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
 }
 
 /*
@@ -517,7 +535,7 @@ static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *comp
  */
 void CompositionMobility(PetscReal *mobilityc, const PetscReal *composition, const uint16_t phaseID, const AppCtx *user)
 {
-    memset(mobilityc,0,(user->ndp)*sizeof(PetscReal));
+    memset(mobilityc,0,(user->ndp)*(user->ndp)*sizeof(PetscReal));
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].CompositionMobility(mobilityc,composition,currentmaterial->energy,user->ncp);
 }
