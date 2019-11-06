@@ -27,6 +27,7 @@
 /* max active phases... depends on neighbourhood */
 #define MAXCP 5
 #define MAXAP 15
+#define R_GAS_CONST = 8.314462
 
 /* field offsets */
 PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
