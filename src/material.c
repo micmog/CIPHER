@@ -316,7 +316,7 @@ static void ChemicalpotentialImplicit_quad(PetscReal *chempot, const PetscReal *
     const QUAD *currentquad = &energy.quad;
     for (PetscInt c=0; c<numcomps-1; c++)
         chempot[c] =     (currentquad->unary [c] + currentquad->unary_T [c]*(temperature - temperature0)) 
-                   + 2.0*(currentquad->binary[c] + currentquad->binary_T[c]*(temperature - temperature0))*(composition[c] - currentquad->ceq[c]);
+                   + 2.0*(currentquad->binary[c] + currentquad->binary_T[c]*(temperature - temperature0))*(composition[c] - (currentquad->ceq[c]+currentquad->ceq_T[c]*(temperature-temperature0)));
 }
 
 /*
@@ -444,7 +444,7 @@ static void Composition_quad(PetscReal *composition, const PetscReal *chempot_im
     const QUAD *currentquad = &energy.quad;
     composition[numcomps-1] = 1.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
-        composition[c] = currentquad->ceq[c] 
+        composition[c] = (currentquad->ceq[c]+currentquad->ceq_T[c]*(temperature-temperature0))
                        + 0.5*(chempot_im[c] - (currentquad->unary[c]+currentquad->unary_T[c]*(temperature - temperature0)))/(currentquad->binary[c]+currentquad->binary_T[c]*(temperature - temperature0));
         composition[numcomps-1] -= composition[c];
     }
