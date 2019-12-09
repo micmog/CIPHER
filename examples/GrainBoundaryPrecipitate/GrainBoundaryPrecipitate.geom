@@ -25,42 +25,62 @@
   outputfreq 5000
   outfile GBP
   petscoptions -ts_adapt_monitor
+  n_temperatures 2
+  temperature_list 394.15 394.15
+  time_list 0.0 10.0
 </solution_parameters>
 <material 1>
   chemicalenergy_type calphaddis
-  RT 3267.402
+  R 8.314
+  temperature0 394.15
   molarvolume 1e-6
   statekineticcoeff 1e+1
-  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6 
+  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6
+  mobilityc_T 0.0 0.0 0.0 0.0
   c0 0.90 0.02 0.04 0.04
   calphad_refenthalpy 0.0
-  calphad_unaryenthalpy -11469.906443934595 -13367.567247075782 -10232.482939321606 -14359.062357670766  
+  calphad_refenthalpy_T 0.0
+  calphad_unaryenthalpy -11469.906443934595 -13367.567247075782 -10232.482939321606 -14359.062357670766
+  calphad_unaryenthalpy_T 0.0 0.0 0.0 0.0
   calphad_nbinaryenthalpy 1 2 3
   calphad_binaryenthalpy 1 2 -52734.0 37804 1170
+  calphad_binaryenthalpy_T 1 2 0.0 0.0 0.0
   calphad_nbinaryenthalpy 1 3 3
   calphad_binaryenthalpy 1 3 3595.5 1066.239 950.0
+  calphad_binaryenthalpy_T 1 3 0.0 0.0 0.0
   calphad_nbinaryenthalpy 1 4 3
   calphad_binaryenthalpy 1 4 7484.20216 4808.5777 -1797.79445
+  calphad_binaryenthalpy_T 1 4 0.0 0.0 0.0
   calphad_nbinaryenthalpy 2 3 1
-  calphad_binaryenthalpy 2 3 -19846.10824 
+  calphad_binaryenthalpy 2 3 -19846.10824
+  calphad_binaryenthalpy_T 2 3 0.0
   calphad_nbinaryenthalpy 2 4 3
   calphad_binaryenthalpy 2 4 -38864.87606 1736.4706099999999 6914.69598
+  calphad_binaryenthalpy_T 2 4 0.0 0.0 0.0
   calphad_nbinaryenthalpy 3 4 2
   calphad_binaryenthalpy 3 4 -841.0820699999999 -904.5974099999999
+  calphad_binaryenthalpy_T 3 4 0.0 0.0
   calphad_nternaryenthalpy 1 2 4 3
   calphad_iternaryenthalpy 1 2 4 1 2 4
   calphad_ternaryenthalpy 1 2 4 7.2990788e+04 1.6799927e+04 5.9580949e+04
+  calphad_ternaryenthalpy_T 1 2 4 0.0 0.0 0.0
 </material 1>
 <material 2>
   chemicalenergy_type quadratic
   molarvolume 1e-6
+  temperature0 394.15
   statekineticcoeff 1e+1
-  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6 
-  c0 0.16757 0.04471 0.33333 0.45439   
-  quad_ceq 0.16757 0.04471 0.33333 0.45439   
+  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6
+  mobilityc_T 0.0 0.0 0.0 0.0
+  c0 0.16757 0.04471 0.33333 0.45439
+  quad_ceq 0.16757 0.04471 0.33333 0.45439
+  quad_ceq_T 0.0 0.0 0.0 0.0
   quad_refenthalpy -2.6605e+04
+  quad_refenthalpy_T 0.0
   quad_unaryenthalpy  0.0 0.0 0.0 0.0
-  quad_binaryenthalpy 1.0e+6 1.0e+6 1.0e+6 1.0e+6 
+  quad_unaryenthalpy_T  0.0 0.0 0.0 0.0
+  quad_binaryenthalpy 1.0e+6 1.0e+6 1.0e+6 1.0e+6
+  quad_binaryenthalpy_T 0.0 0.0 0.0 0.0
 </material 2>
 <phase_material_mapping>
   2 of 1
