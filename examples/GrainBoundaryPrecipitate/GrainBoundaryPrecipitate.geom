@@ -113,7 +113,8 @@
   quad_ceq_exp_mg 0.0
   quad_ceq_coeff_zn 0.45439   
   quad_ceq_exp_zn 0.0
-  quad_refenthalpy -2.6605e+04
+  quad_refenthalpy_coeff -2.6605e+04
+  quad_refenthalpy_exp 0.0
   quad_binaryenthalpy_coeff_al 1.0e+6
   quad_binaryenthalpy_exp_al 0.0
   quad_binaryenthalpy_coeff_cu 1.0e+6
