@@ -376,10 +376,13 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 PetscInt offset = 0;
                 for (PetscInt cjj=0;cjj<user->ncp;cjj++) {
                     for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
-                        if (cjj == cj && cii == ci) break;
+                        if (cjj == cj && cii == ci) {
+                            cii = user->ncp;
+                            cjj = user->ncp;
+                        }
                     }
                 }
-                RK *currentbinary = &currentcalphad->binary[offset];
+                RK *currentbinary = &currentcalphad->binary[offset-1];
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentbinary->n);
                 assert(currentbinary->n >= 0);
@@ -396,10 +399,13 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 PetscInt offset = 0;
                 for (PetscInt cjj=0;cjj<user->ncp;cjj++) {
                     for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
-                        if (cjj == cj && cii == ci) break;
+                        if (cjj == cj && cii == ci) {
+                            cii = user->ncp;
+                            cjj = user->ncp;
+                        }
                     }
                 }
-                RK *currentbinary = &currentcalphad->binary[offset];
+                RK *currentbinary = &currentcalphad->binary[offset-1];
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
@@ -423,11 +429,15 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
                     for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
                         for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
-                            if (ckk == ck && cjj == cj && cii == ci) break;
+                            if (ckk == ck && cjj == cj && cii == ci) {
+                                cii = user->ncp;
+                                cjj = user->ncp;
+                                ckk = user->ncp;
+                            }
                         }
                     }
                 }
-                RK *currentternary = &currentcalphad->ternary[offset];
+                RK *currentternary = &currentcalphad->ternary[offset-1];
                 mtok = strtok_r(NULL, " ", &savemtok);
                 sscanf(mtok, "%d", &currentternary->n);
                 assert(currentternary->n >= 0 && currentternary->n <=3);
@@ -448,11 +458,15 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
                     for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
                         for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
-                            if (ckk == ck && cjj == cj && cii == ci) break;
+                            if (ckk == ck && cjj == cj && cii == ci) {
+                                cii = user->ncp;
+                                cjj = user->ncp;
+                                ckk = user->ncp;
+                            }
                         }
                     }
                 }            
-                RK *currentternary = &currentcalphad->ternary[offset];
+                RK *currentternary = &currentcalphad->ternary[offset-1];
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
@@ -479,11 +493,15 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ckk=0;ckk<user->ncp;ckk++) {
                     for (PetscInt cjj=ckk+1;cjj<user->ncp;cjj++) {
                         for (PetscInt cii=cjj+1;cii<user->ncp;cii++,offset++) {
-                            if (ckk == ck && cjj == cj && cii == ci) break;
+                            if (ckk == ck && cjj == cj && cii == ci) {
+                                cii = user->ncp;
+                                cjj = user->ncp;
+                                ckk = user->ncp;
+                            }
                         }
                     }
                 }            
-                RK *currentternary = &currentcalphad->ternary[offset];
+                RK *currentternary = &currentcalphad->ternary[offset-1];
                 mtok = strtok_r(NULL, " ", &savemtok);
                 PetscInt nrk = 0;
                 while (mtok != NULL) {
