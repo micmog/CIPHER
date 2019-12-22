@@ -316,7 +316,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* F_chem parameters for each material */
-            if (strstr(tok, "quad_refenthalpy_coeff_") != NULL) {
+            if (strstr(tok, "quad_refenthalpy_coeff") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -327,7 +327,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
             }
-            if (strstr(tok, "quad_refenthalpy_exp_") != NULL) {
+            if (strstr(tok, "quad_refenthalpy_exp") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
