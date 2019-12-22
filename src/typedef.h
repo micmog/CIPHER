@@ -72,7 +72,7 @@ typedef struct CALPHAD {
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
-    PetscReal ref;
+    TSeries ref;
     TSeries *ceq;
     TSeries *unary, *binary;
     PetscReal *mobilityc;

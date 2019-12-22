@@ -58,7 +58,7 @@ static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *compositi
 static void Chemenergy_quad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
-    *chemenergy = currentquad->ref;
+    *chemenergy = SumTSeries(temperature,currentquad->ref);
     for (PetscInt c=0; c<numcomps; c++)
         *chemenergy += SumTSeries(temperature,currentquad->unary [c])
                      * (composition[c] - SumTSeries(temperature,currentquad->ceq[c]))

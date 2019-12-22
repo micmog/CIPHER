@@ -202,7 +202,8 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 if (strstr(mtok, "quadratic") != NULL) {
                     currentmaterial->model = QUADRATIC_CHEMENERGY;
-                    currentquad->ref = 0.0;
+                    currentquad->ref.nTser = 0;
+                    currentquad->ref.logCoeff = 0.0;
                     memset(currentquad->mobilityc,0,user->ncp*sizeof(PetscReal));
                     for (PetscInt c=0; c<user->ncp; c++) {
                         currentquad->ceq[c].nTser = 0;
@@ -315,14 +316,25 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* F_chem parameters for each material */
-            if (strstr(tok, "quad_refenthalpy") != NULL) {
+            if (strstr(tok, "quad_refenthalpy_coeff_") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
+                currentquad->ref.nTser = 0;
                 while (mtok != NULL) {
-                    PetscReal refenthalpy;
-                    sscanf(mtok, "%lf", &refenthalpy);
-                    currentquad->ref = refenthalpy;
+                    sscanf(mtok, "%lf", &currentquad->ref.coeff[currentquad->ref.nTser]);
+                    currentquad->ref.nTser++;
+                    mtok = strtok_r(NULL, " ", &savemtok);
+                }
+            }
+            if (strstr(tok, "quad_refenthalpy_exp_") != NULL) {
+                char *mtok, *savemtok;
+                mtok = strtok_r(tok, " ", &savemtok);
+                mtok = strtok_r(NULL, " ", &savemtok);
+                currentquad->ref.nTser = 0;
+                while (mtok != NULL) {
+                    sscanf(mtok, "%lf", &currentquad->ref.exp[currentquad->ref.nTser]);
+                    currentquad->ref.nTser++;
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
             }
