@@ -12,7 +12,8 @@
   finaltime 72000.0 
   timestep0 1e-9
   timestepmin 1e-9
-  timestepmax 1e+2 
+  timestepmax 1e+2
+  temperature 393.0
   interfacewidth 4
   initblocksize 2 2 2
   initrefine 5
@@ -20,67 +21,107 @@
   minnrefine 3
   initcoarsen 3
   amrinterval 200 
-  reltol 1e-4 
-  abstol 1e-4 
+  reltol 1e-6
+  abstol 1e-6 
   outputfreq 5000
   outfile GBP
   petscoptions -ts_adapt_monitor
-  n_temperatures 2
-  temperature_list 394.15 394.15
-  time_list 0.0 10.0
 </solution_parameters>
 <material 1>
   chemicalenergy_type calphaddis
-  R 8.314
-  temperature0 394.15
   molarvolume 1e-6
   statekineticcoeff 1e+1
-  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6
-  mobilityc_T 0.0 0.0 0.0 0.0
+  mobilityc_al 7.3451110109984390e-8
+  mobilityc_cu 5.3486841665396531e-8
+  mobilityc_mg 1.4696210067717206e-6
+  mobilityc_zn 2.2897371183228479e-6 
   c0 0.90 0.02 0.04 0.04
   calphad_refenthalpy 0.0
-  calphad_refenthalpy_T 0.0
-  calphad_unaryenthalpy -11469.906443934595 -13367.567247075782 -10232.482939321606 -14359.062357670766
-  calphad_unaryenthalpy_T 0.0 0.0 0.0 0.0
-  calphad_nbinaryenthalpy 1 2 3
-  calphad_binaryenthalpy 1 2 -52734.0 37804 1170
-  calphad_binaryenthalpy_T 1 2 0.0 0.0 0.0
-  calphad_nbinaryenthalpy 1 3 3
-  calphad_binaryenthalpy 1 3 3595.5 1066.239 950.0
-  calphad_binaryenthalpy_T 1 3 0.0 0.0 0.0
-  calphad_nbinaryenthalpy 1 4 3
-  calphad_binaryenthalpy 1 4 7484.20216 4808.5777 -1797.79445
-  calphad_binaryenthalpy_T 1 4 0.0 0.0 0.0
-  calphad_nbinaryenthalpy 2 3 1
-  calphad_binaryenthalpy 2 3 -19846.10824
-  calphad_binaryenthalpy_T 2 3 0.0
-  calphad_nbinaryenthalpy 2 4 3
-  calphad_binaryenthalpy 2 4 -38864.87606 1736.4706099999999 6914.69598
-  calphad_binaryenthalpy_T 2 4 0.0 0.0 0.0
-  calphad_nbinaryenthalpy 3 4 2
-  calphad_binaryenthalpy 3 4 -841.0820699999999 -904.5974099999999
-  calphad_binaryenthalpy_T 3 4 0.0 0.0
-  calphad_nternaryenthalpy 1 2 4 3
-  calphad_iternaryenthalpy 1 2 4 1 2 4
-  calphad_ternaryenthalpy 1 2 4 7.2990788e+04 1.6799927e+04 5.9580949e+04
-  calphad_ternaryenthalpy_T 1 2 4 0.0 0.0 0.0
+  calphad_unaryenthalpy_coeff_al -7976.15 137.093038 -1.884662e-3 -8.77664e-6 74092.0
+  calphad_unaryenthalpy_exp_al 0.0 1.0 2.0 3.0 -1.0
+  calphad_unaryenthalpy_logCoeff_al -24.3671976
+  calphad_unaryenthalpy_coeff_cu -7770.458 130.485235 -2.65684e-3 1.29223e-6 52478.0
+  calphad_unaryenthalpy_exp_cu 0.0 1.0 2.0 3.0 -1.0
+  calphad_unaryenthalpy_logCoeff_cu -24.112392
+  calphad_unaryenthalpy_coeff_mg -5767.34 142.775547 4.858e-3 -1.393669e-6 78950.0
+  calphad_unaryenthalpy_exp_mg 0.0 1.0 2.0 3.0 -1.0
+  calphad_unaryenthalpy_logCoeff_mg -26.1849782
+  calphad_unaryenthalpy_coeff_zn -4315.967 116.900389 -1.712034e-3 1.264963e-6
+  calphad_unaryenthalpy_exp_zn 0.0 1.0 2.0 3.0
+  calphad_unaryenthalpy_logCoeff_zn -23.701314
+  calphad_nbinaryenthalpy_al_cu 3
+  calphad_binaryenthalpy_coeff_al_cu_1 -53520.0 2.0
+  calphad_binaryenthalpy_exp_al_cu_1 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_cu_2 38590.0 -2.0
+  calphad_binaryenthalpy_exp_al_cu_2 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_cu_3 1170.0
+  calphad_binaryenthalpy_exp_al_cu_3 0.0
+  calphad_nbinaryenthalpy_al_mg 3
+  calphad_binaryenthalpy_coeff_al_mg_1 4971.0 -3.500025
+  calphad_binaryenthalpy_exp_al_mg_1 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_mg_2 225.0 0.1
+  calphad_binaryenthalpy_exp_al_mg_2 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_mg_3 950.0 2.5e-5
+  calphad_binaryenthalpy_exp_al_mg_3 0.0 1.0
+  calphad_nbinaryenthalpy_al_zn 3
+  calphad_binaryenthalpy_coeff_al_zn_1 7297.48 0.47512
+  calphad_binaryenthalpy_exp_al_cu_1 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_zn_2 6612.88 -4.59110
+  calphad_binaryenthalpy_exp_al_cu_2 0.0 1.0
+  calphad_binaryenthalpy_coeff_al_zn_3 -3097.19 3.30635
+  calphad_binaryenthalpy_exp_al_cu_3 0.0 1.0
+  calphad_nbinaryenthalpy_cu_mg 1
+  calphad_binaryenthalpy_coeff_cu_mg_1 -22279.28 5.868
+  calphad_binaryenthalpy_exp_cu_mg_1 0.0 1.0
+  calphad_nbinaryenthalpy_cu_zn 3
+  calphad_binaryenthalpy_coeff_cu_zn_1 -42803.75 10.02258
+  calphad_binaryenthalpy_exp_cu_zn_1 0.0 1.0
+  calphad_binaryenthalpy_coeff_cu_zn_2 2936.39 -3.05323
+  calphad_binaryenthalpy_exp_cu_zn_2 0.0 1.0
+  calphad_binaryenthalpy_coeff_cu_zn_3 9034.20 -5.39314
+  calphad_binaryenthalpy_exp_cu_zn_3 0.0 1.0
+  calphad_nbinaryenthalpy_mg_zn 2
+  calphad_binaryenthalpy_coeff_mg_zn_1 -3056.82 5.63801
+  calphad_binaryenthalpy_exp_mg_zn_1 0.0 1.0
+  calphad_binaryenthalpy_coeff_mg_zn_2 -3127.26 5.65563
+  calphad_binaryenthalpy_exp_mg_zn_2 0.0 1.0
+  calphad_nternaryenthalpy_al_cu_mg 1
+  calphad_ternaryenthalpy_coeff_al_cu_mg_1 60000.0
+  calphad_ternaryenthalpy_exp_al_cu_mg_1 0.0
+  calphad_nternaryenthalpy_al_cu_zn 3
+  calphad_ternaryenthalpy_coeff_al_cu_zn_1 7.2990788e+4
+  calphad_ternaryenthalpy_exp_al_cu_zn_1 0.0
+  calphad_ternaryenthalpy_coeff_al_cu_zn_2 1.6799927e+4
+  calphad_ternaryenthalpy_exp_al_cu_zn_2 0.0
+  calphad_ternaryenthalpy_coeff_al_cu_zn_3 5.9580949e+4
+  calphad_ternaryenthalpy_exp_al_cu_zn_3 0.0
 </material 1>
 <material 2>
   chemicalenergy_type quadratic
   molarvolume 1e-6
-  temperature0 394.15
   statekineticcoeff 1e+1
-  mobilityc 7.3451110109984390e-8 5.3486841665396531e-8 1.4696210067717206e-6 2.2897371183228479e-6
-  mobilityc_T 0.0 0.0 0.0 0.0
-  c0 0.16757 0.04471 0.33333 0.45439
-  quad_ceq 0.16757 0.04471 0.33333 0.45439
-  quad_ceq_T 0.0 0.0 0.0 0.0
+  mobilityc_al 7.3451110109984390e-8
+  mobilityc_cu 5.3486841665396531e-8
+  mobilityc_mg 1.4696210067717206e-6
+  mobilityc_zn 2.2897371183228479e-6 
+  c0 0.16757 0.04471 0.33333 0.45439   
+  quad_ceq_coeff_al 0.16757
+  quad_ceq_exp_al 0.0
+  quad_ceq_coeff_cu 0.04471
+  quad_ceq_exp_cu 0.0
+  quad_ceq_coeff_mg 0.33333
+  quad_ceq_exp_mg 0.0
+  quad_ceq_coeff_zn 0.45439   
+  quad_ceq_exp_zn 0.0
   quad_refenthalpy -2.6605e+04
-  quad_refenthalpy_T 0.0
-  quad_unaryenthalpy  0.0 0.0 0.0 0.0
-  quad_unaryenthalpy_T  0.0 0.0 0.0 0.0
-  quad_binaryenthalpy 1.0e+6 1.0e+6 1.0e+6 1.0e+6
-  quad_binaryenthalpy_T 0.0 0.0 0.0 0.0
+  quad_binaryenthalpy_coeff_al 1.0e+6
+  quad_binaryenthalpy_exp_al 0.0
+  quad_binaryenthalpy_coeff_cu 1.0e+6
+  quad_binaryenthalpy_exp_cu 0.0
+  quad_binaryenthalpy_coeff_mg 1.0e+6
+  quad_binaryenthalpy_exp_mg 0.0
+  quad_binaryenthalpy_coeff_zn 1.0e+6 
+  quad_binaryenthalpy_exp_zn 0.0
 </material 2>
 <phase_material_mapping>
   2 of 1
