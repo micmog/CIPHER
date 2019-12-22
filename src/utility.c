@@ -41,7 +41,13 @@ PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)//*tseri
 {
     PetscReal result = 0.0;
     for (PetscInt i=0; i<tseries.nTser; i++) {
-        result += tseries.coeff[i]*pow(temperature,tseries.exp[i]);
+        if        (tseries.exp[i] > 0) {
+            result += tseries.coeff[i]*FastPow(temperature, tseries.exp[i]);
+        } else if (tseries.exp[i] < 0) {
+            result += tseries.coeff[i]/FastPow(temperature,-tseries.exp[i]);
+        } else {
+            result += tseries.coeff[i];
+        }    
     }
     if (fabs(tseries.logCoeff) > 0.0) result += tseries.logCoeff*temperature*log(temperature);
     return result;
