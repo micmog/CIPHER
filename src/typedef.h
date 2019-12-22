@@ -27,6 +27,7 @@
 /* max active phases... depends on neighbourhood */
 #define MAXCP 5
 #define MAXAP 15
+#define R_GAS_CONST 8.314462
 
 /* field offsets */
 PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
@@ -49,26 +50,32 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
+/* Temperature series */
+typedef struct TSeries {
+    PetscInt nTser;
+    PetscReal exp[10], coeff[10], logCoeff;
+} TSeries;
+
 /* RK coefficients */
 typedef struct RK {
     PetscInt n, *i;
-    PetscReal *enthalpy, *enthalpy_T;
+    TSeries *enthalpy;
 } RK;
 
 /* CALPHAD energy parameters container */
 typedef struct CALPHAD {
-    PetscReal ref, ref_T, R;
-    PetscReal *unary, *unary_T;
+    PetscReal ref;
+    TSeries *unary;
     RK *binary, *ternary;
-    PetscReal *mobilityc, *mobilityc_T;
+    PetscReal *mobilityc;
 } CALPHAD;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
-    PetscReal ref, ref_T;
-    PetscReal *ceq, *ceq_T;
-    PetscReal *unary, *unary_T, *binary, *binary_T;
-    PetscReal *mobilityc, *mobilityc_T;
+    PetscReal ref;
+    TSeries *ceq;
+    TSeries *unary, *binary;
+    PetscReal *mobilityc;
 } QUAD;
 
 /* Energy container */
@@ -80,7 +87,6 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscReal temperature0;
     PetscReal molarvolume, statekineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
@@ -102,11 +108,10 @@ typedef struct SOLUTIONPARAMS {
     /* time parameters */
     PetscReal finaltime, timestep, mintimestep, maxtimestep;
     PetscInt  step;
-    /* temperature parameters */
-    PetscInt n_temperatures;
-    PetscReal *temperature_list, *time_list;
     /* phase field parameters */
     PetscReal interfacewidth;
+    /* temperature */
+    PetscReal temperature;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */
@@ -119,7 +124,7 @@ typedef struct SOLUTIONPARAMS {
 /* solution parameters */
 typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
-    PetscInt npf, ndp, ncp;
+    PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
     char **componentname;
     /* grid resolution */

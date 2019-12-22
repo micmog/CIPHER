@@ -35,6 +35,19 @@ void I2FFUNC(PetscScalar *FARRAY,uint16_t *IARRAY) {
 }
 
 /*
+ PetscReal to power of unsigned int
+ */
+PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)//*tseries or tseries ? arg is not being changed in funct
+{
+    PetscReal result = 0.0;
+    for (PetscInt i=0; i<tseries.nTser; i++) {
+        result += tseries.coeff[i]*pow(temperature,tseries.exp[i]);
+    }
+    if (fabs(tseries.logCoeff) > 0.0) result += tseries.logCoeff*temperature*log(temperature);
+    return result;
+} 
+
+/*
  Extract string between tags
  */
 char *Extract(const char *const string, const char *const left, const char *const right)

@@ -53,7 +53,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         composition0_global[CP_SIZE*user->ninteriorcells]; 
     PetscReal         chempot_global[user->ndp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ndp*user->ndp*user->ninteriorcells]; 
-    PetscReal         temperature;
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -65,9 +64,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = DMGetLocalVector(user->da_solution,&laplacian); CHKERRQ(ierr);
     ierr = VecZeroEntries(laplacian); CHKERRQ(ierr);
     ierr = VecGetArray(laplacian,&lap); CHKERRQ(ierr);
-    
-    /* Get temperature */
-    Temperature(&temperature,ftime,user);
 
     /* Precalculate cell quantities */
     if (user->ndp) {
@@ -86,12 +82,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(chempot,0,user->ndp*sizeof(PetscReal));
             memset(mobilitycv,0,user->ndp*user->ndp*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
-                Composition(&composition0[g*user->ncp],&chempot_im[g*user->ndp],temperature,slist[g+1],user);
-                ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition0[g*user->ncp],temperature,slist[g+1],user);
+                Composition(&composition0[g*user->ncp],&chempot_im[g*user->ndp],user->solparams.temperature,slist[g+1],user);
+                ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 for (c=0; c<user->ndp; c++) {
                     chempot[c] += interpolant[g]*(chempot_ex[g*user->ndp+c] + chempot_im[g*user->ndp+c]);
                 }
-                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],temperature,slist[g+1],user);
+                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],slist[g+1],user);
                 for (c=0; c<user->ndp*user->ndp; c++) {
                     mobilitycv[c] += interpolant[g]*work_vec_MB[c];
                 }
@@ -100,7 +96,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (c=0; c<user->ndp; c++) {
                     work_vec_DP[g*user->ndp+c] = chempot[c] - chempot_ex[g*user->ndp+c];
                 }
-                Composition(&composition[g*user->ncp],&work_vec_DP[g*user->ndp],temperature,slist[g+1],user);
+                Composition(&composition[g*user->ncp],&work_vec_DP[g*user->ndp],user->solparams.temperature,slist[g+1],user);
             }
         }
     }
@@ -230,7 +226,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            Chemenergy(chemsource,composition0,chempot,temperature,slist,user);
+            Chemenergy(chemsource,composition0,chempot,user->solparams.temperature,slist,user);
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
@@ -307,7 +303,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
   
             for (g =0; g<slist[0];  g++) {
-                ChemicalpotentialImplicitTangent(dmdc,&composition0[g*user->ncp],temperature,slist[g+1],user);
+                ChemicalpotentialImplicitTangent(dmdc,&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 MatVecMult_CIPHER(&dprhs[g*user->ndp],dmdc,&work_vec_DP[g*user->ndp],user->ndp);
             }
         }    
@@ -345,11 +341,6 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetSolution(ts, &solution);CHKERRQ(ierr);    
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
     
-    /* Get temperature */
-	PetscReal temperature, currenttime;
-	ierr = TSGetTime(ts,&currenttime);CHKERRQ(ierr);
-    Temperature(&temperature,currenttime,user);
-
     /* Determine active phase set, update composition */
     ierr = DMGetGlobalVector(user->da_solution,&globalX); CHKERRQ(ierr);
     ierr = VecCopy(solution,globalX);
@@ -435,7 +426,7 @@ PetscErrorCode PostStep(TS ts)
         for (g=0; g<superset[0];  g++) {
             phiSS[g] = 0.0;
             currentmaterial = &user->material[user->phasematerialmapping[superset[g+1]]];
-            ChemicalpotentialImplicit(&compSS[g*user->ndp],currentmaterial->c0,temperature,superset[g+1],user);
+            ChemicalpotentialImplicit(&compSS[g*user->ndp],currentmaterial->c0,user->solparams.temperature,superset[g+1],user);
         }
         
         /* reorder dofs to new active phase superset */
@@ -489,7 +480,7 @@ PetscErrorCode PostStep(TS ts)
                }
            }
            for (g =0; g<slist[0];  g++) {
-               Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],temperature,slist[g+1],user);
+               Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],user->solparams.temperature,slist[g+1],user);
                for (c=0; c<user->ncp; c++) {
                    avgcomp[c] += interpolant[g]*composition[g*user->ncp+c];
                }    
@@ -498,6 +489,8 @@ PetscErrorCode PostStep(TS ts)
        ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
        ierr = VecRestoreArray(Xout,&xout); CHKERRQ(ierr);
 
+       PetscReal currenttime;
+       ierr = TSGetTime(ts,&currenttime);CHKERRQ(ierr);
        sprintf(name, "%s_%d.vtu",user->solparams.outfile,user->solparams.step);
        PetscPrintf(PETSC_COMM_WORLD,"writing output at time %e to %s\n",currenttime,name);
        ierr = PetscViewerVTKOpen(PETSC_COMM_WORLD, name, FILE_MODE_WRITE, &viewer);CHKERRQ(ierr);
