@@ -34,7 +34,7 @@ static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *compositi
     const CALPHAD *currentcalphad = &energy.calphad;
     const RK *currentbinary = &currentcalphad->binary[0];
     const RK *currentternary = &currentcalphad->ternary[0];
-    *chemenergy = currentcalphad->ref;
+    *chemenergy = SumTSeries(temperature,currentcalphad->ref);
     for (PetscInt ck=0; ck<numcomps; ck++) {
         *chemenergy += SumTSeries(temperature,currentcalphad->unary[ck])*composition[ck] + R_GAS_CONST*temperature*composition[ck]*log(composition[ck]);
         for (PetscInt cj=ck+1; cj<numcomps; cj++,currentbinary++) {

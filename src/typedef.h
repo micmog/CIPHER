@@ -58,6 +58,12 @@ typedef struct TSeries {
     PetscReal logCoeff;
 } TSeries;
 
+/* Mobility */
+typedef struct MOBILITY {
+    PetscReal *mobilityc0;
+    TSeries *migration_unary, **migration_binary;
+} MOBILITY;
+
 /* RK coefficients */
 typedef struct RK {
     PetscInt n, *i;
@@ -66,7 +72,7 @@ typedef struct RK {
 
 /* CALPHAD energy parameters container */
 typedef struct CALPHAD {
-    PetscReal ref;
+    TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
     PetscReal *mobilityc;
@@ -82,8 +88,8 @@ typedef struct QUAD {
 
 /* Energy container */
 typedef union CHEMFE {
-   QUAD    quad;
-   CALPHAD calphad;
+    QUAD    quad;
+    CALPHAD calphad;
 } CHEMFE;
 
 /* Phase container */
@@ -92,6 +98,7 @@ typedef struct MATERIAL {
     PetscReal molarvolume, statekineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
+    MOBILITY mobilityc;
 } MATERIAL;
 
 /* interface container */

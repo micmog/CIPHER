@@ -173,16 +173,6 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         currentmaterial->model = NONE_CHEMENERGY;
         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
         memset(currentmaterial->c0,0,user->ncp*sizeof(PetscReal));
-        QUAD *currentquad = &currentmaterial->energy.quad;
-        currentquad->ceq = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-        currentquad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-        currentquad->binary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-        currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-        CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-        currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-        currentcalphad->binary = (RK *) malloc(user->ncp*(user->ndp)*sizeof(struct RK)/2);
-        currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ndp)*(user->ncp-2)*sizeof(struct RK)/6);
-        currentcalphad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -202,8 +192,12 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 if (strstr(mtok, "quadratic") != NULL) {
                     currentmaterial->model = QUADRATIC_CHEMENERGY;
+                    currentquad->ceq = (TSeries *) malloc(user->ncp*sizeof(TSeries));
                     currentquad->ref.nTser = 0;
                     currentquad->ref.logCoeff = 0.0;
+                    currentquad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                    currentquad->binary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                    currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
                     memset(currentquad->mobilityc,0,user->ncp*sizeof(PetscReal));
                     for (PetscInt c=0; c<user->ncp; c++) {
                         currentquad->ceq[c].nTser = 0;
@@ -215,7 +209,12 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     }
                 } else if (strstr(mtok, "calphaddis") != NULL) {
                     currentmaterial->model = CALPHAD_CHEMENERGY;
-                    currentcalphad->ref = 0.0;
+                    currentcalphad->ref.nTser = 0;
+                    currentcalphad->ref.logCoeff = 0.0;
+                    currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                    currentcalphad->binary = (RK *) malloc(user->ncp*(user->ndp)*sizeof(struct RK)/2);
+                    currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ndp)*(user->ncp-2)*sizeof(struct RK)/6);
+                    currentcalphad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
                     memset(currentcalphad->mobilityc,0,user->ncp*sizeof(PetscReal));
                     TSeries *currentunary = &currentcalphad->unary[0];
                     RK *currentbinary = &currentcalphad->binary[0];
@@ -413,14 +412,25 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* F_chem parameters for each material */
-            if (strstr(tok, "calphad_refenthalpy") != NULL) {
+            if (strstr(tok, "calphad_refenthalpy_coeff") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
+                currentcalphad->ref.nTser = 0;
                 while (mtok != NULL) {
-                    PetscReal refenthalpy;
-                    sscanf(mtok, "%lf", &refenthalpy);
-                    currentcalphad->ref = refenthalpy;
+                    sscanf(mtok, "%lf", &currentcalphad->ref.coeff[currentcalphad->ref.nTser]);
+                    currentcalphad->ref.nTser++;
+                    mtok = strtok_r(NULL, " ", &savemtok);
+                }
+            }
+            if (strstr(tok, "calphad_refenthalpy_exp") != NULL) {
+                char *mtok, *savemtok;
+                mtok = strtok_r(tok, " ", &savemtok);
+                mtok = strtok_r(NULL, " ", &savemtok);
+                currentcalphad->ref.nTser = 0;
+                while (mtok != NULL) {
+                    sscanf(mtok, "%d", &currentcalphad->ref.exp[currentcalphad->ref.nTser]);
+                    currentcalphad->ref.nTser++;
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
             }
