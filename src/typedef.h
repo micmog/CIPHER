@@ -52,8 +52,10 @@ typedef enum {
 
 /* Temperature series */
 typedef struct TSeries {
-    PetscInt nTser;
-    PetscReal exp[10], coeff[10], logCoeff;
+    PetscInt  nTser;
+    PetscInt  exp[10];
+    PetscReal coeff[10];
+    PetscReal logCoeff;
 } TSeries;
 
 /* RK coefficients */

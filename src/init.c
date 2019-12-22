@@ -307,7 +307,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         mtok = strtok_r(NULL, " ", &savemtok);
                         currentceq->nTser = 0;
                         while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentceq->exp[currentceq->nTser]);
+                            sscanf(mtok, "%d", &currentceq->exp[currentceq->nTser]);
                             currentceq->nTser++;
                             mtok = strtok_r(NULL, " ", &savemtok);
                         }
@@ -333,7 +333,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 mtok = strtok_r(NULL, " ", &savemtok);
                 currentquad->ref.nTser = 0;
                 while (mtok != NULL) {
-                    sscanf(mtok, "%lf", &currentquad->ref.exp[currentquad->ref.nTser]);
+                    sscanf(mtok, "%d", &currentquad->ref.exp[currentquad->ref.nTser]);
                     currentquad->ref.nTser++;
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
@@ -367,7 +367,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         mtok = strtok_r(NULL, " ", &savemtok);
                         currentunary->nTser = 0;
                         while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentunary->exp[currentunary->nTser]);
+                            sscanf(mtok, "%d", &currentunary->exp[currentunary->nTser]);
                             currentunary->nTser++;
                             mtok = strtok_r(NULL, " ", &savemtok);
                         }
@@ -404,7 +404,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         mtok = strtok_r(NULL, " ", &savemtok);
                         currentbinary->nTser = 0;
                         while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentbinary->exp[currentbinary->nTser]);
+                            sscanf(mtok, "%d", &currentbinary->exp[currentbinary->nTser]);
                             currentbinary->nTser++;
                             mtok = strtok_r(NULL, " ", &savemtok);
                         }
@@ -453,7 +453,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         mtok = strtok_r(NULL, " ", &savemtok);
                         currentunary->nTser = 0;
                         while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentunary->exp[currentunary->nTser]);
+                            sscanf(mtok, "%d", &currentunary->exp[currentunary->nTser]);
                             currentunary->nTser++;
                             mtok = strtok_r(NULL, " ", &savemtok);
                         }
@@ -531,7 +531,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                                 mtok = strtok_r(NULL, " ", &savemtok);
                                 currententhalpy->nTser = 0;
                                 while (mtok != NULL) {
-                                    sscanf(mtok, "%lf", &currententhalpy->exp[currententhalpy->nTser]);
+                                    sscanf(mtok, "%d", &currententhalpy->exp[currententhalpy->nTser]);
                                     currententhalpy->nTser++;
                                     mtok = strtok_r(NULL, " ", &savemtok);
                                 }
@@ -648,7 +648,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
 									mtok = strtok_r(NULL, " ", &savemtok);
                                     currententhalpy->nTser = 0;
 									while (mtok != NULL) {
-                                        sscanf(mtok, "%lf", &currententhalpy->exp[currententhalpy->nTser]);
+                                        sscanf(mtok, "%d", &currententhalpy->exp[currententhalpy->nTser]);
                                         currententhalpy->nTser++;
 										mtok = strtok_r(NULL, " ", &savemtok);
 									}
