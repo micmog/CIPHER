@@ -30,11 +30,81 @@
 <material 1>
   chemicalenergy_type calphaddis
   molarvolume 1e-6
-  statekineticcoeff 1e+0
-  mobilityc_al 7.3451110109984390e-8
-  mobilityc_cu 5.3486841665396531e-8
-  mobilityc_mg 1.4696210067717206e-6
-  mobilityc_zn 2.2897371183228479e-6 
+  statekineticcoeff 5e-1
+  mobilityc0_al 1.0e-18
+  mobilityc0_cu 1.0e-18
+  mobilityc0_mg 1.0e-18
+  mobilityc0_zn 1.0e-18
+  migration_unary_coeff_al_al -127200.0 -92.98
+  migration_unary_exp_al_al 0 1
+  migration_unary_coeff_al_cu -181583.4 -99.8
+  migration_unary_exp_al_cu 0 1
+  migration_unary_coeff_al_mg -127200.0 -92.98
+  migration_unary_exp_al_mg 0 1
+  migration_unary_coeff_al_zn -83255.0 -92.92
+  migration_unary_exp_al_zn 0 1
+  migration_nbinary_al_al_zn 2
+  migration_binary_coeff_al_al_zn_1 30169.0 -111.83
+  migration_binary_exp_al_al_zn_1  0 1
+  migration_binary_coeff_al_al_zn_2 11835.0 39.0
+  migration_binary_exp_al_al_zn_2  0 1
+  migration_unary_coeff_cu_al -131000.0 -81,395
+  migration_unary_exp_cu_al 0 1
+  migration_unary_coeff_cu_cu -204670.0 -83.14
+  migration_unary_exp_cu_cu 0 1
+  migration_unary_coeff_cu_mg -112499.0 -81.26
+  migration_unary_exp_cu_mg 0 1
+  migration_unary_coeff_cu_zn -91608.6 -82.63
+  migration_unary_exp_cu_zn 0 1
+  migration_nbinary_cu_al_cu 1
+  migration_binary_coeff_cu_al_cu_1 -31461.4 78.91
+  migration_binary_exp_cu_al_cu_1  0 1
+  migration_nbinary_cu_al_mg 1
+  migration_binary_coeff_cu_al_mg_1 175000.0
+  migration_binary_exp_cu_al_mg_1  0
+  migration_nbinary_cu_al_zn 1
+  migration_binary_coeff_cu_al_zn_1 -250000.0
+  migration_binary_exp_cu_al_zn_1  0
+  migration_nbinary_cu_cu_zn 1
+  migration_binary_coeff_cu_cu_zn_1 -4930.8 -24.75
+  migration_binary_exp_cu_cu_zn_1  0 1
+  migration_unary_coeff_mg_al -119000.0 -95.72
+  migration_unary_exp_mg_al 0 1
+  migration_unary_coeff_mg_cu -170567 -98.84
+  migration_unary_exp_mg_cu 0 1
+  migration_unary_coeff_mg_mg -112499.0 -81.25
+  migration_unary_exp_mg_mg 0 1
+  migration_unary_coeff_mg_zn -71147.6 -67.0
+  migration_unary_exp_mg_zn 0 1
+  migration_nbinary_mg_al_cu 1
+  migration_binary_coeff_mg_al_cu_1 200000.0
+  migration_binary_exp_mg_al_cu_1  0
+  migration_nbinary_mg_al_mg 1
+  migration_binary_coeff_mg_al_mg_1 53551.0
+  migration_binary_exp_mg_al_mg_1  0
+  migration_nbinary_mg_cu_mg 3
+  migration_binary_coeff_mg_cu_mg_1 125000.0
+  migration_binary_exp_mg_cu_mg_1  0
+  migration_binary_coeff_mg_cu_mg_2 50000.0
+  migration_binary_exp_mg_cu_mg_2  0
+  migration_binary_coeff_mg_cu_mg_3 50000.0
+  migration_binary_exp_mg_cu_mg_3  0
+  migration_unary_coeff_zn_al -120000.0 -88.44
+  migration_unary_exp_zn_al 0 1
+  migration_unary_coeff_zn_cu -190832.4 -86.10
+  migration_unary_exp_zn_cu 0 1
+  migration_unary_coeff_zn_mg -73706.0 -86.15
+  migration_unary_exp_zn_mg 0 1
+  migration_unary_coeff_zn_zn -76569.0 -86.20
+  migration_unary_exp_zn_zn 0 1
+  migration_nbinary_zn_al_zn 2
+  migration_binary_coeff_zn_al_zn_1 -40720.0 31.7
+  migration_binary_exp_zn_al_zn_1  0 1
+  migration_binary_coeff_zn_al_zn_2 147763.0 -133.7
+  migration_binary_exp_zn_al_zn_2  0 1
+  migration_nbinary_zn_cu_zn 1
+  migration_binary_coeff_zn_cu_zn_1 -68455.6 36.0
+  migration_binary_exp_zn_cu_zn_1 0 1
   c0 0.90 0.02 0.04 0.04
   calphad_refenthalpy_coeff 0.0
   calphad_refenthalpy_exp 0
@@ -100,12 +170,12 @@
 <material 2>
   chemicalenergy_type quadratic
   molarvolume 1e-6
-  statekineticcoeff 1e+0
+  statekineticcoeff 5e-1
   mobilityc_al 7.3451110109984390e-8
   mobilityc_cu 5.3486841665396531e-8
   mobilityc_mg 1.4696210067717206e-6
   mobilityc_zn 2.2897371183228479e-6 
-  c0 0.16757 0.04471 0.33333 0.45439   
+  c0 0.16757 0.04471 0.33333 0.45439
   quad_ceq_coeff_al 0.16757
   quad_ceq_exp_al 0
   quad_ceq_coeff_cu 0.04471
