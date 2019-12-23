@@ -14,12 +14,44 @@
 #define UTILITY_IMPORT
 #include "utility.h"
 
-/* nc x nc matrix inversion function */
-static void (*Invertmatrixf)(PetscReal *, PetscReal *);
-
 /* interpolation shape functions */
 static void (*Interpolant          )(PetscReal *, const PetscReal *, const uint16_t);
 static void (*InterpolantDerivative)(PetscReal *, const PetscReal *, const uint16_t);
+
+/*
+ Set conversion routines
+ */
+void F2IFUNC(uint16_t *IARRAY,PetscScalar *FARRAY) {
+    IARRAY[0] = (uint16_t) round(FARRAY[0]);
+    for (int MACROIDX = 1; MACROIDX <= IARRAY[0]; ++MACROIDX) {
+        IARRAY[MACROIDX] = (uint16_t) round(FARRAY[MACROIDX]);
+    }
+}
+void I2FFUNC(PetscScalar *FARRAY,uint16_t *IARRAY) {
+    FARRAY[0] = (PetscScalar) IARRAY[0];
+    for (int MACROIDX = 1; MACROIDX <= IARRAY[0]; ++MACROIDX) {
+        FARRAY[MACROIDX] = (PetscScalar) IARRAY[MACROIDX];
+    }
+}
+
+/*
+ PetscReal to power of unsigned int
+ */
+PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)//*tseries or tseries ? arg is not being changed in funct
+{
+    PetscReal result = 0.0;
+    for (PetscInt i=0; i<tseries.nTser; i++) {
+        if        (tseries.exp[i] > 0) {
+            result += tseries.coeff[i]*FastPow(temperature, tseries.exp[i]);
+        } else if (tseries.exp[i] < 0) {
+            result += tseries.coeff[i]/FastPow(temperature,-tseries.exp[i]);
+        } else {
+            result += tseries.coeff[i];
+        }    
+    }
+    if (fabs(tseries.logCoeff) > 0.0) result += tseries.logCoeff*temperature*log(temperature);
+    return result;
+} 
 
 /*
  Extract string between tags
@@ -172,14 +204,14 @@ void SetUnion(uint16_t *OutC, uint16_t *AInC, uint16_t *BInC, uint16_t *InA, uin
     }
 }
 
-static void Invert1x1(PetscReal * dst, PetscReal * src)
+static void Invert1x1(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
     /* Compute adjoint and multiply with reciprocal of determinant: */
 
     dst[0] = 1.0 / src[0];
 }
 
-static void Invert2x2(PetscReal * dst, PetscReal * src)
+static void Invert2x2(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
     PetscReal det;
 
@@ -203,7 +235,7 @@ static void Invert2x2(PetscReal * dst, PetscReal * src)
     dst[1] = dst[2];
 }
 
-static void Invert3x3(PetscReal * dst, PetscReal * src)
+static void Invert3x3(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
     PetscReal det;
 
@@ -235,7 +267,7 @@ static void Invert3x3(PetscReal * dst, PetscReal * src)
     dst[5] = dst[7];
 }
 
-static void Invert4x4(PetscReal * dst, PetscReal * src)
+static void Invert4x4(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
     PetscReal det;
 
@@ -347,9 +379,8 @@ static void Invert4x4(PetscReal * dst, PetscReal * src)
     dst[11] = dst[14];
 }
 
-static void Invertnxn(PetscReal * dst, PetscReal * src)
+static void Invertnxn(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
-    PetscInt n = sizeof(src)/sizeof(PetscReal);
     memset(dst,0,n*n*sizeof(PetscReal));
     for(PetscInt i = 0; i < n; i++) dst[i*n+i] = 1.0;
 
@@ -369,9 +400,43 @@ static void Invertnxn(PetscReal * dst, PetscReal * src)
     }
 }
 
-void Invertmatrix(PetscReal * dst, PetscReal * src)
+void Invertmatrix(PetscReal * dst, PetscReal * src, const uint16_t n)
 {
-    Invertmatrixf(dst,src);
+    if        (n == 1) {
+        Invert1x1(dst,src,n);
+    } else if (n == 2) {
+        Invert2x2(dst,src,n);
+    } else if (n == 3) {
+        Invert3x3(dst,src,n);
+    } else if (n == 4) {
+        Invert4x4(dst,src,n);
+    } else {
+        Invertnxn(dst,src,n);
+    }  
+}
+
+void MatMatMult_CIPHER(PetscReal * dst, const PetscReal * srcA, const PetscReal * srcB, const uint16_t n)
+{
+    PetscInt i,j,k;
+    memset(dst,0,n*n*sizeof(PetscReal));
+    for (k=0; k<n; k++) {
+        for (j=0; j<n; j++) {
+            for (i=0; i<n; i++) {
+                dst[k*n+j] += srcA[k*n+i]*srcB[i*n+j];
+            }
+        }
+    }        
+}
+
+void MatVecMult_CIPHER(PetscReal * dst, const PetscReal * srcA, const PetscReal * srcB, const uint16_t n)
+{
+    PetscInt j,k;
+    memset(dst,0,n*sizeof(PetscReal));
+    for (k=0; k<n; k++) {
+        for (j=0; j<n; j++) {
+            dst[k] += srcA[k*n+j]*srcB[j];
+        }
+    }        
 }
 
 /*
@@ -517,17 +582,6 @@ void SimplexProjection(PetscReal *out, PetscReal *in, int size)
  */
 void utility_init(const AppCtx *user)
 {
-    if        (user->nc-1 == 1) {
-        Invertmatrixf = &Invert1x1;
-    } else if (user->nc-1 == 2) {
-        Invertmatrixf = &Invert2x2;
-    } else if (user->nc-1 == 3) {
-        Invertmatrixf = &Invert3x3;
-    } else if (user->nc-1 == 4) {
-        Invertmatrixf = &Invert4x4;
-    } else {
-        Invertmatrixf = &Invertnxn;
-    }  
     if        (user->interpolation == LINEAR_INTERPOLATION) {
         Interpolant = &Interpolant_linear;
         InterpolantDerivative = &InterpolantDerivative_linear;
