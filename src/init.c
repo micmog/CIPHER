@@ -69,7 +69,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     }
     while (tok !=NULL) {
         // process the line
-        if (strstr(tok, "dimension") != NULL) {
+        if (strstr(tok, "dimension ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->dim);
@@ -80,7 +80,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 user->size[dim] = 1.0;
             }
         }    
-        if (strstr(tok, "grid") != NULL) {
+        if (strstr(tok, "grid ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             for (PetscInt dim=0; dim<user->dim; ++dim) {
@@ -89,7 +89,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
         }
-        if (strstr(tok, "size") != NULL) {
+        if (strstr(tok, "size ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             for (PetscInt dim=0; dim<user->dim; ++dim) {
@@ -97,19 +97,19 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 user->size[dim] = atof(strtok_r(NULL, " ", &savemtok));
             }
         }
-        if (strstr(tok, "n_phases") != NULL) {
+        if (strstr(tok, "n_phases ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->npf);
             user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
         }    
-        if (strstr(tok, "n_materials") != NULL) {
+        if (strstr(tok, "n_materials ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->nmat);
             user->material = (MATERIAL *) malloc(user->nmat*sizeof(struct MATERIAL));
         }
-        if (strstr(tok, "n_components") != NULL) {
+        if (strstr(tok, "n_components ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->ncp);
@@ -120,7 +120,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             user->ndp = user->ncp-1;
         }    
-        if (strstr(tok, "componentnames") != NULL) {
+        if (strstr(tok, "componentnames ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             for (PetscInt c=0; c<user->ncp; c++) {
@@ -128,7 +128,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
         }
         /* interpolation type */
-        if (strstr(tok, "interpolation_type") != NULL) {
+        if (strstr(tok, "interpolation_type ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             mtok = strtok_r(NULL, " ", &savemtok);
@@ -202,7 +202,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         tok = strtok_r(substr, "\n", &savetok);
         while (tok !=NULL) {
             /* model type */
-            if (strstr(tok, "chemicalenergy_type") != NULL) {
+            if (strstr(tok, "chemicalenergy_type ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -251,7 +251,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* molar volume */
-            if (strstr(tok, "molarvolume") != NULL) {
+            if (strstr(tok, "molarvolume ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmaterial->molarvolume);
@@ -260,7 +260,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             if (strstr(tok, "mobilityc_") != NULL) {
                 char *mtok, *savemtok;
                 for (PetscInt c=0; c<user->ncp; c++) {
-                    sprintf(starttag, "mobilityc_%s",user->componentname[c]);
+                    sprintf(starttag, "mobilityc_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         if (currentmaterial->model == QUADRATIC_CHEMENERGY) {
@@ -277,7 +277,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
-                    sprintf(starttag, "mobilityc0_%s",user->componentname[c]);
+                    sprintf(starttag, "mobilityc0_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmobility->m0);
@@ -292,7 +292,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     TSeries *currentmigration = &currentmobility->unary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
-                        sprintf(starttag, "migration_unary_coeff_%s_%s",user->componentname[ck],user->componentname[cj]);
+                        sprintf(starttag, "migration_unary_coeff_%s_%s ",user->componentname[ck],user->componentname[cj]);
                         if (strstr(tok, starttag) != NULL){
                             mtok = strtok_r(tok, " ", &savemtok);
                             mtok = strtok_r(NULL, " ", &savemtok);
@@ -313,7 +313,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     TSeries *currentmigration = &currentmobility->unary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
-                        sprintf(starttag, "migration_unary_exp_%s_%s",user->componentname[ck],user->componentname[cj]);
+                        sprintf(starttag, "migration_unary_exp_%s_%s ",user->componentname[ck],user->componentname[cj]);
                         if (strstr(tok, starttag) != NULL){
                             mtok = strtok_r(tok, " ", &savemtok);
                             mtok = strtok_r(NULL, " ", &savemtok);
@@ -335,7 +335,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     RK *currentbinary = &currentmobility->binary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++) {
                         for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
-                            sprintf(starttag, "migration_binary_%s_%s_%s",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
+                            sprintf(starttag, "migration_binary_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -361,7 +361,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
                             TSeries *currentmigration = &currentbinary->enthalpy[0];
                             for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
-                                sprintf(starttag, "migration_binary_coeff_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+                                sprintf(starttag, "migration_binary_coeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
                                 if (strstr(tok, starttag) != NULL){
                                     mtok = strtok_r(tok, " ", &savemtok);
                                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -387,7 +387,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
                             TSeries *currentmigration = &currentbinary->enthalpy[0];
                             for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
-                                sprintf(starttag, "migration_binary_exp_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+                                sprintf(starttag, "migration_binary_exp_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
                                 if (strstr(tok, starttag) != NULL){
                                     mtok = strtok_r(tok, " ", &savemtok);
                                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -405,7 +405,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* initial composition */
-            if (strstr(tok, "c0") != NULL) {
+            if (strstr(tok, "c0 ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -420,7 +420,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 assert(c == user->ncp);
             }
             /* initial composition */
-            if (strstr(tok, "statekineticcoeff") != NULL) {
+            if (strstr(tok, "statekineticcoeff ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmaterial->statekineticcoeff);
@@ -430,7 +430,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentceq = &currentquad->ceq[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentceq++) {
-                    sprintf(starttag, "quad_ceq_coeff_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_ceq_coeff_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -448,7 +448,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentceq = &currentquad->ceq[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentceq++) {
-                    sprintf(starttag, "quad_ceq_exp_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_ceq_exp_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -463,7 +463,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* F_chem parameters for each material */
-            if (strstr(tok, "quad_refenthalpy_coeff") != NULL) {
+            if (strstr(tok, "quad_refenthalpy_coeff ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -474,7 +474,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
             }
-            if (strstr(tok, "quad_refenthalpy_exp") != NULL) {
+            if (strstr(tok, "quad_refenthalpy_exp ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -490,7 +490,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentunary = &currentquad->unary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "quad_unaryenthalpy_coeff_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_unaryenthalpy_coeff_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -508,7 +508,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentunary = &currentquad->unary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "quad_unaryenthalpy_exp_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_unaryenthalpy_exp_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -527,7 +527,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentbinary = &currentquad->binary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentbinary++) {
-                    sprintf(starttag, "quad_binaryenthalpy_coeff_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_binaryenthalpy_coeff_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -545,7 +545,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentbinary = &currentquad->binary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentbinary++) {
-                    sprintf(starttag, "quad_binaryenthalpy_exp_%s",user->componentname[c]);
+                    sprintf(starttag, "quad_binaryenthalpy_exp_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -560,7 +560,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 }
             }
             /* F_chem parameters for each material */
-            if (strstr(tok, "calphad_refenthalpy_coeff") != NULL) {
+            if (strstr(tok, "calphad_refenthalpy_coeff ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -571,7 +571,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     mtok = strtok_r(NULL, " ", &savemtok);
                 }
             }
-            if (strstr(tok, "calphad_refenthalpy_exp") != NULL) {
+            if (strstr(tok, "calphad_refenthalpy_exp ") != NULL) {
                 char *mtok, *savemtok;
                 mtok = strtok_r(tok, " ", &savemtok);
                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -587,7 +587,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentunary = &currentcalphad->unary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_coeff_%s",user->componentname[c]);
+                    sprintf(starttag, "calphad_unaryenthalpy_coeff_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -605,7 +605,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentunary = &currentcalphad->unary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_exp_%s",user->componentname[c]);
+                    sprintf(starttag, "calphad_unaryenthalpy_exp_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -623,7 +623,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 char *mtok, *savemtok;
                 TSeries *currentunary = &currentcalphad->unary[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_logCoeff_%s",user->componentname[c]);
+                    sprintf(starttag, "calphad_unaryenthalpy_logCoeff_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
                         mtok = strtok_r(NULL, " ", &savemtok);
@@ -637,7 +637,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 RK *currentbinary = &currentcalphad->binary[0];
                 for (PetscInt cj=0;cj<user->ncp;cj++) {
                     for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
-                        sprintf(starttag, "calphad_nbinaryenthalpy_%s_%s",user->componentname[cj],user->componentname[ci]);
+                        sprintf(starttag, "calphad_nbinaryenthalpy_%s_%s ",user->componentname[cj],user->componentname[ci]);
                         if (strstr(tok, starttag) != NULL){
                             mtok = strtok_r(tok, " ", &savemtok);
                             mtok = strtok_r(NULL, " ", &savemtok);
@@ -660,7 +660,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
                         TSeries *currententhalpy = &currentbinary->enthalpy[0];
                         for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_coeff_%s_%s_%d",user->componentname[cj],user->componentname[ci],nrk+1);
+                            sprintf(starttag, "calphad_binaryenthalpy_coeff_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -683,7 +683,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
                         TSeries *currententhalpy = &currentbinary->enthalpy[0];
                         for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_exp_%s_%s_%d",user->componentname[cj],user->componentname[ci],nrk+1);
+                            sprintf(starttag, "calphad_binaryenthalpy_exp_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -706,7 +706,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
                         TSeries *currententhalpy = &currentbinary->enthalpy[0];
                         for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_logCoeff_%s_%s_%d",user->componentname[cj],user->componentname[ci],nrk+1);
+                            sprintf(starttag, "calphad_binaryenthalpy_logCoeff_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -724,7 +724,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ck=0;ck<user->ncp;ck++) {
                     for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
                         for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            sprintf(starttag, "calphad_nternaryenthalpy_%s_%s_%s",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
+                            sprintf(starttag, "calphad_nternaryenthalpy_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -749,7 +749,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                 for (PetscInt ck=0;ck<user->ncp;ck++) {
                     for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
                         for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            sprintf(starttag, "calphad_iternaryenthalpy_%s_%s_%s",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
+                            sprintf(starttag, "calphad_iternaryenthalpy_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
                             if (strstr(tok, starttag) != NULL){
                                 mtok = strtok_r(tok, " ", &savemtok);
                                 mtok = strtok_r(NULL, " ", &savemtok);
@@ -775,7 +775,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
                             TSeries *currententhalpy = &currentternary->enthalpy[0];
                             for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-                                sprintf(starttag, "calphad_ternaryenthalpy_coeff_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+                                sprintf(starttag, "calphad_ternaryenthalpy_coeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
                                 if (strstr(tok, starttag) != NULL){
                                     mtok = strtok_r(tok, " ", &savemtok);
                                     mtok = strtok_r(NULL, " ", &savemtok);
@@ -800,7 +800,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
                             TSeries *currententhalpy = &currentternary->enthalpy[0];
                             for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-								sprintf(starttag, "calphad_ternaryenthalpy_exp_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+								sprintf(starttag, "calphad_ternaryenthalpy_exp_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
 								if (strstr(tok, starttag) != NULL){
 									mtok = strtok_r(tok, " ", &savemtok);
 									mtok = strtok_r(NULL, " ", &savemtok);
@@ -825,7 +825,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                         for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
                             TSeries *currententhalpy = &currentternary->enthalpy[0];
                             for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-								sprintf(starttag, "calphad_ternaryenthalpy_logCoeff_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+								sprintf(starttag, "calphad_ternaryenthalpy_logCoeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
 								if (strstr(tok, starttag) != NULL){
 									mtok = strtok_r(tok, " ", &savemtok);
 									mtok = strtok_r(NULL, " ", &savemtok);
@@ -962,89 +962,89 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     /* initialise solution parameters */
     while (tok !=NULL) {
         // process the line
-        if (strstr(tok, "finaltime") != NULL) {
+        if (strstr(tok, "finaltime ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.finaltime);
         }
-        if (strstr(tok, "timestep0") != NULL) {
+        if (strstr(tok, "timestep0 ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.timestep);
         }
-        if (strstr(tok, "timestepmin") != NULL) {
+        if (strstr(tok, "timestepmin ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.mintimestep);
         }
-        if (strstr(tok, "timestepmax") != NULL) {
+        if (strstr(tok, "timestepmax ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.maxtimestep);
         }
-        if (strstr(tok, "interfacewidth") != NULL) {
+        if (strstr(tok, "interfacewidth ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.interfacewidth);
         }    
-        if (strstr(tok, "temperature") != NULL) {
+        if (strstr(tok, "temperature ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.temperature);
         }    
-        if (strstr(tok, "initblocksize") != NULL) {
+        if (strstr(tok, "initblocksize ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             for (PetscInt dim=0; dim<user->dim; ++dim) {
                 sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initblocksize[dim]);
             }
         }    
-        if (strstr(tok, "initrefine") != NULL) {
+        if (strstr(tok, "initrefine ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initrefine);
         }    
-        if (strstr(tok, "initcoarsen") != NULL) {
+        if (strstr(tok, "initcoarsen ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initcoarsen);
         }    
-        if (strstr(tok, "maxnrefine") != NULL) {
+        if (strstr(tok, "maxnrefine ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.maxnrefine);
         }    
-        if (strstr(tok, "minnrefine") != NULL) {
+        if (strstr(tok, "minnrefine ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.minnrefine);
         }    
-        if (strstr(tok, "amrinterval") != NULL) {
+        if (strstr(tok, "amrinterval ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.amrinterval);
         }    
-        if (strstr(tok, "reltol") != NULL) {
+        if (strstr(tok, "reltol ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.reltol);
         }
-        if (strstr(tok, "abstol") != NULL) {
+        if (strstr(tok, "abstol ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.abstol);
         }
-        if (strstr(tok, "outputfreq") != NULL) {
+        if (strstr(tok, "outputfreq ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->solparams.outputfreq);
         }    
-        if (strstr(tok, "outfile") != NULL) {
+        if (strstr(tok, "outfile ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->solparams.outfile);
         }    
-        if (strstr(tok, "petscoptions") != NULL) {
+        if (strstr(tok, "petscoptions ") != NULL) {
             char *mtok, *savemtok;
             mtok = strtok_r(tok, " ", &savemtok);
             mtok = strtok_r(NULL, " ", &savemtok);
