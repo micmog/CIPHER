@@ -173,22 +173,6 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         currentmaterial->model = NONE_CHEMENERGY;
         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
         memset(currentmaterial->c0,0,user->ncp*sizeof(PetscReal));
-        currentmaterial->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
-        MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
-        for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
-            currentmobility->m0 = 0.0;
-            currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-            currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
-            TSeries *currentunary = &currentmobility->unary[0];
-            RK *currentbinary = &currentmobility->binary[0];
-            for (PetscInt ck=0; ck<user->ncp; ck++,currentunary++) {
-                currentunary->nTser = 0;
-                currentunary->logCoeff = 0.0;
-                for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
-                    currentbinary->n = 0;
-                }
-            } 
-        }
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -230,8 +214,22 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
                     currentcalphad->binary = (RK *) malloc(user->ncp*(user->ndp)*sizeof(struct RK)/2);
                     currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ndp)*(user->ncp-2)*sizeof(struct RK)/6);
-                    currentcalphad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-                    memset(currentcalphad->mobilityc,0,user->ncp*sizeof(PetscReal));
+                    currentcalphad->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
+                    MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
+                    for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
+                        currentmobility->m0 = 0.0;
+                        currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                        currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
+                        TSeries *currentunary = &currentmobility->unary[0];
+                        RK *currentbinary = &currentmobility->binary[0];
+                        for (PetscInt ck=0; ck<user->ncp; ck++,currentunary++) {
+                            currentunary->nTser = 0;
+                            currentunary->logCoeff = 0.0;
+                            for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
+                                currentbinary->n = 0;
+                            }
+                        } 
+                    }
                     TSeries *currentunary = &currentcalphad->unary[0];
                     RK *currentbinary = &currentcalphad->binary[0];
                     RK *currentternary = &currentcalphad->ternary[0];
@@ -263,11 +261,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                     sprintf(starttag, "mobilityc_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
                         mtok = strtok_r(tok, " ", &savemtok);
-                        if (currentmaterial->model == QUADRATIC_CHEMENERGY) {
-                            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentquad->mobilityc[c]);
-                        } else if (currentmaterial->model == CALPHAD_CHEMENERGY) {
-                            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentcalphad->mobilityc[c]);
-                        }
+                        sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentquad->mobilityc[c]);
                         c = user->ncp;
                     }
                 }
@@ -275,7 +269,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             /* component mobility for each material */
             if (strstr(tok, "mobilityc0_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
                     sprintf(starttag, "mobilityc0_%s ",user->componentname[c]);
                     if (strstr(tok, starttag) != NULL){
@@ -288,7 +282,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             /* component migration energy for each material */
             if (strstr(tok, "migration_unary_coeff_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     TSeries *currentmigration = &currentmobility->unary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
@@ -309,7 +303,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             if (strstr(tok, "migration_unary_exp_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     TSeries *currentmigration = &currentmobility->unary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
@@ -330,7 +324,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             if (strstr(tok, "migration_nbinary_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     RK *currentbinary = &currentmobility->binary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++) {
@@ -354,7 +348,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             if (strstr(tok, "migration_binary_coeff_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     RK *currentbinary = &currentmobility->binary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++) {
@@ -380,7 +374,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
             }
             if (strstr(tok, "migration_binary_exp_") != NULL) {
                 char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
                 for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
                     RK *currentbinary = &currentmobility->binary[0];
                     for (PetscInt cj=0; cj<user->ncp; cj++) {
@@ -853,7 +847,7 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         } else if (currentmaterial->model ==   CALPHAD_CHEMENERGY) {
             CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
             for (PetscInt c=0;c<user->ncp;c++) {
-                assert(currentcalphad->mobilityc[c] >= 0.0);
+                assert(currentcalphad->mobilityc[c].m0 >= 0.0);
             }
         } else if (currentmaterial->model ==      NONE_CHEMENERGY) {
             assert(user->ncp == 1);

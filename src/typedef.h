@@ -76,7 +76,7 @@ typedef struct CALPHAD {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
-    PetscReal *mobilityc;
+    MOBILITY *mobilityc;
 } CALPHAD;
 
 /* Quadratic energy parameters container */
@@ -99,7 +99,6 @@ typedef struct MATERIAL {
     PetscReal molarvolume, statekineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
-    MOBILITY *mobilityc;
 } MATERIAL;
 
 /* interface container */

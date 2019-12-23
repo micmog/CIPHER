@@ -87,7 +87,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (c=0; c<user->ndp; c++) {
                     chempot[c] += interpolant[g]*(chempot_ex[g*user->ndp+c] + chempot_im[g*user->ndp+c]);
                 }
-                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],slist[g+1],user);
+                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 for (c=0; c<user->ndp*user->ndp; c++) {
                     mobilitycv[c] += interpolant[g]*work_vec_MB[c];
                 }
