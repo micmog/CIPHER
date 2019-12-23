@@ -1,0 +1,10 @@
+<header>
+  n_interfaces 1
+</header>
+<interface 1>
+  energy 0.5e+3
+  mobility 1.2e-5
+</interface 1>
+<interface_mapping>
+  4 of 1
+</interface_mapping>

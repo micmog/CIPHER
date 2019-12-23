@@ -82,12 +82,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(chempot,0,user->ndp*sizeof(PetscReal));
             memset(mobilitycv,0,user->ndp*user->ndp*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
-                Composition(&composition0[g*user->ncp],&chempot_im[g*user->ndp],slist[g+1],user);
-                ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition0[g*user->ncp],slist[g+1],user);
+                Composition(&composition0[g*user->ncp],&chempot_im[g*user->ndp],user->solparams.temperature,slist[g+1],user);
+                ChemicalpotentialExplicit(&chempot_ex[g*user->ndp],&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 for (c=0; c<user->ndp; c++) {
                     chempot[c] += interpolant[g]*(chempot_ex[g*user->ndp+c] + chempot_im[g*user->ndp+c]);
                 }
-                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],slist[g+1],user);
+                CompositionMobility(work_vec_MB,&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 for (c=0; c<user->ndp*user->ndp; c++) {
                     mobilitycv[c] += interpolant[g]*work_vec_MB[c];
                 }
@@ -96,7 +96,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (c=0; c<user->ndp; c++) {
                     work_vec_DP[g*user->ndp+c] = chempot[c] - chempot_ex[g*user->ndp+c];
                 }
-                Composition(&composition[g*user->ncp],&work_vec_DP[g*user->ndp],slist[g+1],user);
+                Composition(&composition[g*user->ncp],&work_vec_DP[g*user->ndp],user->solparams.temperature,slist[g+1],user);
             }
         }
     }
@@ -226,7 +226,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            Chemenergy(chemsource,composition0,chempot,slist,user);
+            Chemenergy(chemsource,composition0,chempot,user->solparams.temperature,slist,user);
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
@@ -303,7 +303,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
   
             for (g =0; g<slist[0];  g++) {
-                ChemicalpotentialImplicitTangent(dmdc,&composition0[g*user->ncp],slist[g+1],user);
+                ChemicalpotentialImplicitTangent(dmdc,&composition0[g*user->ncp],user->solparams.temperature,slist[g+1],user);
                 MatVecMult_CIPHER(&dprhs[g*user->ndp],dmdc,&work_vec_DP[g*user->ndp],user->ndp);
             }
         }    
@@ -426,7 +426,7 @@ PetscErrorCode PostStep(TS ts)
         for (g=0; g<superset[0];  g++) {
             phiSS[g] = 0.0;
             currentmaterial = &user->material[user->phasematerialmapping[superset[g+1]]];
-            ChemicalpotentialImplicit(&compSS[g*user->ndp],currentmaterial->c0,superset[g+1],user);
+            ChemicalpotentialImplicit(&compSS[g*user->ndp],currentmaterial->c0,user->solparams.temperature,superset[g+1],user);
         }
         
         /* reorder dofs to new active phase superset */
@@ -480,7 +480,7 @@ PetscErrorCode PostStep(TS ts)
                }
            }
            for (g =0; g<slist[0];  g++) {
-               Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],slist[g+1],user);
+               Composition(&composition[g*user->ncp],&chempot_im[g*user->ndp],user->solparams.temperature,slist[g+1],user);
                for (c=0; c<user->ncp; c++) {
                    avgcomp[c] += interpolant[g]*composition[g*user->ncp+c];
                }    

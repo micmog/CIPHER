@@ -27,6 +27,7 @@
 /* max active phases... depends on neighbourhood */
 #define MAXCP 5
 #define MAXAP 15
+#define R_GAS_CONST 8.314462
 
 /* field offsets */
 PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
@@ -49,32 +50,47 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
+/* Temperature series */
+typedef struct TSeries {
+    PetscInt  nTser;
+    PetscInt  exp[10];
+    PetscReal coeff[10];
+    PetscReal logCoeff;
+} TSeries;
+
 /* RK coefficients */
 typedef struct RK {
     PetscInt n, *i;
-    PetscReal *enthalpy;
+    TSeries *enthalpy;
 } RK;
+
+/* Mobility */
+typedef struct MOBILITY {
+    PetscReal m0;
+    TSeries *unary;
+    RK *binary;
+} MOBILITY;
 
 /* CALPHAD energy parameters container */
 typedef struct CALPHAD {
-    PetscReal ref, RT;
-    PetscReal *unary;
+    TSeries ref;
+    TSeries *unary;
     RK *binary, *ternary;
-    PetscReal *mobilityc;
+    MOBILITY *mobilityc;
 } CALPHAD;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
-    PetscReal ref;
-    PetscReal *ceq;
-    PetscReal *unary, *binary;
+    TSeries ref;
+    TSeries *ceq;
+    TSeries *unary, *binary;
     PetscReal *mobilityc;
 } QUAD;
 
 /* Energy container */
 typedef union CHEMFE {
-   QUAD    quad;
-   CALPHAD calphad;
+    QUAD    quad;
+    CALPHAD calphad;
 } CHEMFE;
 
 /* Phase container */
@@ -103,6 +119,8 @@ typedef struct SOLUTIONPARAMS {
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
+    /* temperature */
+    PetscReal temperature;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */
@@ -115,7 +133,7 @@ typedef struct SOLUTIONPARAMS {
 /* solution parameters */
 typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
-    PetscInt npf, ndp, ncp;
+    PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
     char **componentname;
     /* grid resolution */
