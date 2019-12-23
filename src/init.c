@@ -173,6 +173,22 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
         currentmaterial->model = NONE_CHEMENERGY;
         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
         memset(currentmaterial->c0,0,user->ncp*sizeof(PetscReal));
+        currentmaterial->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
+        MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+        for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
+            currentmobility->m0 = 0.0;
+            currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+            currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
+            TSeries *currentunary = &currentmobility->unary[0];
+            RK *currentbinary = &currentmobility->binary[0];
+            for (PetscInt ck=0; ck<user->ncp; ck++,currentunary++) {
+                currentunary->nTser = 0;
+                currentunary->logCoeff = 0.0;
+                for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
+                    currentbinary->n = 0;
+                }
+            } 
+        }
     }
     currentmaterial = &user->material[0];
     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -253,6 +269,138 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
                             sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentcalphad->mobilityc[c]);
                         }
                         c = user->ncp;
+                    }
+                }
+            }
+            /* component mobility for each material */
+            if (strstr(tok, "mobilityc0_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
+                    sprintf(starttag, "mobilityc0_%s",user->componentname[c]);
+                    if (strstr(tok, starttag) != NULL){
+                        mtok = strtok_r(tok, " ", &savemtok);
+                        sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmobility->m0);
+                        c = user->ncp;
+                    }
+                }
+            }
+            /* component migration energy for each material */
+            if (strstr(tok, "migration_unary_coeff_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
+                    TSeries *currentmigration = &currentmobility->unary[0];
+                    for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
+                        sprintf(starttag, "migration_unary_coeff_%s_%s",user->componentname[ck],user->componentname[cj]);
+                        if (strstr(tok, starttag) != NULL){
+                            mtok = strtok_r(tok, " ", &savemtok);
+                            mtok = strtok_r(NULL, " ", &savemtok);
+                            currentmigration->nTser = 0;
+                            while (mtok != NULL) {
+                                sscanf(mtok, "%lf", &currentmigration->coeff[currentmigration->nTser]);
+                                currentmigration->nTser++;
+                                mtok = strtok_r(NULL, " ", &savemtok);
+                            }
+                            ck=user->ncp;cj=user->ncp;
+                        }
+                    }
+                }
+            }
+            if (strstr(tok, "migration_unary_exp_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
+                    TSeries *currentmigration = &currentmobility->unary[0];
+                    for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
+                        sprintf(starttag, "migration_unary_exp_%s_%s",user->componentname[ck],user->componentname[cj]);
+                        if (strstr(tok, starttag) != NULL){
+                            mtok = strtok_r(tok, " ", &savemtok);
+                            mtok = strtok_r(NULL, " ", &savemtok);
+                            currentmigration->nTser = 0;
+                            while (mtok != NULL) {
+                                sscanf(mtok, "%d", &currentmigration->exp[currentmigration->nTser]);
+                                currentmigration->nTser++;
+                                mtok = strtok_r(NULL, " ", &savemtok);
+                            }
+                            ck=user->ncp;cj=user->ncp;
+                        }
+                    }
+                }
+            }
+            if (strstr(tok, "migration_nbinary_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
+                    RK *currentbinary = &currentmobility->binary[0];
+                    for (PetscInt cj=0; cj<user->ncp; cj++) {
+                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
+                            sprintf(starttag, "migration_binary_%s_%s_%s",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
+                            if (strstr(tok, starttag) != NULL){
+                                mtok = strtok_r(tok, " ", &savemtok);
+                                mtok = strtok_r(NULL, " ", &savemtok);
+                                sscanf(mtok, "%d", &currentbinary->n);
+                                currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                                TSeries *currentmigration = &currentbinary->enthalpy[0];
+                                for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
+                                    currentmigration->nTser = 0;
+                                    currentmigration->logCoeff = 0.0;
+                                }
+                                ci=user->ncp;cj=user->ncp;ck=user->ncp;
+                            }    
+                        }    
+                    }
+                }
+            }
+            if (strstr(tok, "migration_binary_coeff_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
+                    RK *currentbinary = &currentmobility->binary[0];
+                    for (PetscInt cj=0; cj<user->ncp; cj++) {
+                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
+                            TSeries *currentmigration = &currentbinary->enthalpy[0];
+                            for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
+                                sprintf(starttag, "migration_binary_coeff_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+                                if (strstr(tok, starttag) != NULL){
+                                    mtok = strtok_r(tok, " ", &savemtok);
+                                    mtok = strtok_r(NULL, " ", &savemtok);
+                                    currentmigration->nTser = 0;
+                                    while (mtok != NULL) {
+                                        sscanf(mtok, "%lf", &currentmigration->coeff[currentmigration->nTser]);
+                                        currentmigration->nTser++;
+                                        mtok = strtok_r(NULL, " ", &savemtok);
+                                    }
+                                    ck=user->ncp;cj=user->ncp;ci=user->ncp;nrk=currentbinary->n;
+                                }
+                            }
+                        }    
+                    }
+                }
+            }
+            if (strstr(tok, "migration_binary_exp_") != NULL) {
+                char *mtok, *savemtok;
+                MOBILITY *currentmobility = &currentmaterial->mobilityc[0];
+                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
+                    RK *currentbinary = &currentmobility->binary[0];
+                    for (PetscInt cj=0; cj<user->ncp; cj++) {
+                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
+                            TSeries *currentmigration = &currentbinary->enthalpy[0];
+                            for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
+                                sprintf(starttag, "migration_binary_exp_%s_%s_%s_%d",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
+                                if (strstr(tok, starttag) != NULL){
+                                    mtok = strtok_r(tok, " ", &savemtok);
+                                    mtok = strtok_r(NULL, " ", &savemtok);
+                                    currentmigration->nTser = 0;
+                                    while (mtok != NULL) {
+                                        sscanf(mtok, "%d", &currentmigration->exp[currentmigration->nTser]);
+                                        currentmigration->nTser++;
+                                        mtok = strtok_r(NULL, " ", &savemtok);
+                                    }
+                                    ck=user->ncp;cj=user->ncp;ci=user->ncp;nrk=currentbinary->n;
+                                }
+                            }
+                        }    
                     }
                 }
             }
