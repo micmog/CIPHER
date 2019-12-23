@@ -29,9 +29,9 @@ outfile CrTiV
 <material 1>
 chemicalenergy_type calphaddis
 molarvolume 1.0e-5
-mobilityc_cr 0.0
-mobilityc_ti 0.0
-mobilityc_v 0.0
+mobilityc0_cr 0.0
+mobilityc0_ti 0.0
+mobilityc0_v 0.0
 c0 0.174 0.77 0.056
 statekineticcoeff 1.0e+2
 calphad_refenthalpy 0.0
@@ -75,9 +75,9 @@ calphad_ternaryenthalpy_exp_cr_ti_v_3 0.0 1.0
 <material 2>
 chemicalenergy_type calphaddis
 molarvolume 1.0e-5
-mobilityc_cr 1.0
-mobilityc_ti 1.0
-mobilityc_v 1.0
+mobilityc0_cr 12945.617334
+mobilityc0_ti 12945.617334
+mobilityc0_v 12945.617334
 c0 0.15 0.75 0.1
 statekineticcoeff 1.0e+2
 calphad_refenthalpy 0.0
