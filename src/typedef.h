@@ -135,7 +135,7 @@ typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
     PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
-    char **componentname;
+    char **componentname, **materialname, **interfacename;
     /* grid resolution */
     PetscInt dim, *resolution;
     PetscReal *size;

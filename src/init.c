@@ -11,30 +11,108 @@
 #include "material.h"
 #include "utility.h"
 #include "typedef.h"
+#include <yaml.h>
 
 /* Including my own header for checking by compiler */
 #define INIT_IMPORT
 #include "init.h"
 
 /*
- SetUpGeometry - Import initial microstructure from geom file
+ GetProperty - Get property from YAML file buffer
  */
-PetscErrorCode SetUpGeometry(AppCtx *user)
+PetscErrorCode GetProperty(char **propval, PetscInt *propsize, 
+                           const char *mappingname, const char *propname, 
+                           const unsigned char *buffer, const PetscInt filesize)
 {
-    char           geomfile[PETSC_MAX_PATH_LEN] = "";
-    char           *buffer = 0, *substr = 0;
-    MATERIAL       *currentmaterial;
+    yaml_parser_t parser;
+    yaml_event_t  event;
+    PetscInt doclevel = 0, proplevel = 0;
+    *propsize = 0;
+
+    /* Initialize parser */
+    if(!yaml_parser_initialize(&parser)) {
+        PetscPrintf(PETSC_COMM_WORLD,"Failed to initialize parser\n");
+        return 1;
+    }    
+
+    /* Set input buffer */
+    yaml_parser_set_input_string(&parser, buffer, filesize);
+
+    /* Parsing config file */
+    char mappingname_tok[PETSC_MAX_PATH_LEN], *tok, *savetok;
+
+    strcpy(mappingname_tok,mappingname);
+    tok = strtok_r(mappingname_tok, "/", &savetok); proplevel++;
+    while (tok != NULL) {
+        while (yaml_parser_parse(&parser, &event) && event.type != YAML_DOCUMENT_END_EVENT) {
+            if (event.type == YAML_STREAM_START_EVENT) continue;
+            if (event.type == YAML_DOCUMENT_START_EVENT) continue;
+            if (event.type == YAML_MAPPING_START_EVENT) doclevel++; 
+            if (event.type == YAML_MAPPING_END_EVENT) doclevel--;
+            if (event.type == YAML_SCALAR_EVENT && !strcmp((char *) event.data.scalar.value, tok) && doclevel==proplevel) break;
+            if (doclevel < proplevel) {
+                PetscPrintf(PETSC_COMM_WORLD,"Warning: mapping %s not found \n", mappingname);
+                return 1;
+            }
+        } 
+        //advance the token
+        tok = strtok_r(NULL, "/", &savetok); proplevel++;
+    }
+    
+    if (event.type == YAML_DOCUMENT_END_EVENT) {
+        PetscPrintf(PETSC_COMM_WORLD,"Warning: mapping %s not found \n", mappingname);
+        return 1;
+    }
+
+    /* Parsing config file */
+    while (yaml_parser_parse(&parser, &event) && event.type != YAML_MAPPING_END_EVENT) {
+        if (event.type == YAML_SCALAR_EVENT && !strcmp((char *) event.data.scalar.value, propname)) {
+            yaml_parser_parse(&parser, &event);
+            if (event.type == YAML_SEQUENCE_START_EVENT) {
+                for (*propsize = 0; yaml_parser_parse(&parser, &event) && event.type != YAML_SEQUENCE_END_EVENT; ) {
+                    if (event.type == YAML_SCALAR_EVENT) {
+                        strcpy(propval[*propsize], (char *) event.data.scalar.value);
+                        (*propsize)++;
+                    }
+                }
+            } else if (event.type == YAML_SCALAR_EVENT) {
+                *propsize = 1;
+                strcpy(propval[0], (char *) event.data.scalar.value);
+            }
+            break;
+        }
+    }    
+
+    /* Cleanup */
+    if (event.type == YAML_MAPPING_END_EVENT) {
+        PetscPrintf(PETSC_COMM_WORLD,"Warning: property %s not found in mapping %s \n", propname, mappingname);
+        return 1;
+    }
+    yaml_event_delete(&event);
+    yaml_parser_delete(&parser);
+    return 0;
+}
+
+/*
+ SetUpConfig - Parse config file
+ */
+PetscErrorCode SetUpConfig(AppCtx *user)
+{
+    char           configfile[PETSC_MAX_PATH_LEN] = "";
+    unsigned char  *buffer = 0;
     PetscMPIInt    rank;
     
     PetscFunctionBeginUser;
+
+    /* Read config file to buffer */
     MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
-    PetscOptionsGetString(NULL,NULL,"-geomfile",geomfile,PETSC_MAX_PATH_LEN,NULL);
+    PetscOptionsGetString(NULL,NULL,"--config",configfile,PETSC_MAX_PATH_LEN,NULL);
     FILE *infile=NULL;
     if (rank == 0) {
-        infile = fopen (geomfile, "r");
+        infile = fopen (configfile, "r");
         if (infile==NULL) {
-            printf("Error: input file can't be opened. \n");
-            printf("Error: Please make sure the file %s is in the CWD.\n",geomfile);
+            printf("Error: config file can't be opened. \n");
+            printf("Error: Please make sure the file %s is in the CWD.\n",configfile);
             return 1;
         }
     }
@@ -52,110 +130,74 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     }
     MPI_Bcast(buffer,filesize,MPI_CHAR,0,PETSC_COMM_WORLD);
     
-    char *tok, *savetok;
-    substr = Extract(buffer, "<header>", "</header>");
-    tok = strtok_r(substr, "\n", &savetok);
-    /* initialise header information */
-    user->dim = 3;  //why doesn't this need to be &user->dim ?
-    user->ncp = 1;
-    user->npf = 1;
-    user->nmat = 1;
-    user->interpolation = LINEAR_INTERPOLATION;
-    user->resolution = malloc(user->dim*sizeof(PetscInt));
-    user->size = malloc(user->dim*sizeof(PetscReal));
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        user->resolution[dim] = 1;
-        user->size[dim] = 1.0;
-    }
-    while (tok !=NULL) {
-        // process the line
-        if (strstr(tok, "dimension ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->dim);
-            free(user->resolution); user->resolution = malloc(user->dim*sizeof(PetscInt));
-            free(user->size); user->size = malloc(user->dim*sizeof(PetscReal));
-            for (PetscInt dim=0; dim<user->dim; ++dim) {
-                user->resolution[dim] = 1;
-                user->size[dim] = 1.0;
-            }
-        }    
-        if (strstr(tok, "grid ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            for (PetscInt dim=0; dim<user->dim; ++dim) {
-                mtok = strtok_r(NULL, " ", &savemtok);
-                user->resolution[dim] = atoi(strtok_r(NULL, " ", &savemtok));
-            }
-            user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
-        }
-        if (strstr(tok, "size ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            for (PetscInt dim=0; dim<user->dim; ++dim) {
-                mtok = strtok_r(NULL, " ", &savemtok);
-                user->size[dim] = atof(strtok_r(NULL, " ", &savemtok));
-            }
-        }
-        if (strstr(tok, "n_phases ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->npf);
-            user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
-        }    
-        if (strstr(tok, "n_materials ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->nmat);
-            user->material = (MATERIAL *) malloc(user->nmat*sizeof(struct MATERIAL));
-        }
-        if (strstr(tok, "n_components ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->ncp);
-            user->componentname = (char **) malloc(user->ncp*sizeof(char *));
-            for (PetscInt c=0; c<user->ncp; c++) {
-                user->componentname[c] = (char *) malloc(2*sizeof(char));
-                sprintf(user->componentname[c],"%d",c+1); 
-            }
-            user->ndp = user->ncp-1;
-        }    
-        if (strstr(tok, "componentnames ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            for (PetscInt c=0; c<user->ncp; c++) {
-                sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->componentname[c]);
-            }
-        }
-        /* interpolation type */
-        if (strstr(tok, "interpolation_type ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            mtok = strtok_r(NULL, " ", &savemtok);
-            if        (strstr(mtok, "linear"   ) != NULL) {
-                user->interpolation = LINEAR_INTERPOLATION;
-            } else if (strstr(mtok, "quadratic") != NULL) {
-                user->interpolation = QUADRATIC_INTERPOLATION;
-            } else if (strstr(mtok, "cubic"    ) != NULL) {
-                user->interpolation = CUBIC_INTERPOLATION;
-            } else {
-                user->interpolation = NONE_INTERPOLATION;
-            }
-        }
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
-    }
-    /* header information sanity checks */
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        assert(user->resolution[dim] > 0);
-        assert(user->size[dim] > 0);
-    }
-    assert(user->ncp  >  0    );
-    assert(user->ncp  <= MAXCP);
-    assert(user->npf  >  0    );
-    assert(user->nmat >  0    );
-    assert(user->interpolation != NONE_INTERPOLATION);
-    free(substr);
+    char **propval;
+    PetscInt propsize, ierr, maxprops = 100;
+
+    propval = malloc(maxprops*sizeof(char *));
+    for (PetscInt propctr = 0; propctr < maxprops; propctr++) propval[propctr] = malloc(PETSC_MAX_PATH_LEN);
+
+    /* Parsing config file header */
+    {
+     /* resolution */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "grid", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize >= 1 && propsize <= 3);
+      user->dim = propsize;
+      user->resolution = malloc(user->dim*sizeof(PetscInt));
+      user->size = malloc(user->dim*sizeof(PetscReal));
+      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->resolution[propctr] = atoi(propval[propctr]);
+      user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
+     }
+     /* size */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "size", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize == user->dim);
+      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->size[propctr] = atof(propval[propctr]);
+     }
+     /* n_phases */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "n_phases", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize == 1 && propval[0] > 0);
+      user->npf = atoi(propval[0]);
+      user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
+     }
+     /* material names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "materials", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize > 0);
+      user->nmat = propsize;
+      user->materialname = malloc(user->nmat*sizeof(char *));
+      for (PetscInt m=0; m<user->nmat; m++) {
+          user->materialname[m] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->materialname[m],propval[m]);
+      }    
+      user->material = (MATERIAL *) malloc(user->nmat*sizeof(struct MATERIAL));
+     }
+     /* interface names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "interfaces", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize > 0);
+      user->nf = propsize;
+      user->interfacename = malloc(user->nf*sizeof(char *));
+      for (PetscInt m=0; m<user->nf; m++) {
+          user->interfacename[m] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->interfacename[m],propval[m]);
+      }    
+      user->interface = (INTERFACE *) malloc(user->nf*sizeof(struct INTERFACE));
+     }
+     /* component names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "components", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize > 0 && propsize <= MAXCP);
+      user->ncp = propsize;
+      user->componentname = malloc(user->ncp*sizeof(char *));
+      for (PetscInt c=0; c<user->ncp; c++) {
+          user->componentname[c] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->componentname[c],propval[c]);
+      }
+      user->ndp = user->ncp-1;
+     }
+    } 
     
     /* field offsets */
     AS_OFFSET = 0;
@@ -167,1071 +209,458 @@ PetscErrorCode SetUpGeometry(AppCtx *user)
     
     CP_OFFSET = 0;
     CP_SIZE   = PF_SIZE*user->ncp;
-    /* initialise material information */
-    currentmaterial = &user->material[0];
-    for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
-        currentmaterial->model = NONE_CHEMENERGY;
-        currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
-        memset(currentmaterial->c0,0,user->ncp*sizeof(PetscReal));
-    }
-    currentmaterial = &user->material[0];
-    for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
-        QUAD *currentquad = &currentmaterial->energy.quad;
-        CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-        char starttag[128], endtag[128];
-        sprintf(starttag, "<material %d>",m+1);        
-        sprintf(endtag  , "</material %d>",m+1);        
-        substr = Extract(buffer,starttag,endtag);
-        assert(substr != NULL);
-        tok = strtok_r(substr, "\n", &savetok);
-        while (tok !=NULL) {
-            /* model type */
-            if (strstr(tok, "chemicalenergy_type ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                if (strstr(mtok, "quadratic") != NULL) {
-                    currentmaterial->model = QUADRATIC_CHEMENERGY;
-                    currentquad->ceq = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-                    currentquad->ref.nTser = 0;
-                    currentquad->ref.logCoeff = 0.0;
-                    currentquad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-                    currentquad->binary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-                    currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-                    memset(currentquad->mobilityc,0,user->ncp*sizeof(PetscReal));
-                    for (PetscInt c=0; c<user->ncp; c++) {
-                        currentquad->ceq[c].nTser = 0;
-                        currentquad->unary[c].nTser = 0;
-                        currentquad->binary[c].nTser = 0;
-                        currentquad->ceq[c].logCoeff = 0.0;
-                        currentquad->unary[c].logCoeff = 0.0;
-                        currentquad->binary[c].logCoeff = 0.0;
-                    }
-                } else if (strstr(mtok, "calphaddis") != NULL) {
-                    currentmaterial->model = CALPHAD_CHEMENERGY;
-                    currentcalphad->ref.nTser = 0;
-                    currentcalphad->ref.logCoeff = 0.0;
-                    currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-                    currentcalphad->binary = (RK *) malloc(user->ncp*(user->ndp)*sizeof(struct RK)/2);
-                    currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ndp)*(user->ncp-2)*sizeof(struct RK)/6);
-                    currentcalphad->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
-                    MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                    for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
-                        currentmobility->m0 = 0.0;
-                        currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-                        currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
-                        TSeries *currentunary = &currentmobility->unary[0];
-                        RK *currentbinary = &currentmobility->binary[0];
-                        for (PetscInt ck=0; ck<user->ncp; ck++,currentunary++) {
-                            currentunary->nTser = 0;
-                            currentunary->logCoeff = 0.0;
-                            for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
-                                currentbinary->n = 0;
-                            }
-                        } 
-                    }
-                    TSeries *currentunary = &currentcalphad->unary[0];
-                    RK *currentbinary = &currentcalphad->binary[0];
-                    RK *currentternary = &currentcalphad->ternary[0];
-                    for (PetscInt ck=0; ck<user->ncp; ck++,currentunary++) {
-                        currentunary->nTser = 0;
-                        currentunary->logCoeff = 0.0;
-                        for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
-                            currentbinary->n = 0;
-                            for (PetscInt ci=cj+1; ci<user->ncp; ci++,currentternary++) { 
-                                currentternary->n = 0;
-                            }    
-                        }
-                    } 
-                } else {
-                    currentmaterial->model = NONE_CHEMENERGY;
-                    currentmaterial->c0[0] = 1.0;
-                }
-            }
-            /* molar volume */
-            if (strstr(tok, "molarvolume ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmaterial->molarvolume);
-            }
-            /* component mobility for each material */
-            if (strstr(tok, "mobilityc_") != NULL) {
-                char *mtok, *savemtok;
-                for (PetscInt c=0; c<user->ncp; c++) {
-                    sprintf(starttag, "mobilityc_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentquad->mobilityc[c]);
-                        c = user->ncp;
-                    }
-                }
-            }
-            /* component mobility for each material */
-            if (strstr(tok, "mobilityc0_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
-                    sprintf(starttag, "mobilityc0_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmobility->m0);
-                        c = user->ncp;
-                    }
-                }
-            }
-            /* component migration energy for each material */
-            if (strstr(tok, "migration_unary_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
-                    TSeries *currentmigration = &currentmobility->unary[0];
-                    for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
-                        sprintf(starttag, "migration_unary_coeff_%s_%s ",user->componentname[ck],user->componentname[cj]);
-                        if (strstr(tok, starttag) != NULL){
-                            mtok = strtok_r(tok, " ", &savemtok);
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                            currentmigration->nTser = 0;
-                            while (mtok != NULL) {
-                                sscanf(mtok, "%lf", &currentmigration->coeff[currentmigration->nTser]);
-                                currentmigration->nTser++;
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                            }
-                            ck=user->ncp;cj=user->ncp;
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "migration_unary_exp_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
-                    TSeries *currentmigration = &currentmobility->unary[0];
-                    for (PetscInt cj=0; cj<user->ncp; cj++, currentmigration++) {
-                        sprintf(starttag, "migration_unary_exp_%s_%s ",user->componentname[ck],user->componentname[cj]);
-                        if (strstr(tok, starttag) != NULL){
-                            mtok = strtok_r(tok, " ", &savemtok);
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                            currentmigration->nTser = 0;
-                            while (mtok != NULL) {
-                                sscanf(mtok, "%d", &currentmigration->exp[currentmigration->nTser]);
-                                currentmigration->nTser++;
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                            }
-                            ck=user->ncp;cj=user->ncp;
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "migration_nbinary_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
-                    RK *currentbinary = &currentmobility->binary[0];
-                    for (PetscInt cj=0; cj<user->ncp; cj++) {
-                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
-                            sprintf(starttag, "migration_binary_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                sscanf(mtok, "%d", &currentbinary->n);
-                                currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
-                                TSeries *currentmigration = &currentbinary->enthalpy[0];
-                                for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
-                                    currentmigration->nTser = 0;
-                                    currentmigration->logCoeff = 0.0;
-                                }
-                                ci=user->ncp;cj=user->ncp;ck=user->ncp;
-                            }    
-                        }    
-                    }
-                }
-            }
-            if (strstr(tok, "migration_binary_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
-                    RK *currentbinary = &currentmobility->binary[0];
-                    for (PetscInt cj=0; cj<user->ncp; cj++) {
-                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
-                            TSeries *currentmigration = &currentbinary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
-                                sprintf(starttag, "migration_binary_coeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
-                                if (strstr(tok, starttag) != NULL){
-                                    mtok = strtok_r(tok, " ", &savemtok);
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                    currentmigration->nTser = 0;
-                                    while (mtok != NULL) {
-                                        sscanf(mtok, "%lf", &currentmigration->coeff[currentmigration->nTser]);
-                                        currentmigration->nTser++;
-                                        mtok = strtok_r(NULL, " ", &savemtok);
-                                    }
-                                    ck=user->ncp;cj=user->ncp;ci=user->ncp;nrk=currentbinary->n;
-                                }
-                            }
-                        }    
-                    }
-                }
-            }
-            if (strstr(tok, "migration_binary_exp_") != NULL) {
-                char *mtok, *savemtok;
-                MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
-                for (PetscInt ck=0; ck<user->ncp; ck++, currentmobility++) {
-                    RK *currentbinary = &currentmobility->binary[0];
-                    for (PetscInt cj=0; cj<user->ncp; cj++) {
-                        for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
-                            TSeries *currentmigration = &currentbinary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currentmigration++) {
-                                sprintf(starttag, "migration_binary_exp_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
-                                if (strstr(tok, starttag) != NULL){
-                                    mtok = strtok_r(tok, " ", &savemtok);
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                    currentmigration->nTser = 0;
-                                    while (mtok != NULL) {
-                                        sscanf(mtok, "%d", &currentmigration->exp[currentmigration->nTser]);
-                                        currentmigration->nTser++;
-                                        mtok = strtok_r(NULL, " ", &savemtok);
-                                    }
-                                    ck=user->ncp;cj=user->ncp;ci=user->ncp;nrk=currentbinary->n;
-                                }
-                            }
-                        }    
-                    }
-                }
-            }
-            /* initial composition */
-            if (strstr(tok, "c0 ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                PetscInt c=0;
-                while (mtok != NULL) {
-                    PetscReal c0;
-                    sscanf(mtok, "%lf", &c0);
-                    currentmaterial->c0[c] = c0;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                    c++;
-                }
-                assert(c == user->ncp);
-            }
-            /* initial composition */
-            if (strstr(tok, "statekineticcoeff ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &currentmaterial->statekineticcoeff);
-            }
-            /* equillibrium composition */
-            if (strstr(tok, "quad_ceq_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentceq = &currentquad->ceq[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentceq++) {
-                    sprintf(starttag, "quad_ceq_coeff_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentceq->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentceq->coeff[currentceq->nTser]);
-                            currentceq->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "quad_ceq_exp_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentceq = &currentquad->ceq[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentceq++) {
-                    sprintf(starttag, "quad_ceq_exp_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentceq->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%d", &currentceq->exp[currentceq->nTser]);
-                            currentceq->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            /* F_chem parameters for each material */
-            if (strstr(tok, "quad_refenthalpy_coeff ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                currentquad->ref.nTser = 0;
-                while (mtok != NULL) {
-                    sscanf(mtok, "%lf", &currentquad->ref.coeff[currentquad->ref.nTser]);
-                    currentquad->ref.nTser++;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                }
-            }
-            if (strstr(tok, "quad_refenthalpy_exp ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                currentquad->ref.nTser = 0;
-                while (mtok != NULL) {
-                    sscanf(mtok, "%d", &currentquad->ref.exp[currentquad->ref.nTser]);
-                    currentquad->ref.nTser++;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                }
-            }
-            /* F_chem parameters for each material */
-            if (strstr(tok, "quad_unaryenthalpy_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentunary = &currentquad->unary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "quad_unaryenthalpy_coeff_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentunary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentunary->coeff[currentunary->nTser]);
-                            currentunary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "quad_unaryenthalpy_exp_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentunary = &currentquad->unary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "quad_unaryenthalpy_exp_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentunary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%d", &currentunary->exp[currentunary->nTser]);
-                            currentunary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            /* F_chem parameters for each material */
-            if (strstr(tok, "quad_binaryenthalpy_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentbinary = &currentquad->binary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentbinary++) {
-                    sprintf(starttag, "quad_binaryenthalpy_coeff_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentbinary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentbinary->coeff[currentbinary->nTser]);
-                            currentbinary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "quad_binaryenthalpy_exp_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentbinary = &currentquad->binary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentbinary++) {
-                    sprintf(starttag, "quad_binaryenthalpy_exp_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentbinary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%d", &currentbinary->exp[currentbinary->nTser]);
-                            currentbinary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            /* F_chem parameters for each material */
-            if (strstr(tok, "calphad_refenthalpy_coeff ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                currentcalphad->ref.nTser = 0;
-                while (mtok != NULL) {
-                    sscanf(mtok, "%lf", &currentcalphad->ref.coeff[currentcalphad->ref.nTser]);
-                    currentcalphad->ref.nTser++;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                }
-            }
-            if (strstr(tok, "calphad_refenthalpy_exp ") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                currentcalphad->ref.nTser = 0;
-                while (mtok != NULL) {
-                    sscanf(mtok, "%d", &currentcalphad->ref.exp[currentcalphad->ref.nTser]);
-                    currentcalphad->ref.nTser++;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                }
-            }
-            /* F_chem parameters for each material */
-            if (strstr(tok, "calphad_unaryenthalpy_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentunary = &currentcalphad->unary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_coeff_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentunary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%lf", &currentunary->coeff[currentunary->nTser]);
-                            currentunary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_unaryenthalpy_exp_") != NULL) {
-                char *mtok, *savemtok;
-                TSeries *currentunary = &currentcalphad->unary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_exp_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        currentunary->nTser = 0;
-                        while (mtok != NULL) {
-                            sscanf(mtok, "%d", &currentunary->exp[currentunary->nTser]);
-                            currentunary->nTser++;
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                        }
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_unaryenthalpy_logCoeff_") != NULL) { //if this works put in for binary and ternary also
-                char *mtok, *savemtok;
-                TSeries *currentunary = &currentcalphad->unary[0];
-                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
-                    sprintf(starttag, "calphad_unaryenthalpy_logCoeff_%s ",user->componentname[c]);
-                    if (strstr(tok, starttag) != NULL){
-                        mtok = strtok_r(tok, " ", &savemtok);
-                        mtok = strtok_r(NULL, " ", &savemtok);
-                        sscanf(mtok, "%lf", &currentunary->logCoeff);
-                        c=user->ncp;
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_nbinaryenthalpy_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentbinary = &currentcalphad->binary[0];
-                for (PetscInt cj=0;cj<user->ncp;cj++) {
-                    for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
-                        sprintf(starttag, "calphad_nbinaryenthalpy_%s_%s ",user->componentname[cj],user->componentname[ci]);
-                        if (strstr(tok, starttag) != NULL){
-                            mtok = strtok_r(tok, " ", &savemtok);
-                            mtok = strtok_r(NULL, " ", &savemtok);
-                            sscanf(mtok, "%d", &currentbinary->n);
-                            currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
-                            TSeries *currententhalpy = &currentbinary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                                currententhalpy->nTser = 0;
-                                currententhalpy->logCoeff = 0.0;
-                            }
-                            ci=user->ncp;cj=user->ncp;
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_binaryenthalpy_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentbinary = &currentcalphad->binary[0];
-                for (PetscInt cj=0;cj<user->ncp;cj++) {
-                    for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
-                        TSeries *currententhalpy = &currentbinary->enthalpy[0];
-                        for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_coeff_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                currententhalpy->nTser = 0;
-                                while (mtok != NULL) {
-                                    sscanf(mtok, "%lf", &currententhalpy->coeff[currententhalpy->nTser]);
-                                    currententhalpy->nTser++;
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                }
-                                ci=user->ncp;cj=user->ncp;nrk=currentbinary->n;
-                            }
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_binaryenthalpy_exp_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentbinary = &currentcalphad->binary[0];
-                for (PetscInt cj=0;cj<user->ncp;cj++) {
-                    for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
-                        TSeries *currententhalpy = &currentbinary->enthalpy[0];
-                        for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_exp_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                currententhalpy->nTser = 0;
-                                while (mtok != NULL) {
-                                    sscanf(mtok, "%d", &currententhalpy->exp[currententhalpy->nTser]);
-                                    currententhalpy->nTser++;
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                }
-                                ci=user->ncp;cj=user->ncp;nrk=currentbinary->n;
-                            }
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_binaryenthalpy_logCoeff_") != NULL) { //if this works put in for binary and ternary also
-                char *mtok, *savemtok;
-                RK *currentbinary = &currentcalphad->binary[0];
-                for (PetscInt cj=0;cj<user->ncp;cj++) {
-                    for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentbinary++) {
-                        TSeries *currententhalpy = &currentbinary->enthalpy[0];
-                        for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
-                            sprintf(starttag, "calphad_binaryenthalpy_logCoeff_%s_%s_%d ",user->componentname[cj],user->componentname[ci],nrk+1);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                sscanf(mtok, "%lf", &currententhalpy->logCoeff);
-                                ci=user->ncp;cj=user->ncp;nrk=currentbinary->n;
-                            }
-                        }
-                    }
-                }
-            }                
-            /* F_chem parameters for each material */
-            if (strstr(tok, "calphad_nternaryenthalpy_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentternary = &currentcalphad->ternary[0];
-                for (PetscInt ck=0;ck<user->ncp;ck++) {
-                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
-                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            sprintf(starttag, "calphad_nternaryenthalpy_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                sscanf(mtok, "%d", &currentternary->n);
-                                currentternary->i = malloc(currentternary->n*sizeof(PetscInt));
-                                memset(currentternary->i,0,currentternary->n*sizeof(PetscInt));
-                                currentternary->enthalpy = (TSeries *) malloc(currentternary->n*sizeof(TSeries));
-                                TSeries *currententhalpy = &currentternary->enthalpy[0];
-                                for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-                                    currententhalpy->nTser = 0;
-                                    currententhalpy->logCoeff = 0.0;
-                                }
-                                ci=user->ncp;cj=user->ncp;ck=user->ncp;
-                            }
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_iternaryenthalpy_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentternary = &currentcalphad->ternary[0];
-                for (PetscInt ck=0;ck<user->ncp;ck++) {
-                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
-                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            sprintf(starttag, "calphad_iternaryenthalpy_%s_%s_%s ",user->componentname[ck],user->componentname[cj],user->componentname[ci]);
-                            if (strstr(tok, starttag) != NULL){
-                                mtok = strtok_r(tok, " ", &savemtok);
-                                mtok = strtok_r(NULL, " ", &savemtok);
-                                PetscInt nrk = 0;
-                                while (mtok != NULL) {
-                                    PetscInt iternaryenthalpy;
-                                    sscanf(mtok, "%d", &iternaryenthalpy);
-                                    currentternary->i[nrk] = iternaryenthalpy-1;
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                    nrk++;
-                                }
-                                ci=user->ncp;cj=user->ncp;ck=user->ncp;
-                            }
-                        }
-                    }
-                }
-            }
-            if (strstr(tok, "calphad_ternaryenthalpy_coeff_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentternary = &currentcalphad->ternary[0];
-                for (PetscInt ck=0;ck<user->ncp;ck++) {
-                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
-                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            TSeries *currententhalpy = &currentternary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-                                sprintf(starttag, "calphad_ternaryenthalpy_coeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
-                                if (strstr(tok, starttag) != NULL){
-                                    mtok = strtok_r(tok, " ", &savemtok);
-                                    mtok = strtok_r(NULL, " ", &savemtok);
-                                    currententhalpy->nTser = 0;
-                                    while (mtok != NULL) {
-                                        sscanf(mtok, "%lf", &currententhalpy->coeff[currententhalpy->nTser]);
-                                        currententhalpy->nTser++;
-                                        mtok = strtok_r(NULL, " ", &savemtok);
-                                    }
-                                    ci=user->ncp;cj=user->ncp;ck=user->ncp;nrk=currentternary->n;
-								}
-							}
-						}
-					}
-				}
-			}
-            if (strstr(tok, "calphad_ternaryenthalpy_exp_") != NULL) {
-                char *mtok, *savemtok;
-                RK *currentternary = &currentcalphad->ternary[0];
-                for (PetscInt ck=0;ck<user->ncp;ck++) {
-                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
-                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            TSeries *currententhalpy = &currentternary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-								sprintf(starttag, "calphad_ternaryenthalpy_exp_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
-								if (strstr(tok, starttag) != NULL){
-									mtok = strtok_r(tok, " ", &savemtok);
-									mtok = strtok_r(NULL, " ", &savemtok);
-                                    currententhalpy->nTser = 0;
-									while (mtok != NULL) {
-                                        sscanf(mtok, "%d", &currententhalpy->exp[currententhalpy->nTser]);
-                                        currententhalpy->nTser++;
-										mtok = strtok_r(NULL, " ", &savemtok);
-									}
-									ci=user->ncp;cj=user->ncp;ck=user->ncp;nrk=currentternary->n;
-	                            }
-    	                    }
-        	            }
-            	    }
-            	}
-			}
-            if (strstr(tok, "calphad_ternaryenthalpy_logCoeff_") != NULL) { //if this works put in for binary and ternary also
-                char *mtok, *savemtok;
-                RK *currentternary = &currentcalphad->ternary[0];
-                for (PetscInt ck=0;ck<user->ncp;ck++) {
-                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
-                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
-                            TSeries *currententhalpy = &currentternary->enthalpy[0];
-                            for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
-								sprintf(starttag, "calphad_ternaryenthalpy_logCoeff_%s_%s_%s_%d ",user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk+1);
-								if (strstr(tok, starttag) != NULL){
-									mtok = strtok_r(tok, " ", &savemtok);
-									mtok = strtok_r(NULL, " ", &savemtok);
-                                    sscanf(mtok, "%lf", &currententhalpy->logCoeff);
-									ci=user->ncp;cj=user->ncp;ck=user->ncp;nrk=currentternary->n;
-                                }
-                            }
-                        }
-                    }
-                }
-            }                
-            //advance the token
-            tok = strtok_r(NULL, "\n", &savetok);
-        }
-        /* material information sanity checks */
-        assert(currentmaterial->molarvolume > 0.0);
-        for (PetscInt c=0;c<user->ncp;c++) {
-            assert(currentmaterial->c0[c] > 0.0);
-        }
-        if        (currentmaterial->model == QUADRATIC_CHEMENERGY) {
-            QUAD *currentquad = &currentmaterial->energy.quad;
-            for (PetscInt c=0;c<user->ncp;c++) {
-                assert(currentquad->mobilityc[c] >= 0.0);
-            }
-        } else if (currentmaterial->model ==   CALPHAD_CHEMENERGY) {
-            CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-            for (PetscInt c=0;c<user->ncp;c++) {
-                assert(currentcalphad->mobilityc[c].m0 >= 0.0);
-            }
-        } else if (currentmaterial->model ==      NONE_CHEMENERGY) {
-            assert(user->ncp == 1);
-        }
-        free(substr);
-    }
-    
-    substr = Extract(buffer, "<phase_material_mapping>", "</phase_material_mapping>");
-    tok = strtok_r(substr, "\n", &savetok);
-    PetscInt ctrm=0;
-    while (tok != NULL && ctrm < user->npf) {
-        // process the line
-        if (strstr(tok, "of") != NULL) {
-            char stra[128], strb[128];
-            PetscInt sof,m;
-            sscanf(tok, "%s of %s", stra, strb);
-            sof = atoi(stra); m = atoi(strb);
-            assert(m <= user->nmat);
-            for (PetscInt j=ctrm;j<ctrm+sof;j++) 
-                user->phasematerialmapping[j] = m-1;
-            ctrm += sof;
-        } else if (strstr(tok, "to") != NULL) {
-            char stra[128], strb[128];
-            PetscInt m, mfrom, mto;
-            sscanf(tok, "%s to %s", stra, strb);
-            mfrom = atoi(stra); mto = atoi(strb);
-            assert(mfrom <= user->nmat);
-            assert(mto   <= user->nmat);
-            if (mfrom < mto) {
-                for (m=mfrom;m<=mto;m++) 
-                    user->phasematerialmapping[ctrm++] = m-1;
-            } else {
-                for (m=mfrom;m>=mto;m--)
-                    user->phasematerialmapping[ctrm++] = m-1;
-            }   
-        }
-        else if (atoi(tok)) {
-            assert(atoi(tok) <= user->nmat);
-            user->phasematerialmapping[ctrm++] = atoi(tok)-1;
-        }
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
-    }
-    assert(ctrm == user->npf && tok == NULL);
-    free(substr);    
 
-    substr = Extract(buffer, "<voxel_phase_mapping>", "</voxel_phase_mapping>");
-    tok = strtok_r(substr, "\n", &savetok);
-    PetscInt ctrv=0;
-    while (tok != NULL && ctrv < user->resolution[2]*user->resolution[1]*user->resolution[0]) {
-        // process the line
-        if (strstr(tok, "of") != NULL) {
-            char stra[128], strb[128];
-            PetscInt sof,p;
-            sscanf(tok, "%s of %s", stra, strb);
-            sof = atoi(stra); p = atoi(strb);
-            for (PetscInt j=ctrv;j<ctrv+sof;j++) 
-                user->phasevoxelmapping[j] = p-1;;
-            ctrv+=sof;
-        } else if (strstr(tok, "to") != NULL) {
-            char stra[128], strb[128];
-            PetscInt p, pfrom, pto;
-            sscanf(tok, "%s to %s", stra, strb);
-            pfrom = atoi(stra); pto = atoi(strb);
-            if (pfrom < pto) {
-                for (p=pfrom;p<=pto;p++) 
-                    user->phasevoxelmapping[ctrv++] = p-1;
-            } else {
-                for (p=pfrom;p>=pto;p--)
-                    user->phasevoxelmapping[ctrv++] = p-1;
-            }   
-        }
-        else if (atoi(tok)) {
-            user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
-        }
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
+    /* Parsing config file material */
+    {
+     MATERIAL *currentmaterial = &user->material[0];
+     for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
+         char materialmapping[PETSC_MAX_PATH_LEN];
+         sprintf(materialmapping,"material/%s",user->materialname[m]);
+         /* state kinetic coefficient */
+         ierr = GetProperty(propval, &propsize, materialmapping, "statekineticcoeff", buffer, filesize); CHKERRQ(ierr);
+         assert(propsize == 1);
+         currentmaterial->statekineticcoeff = atof(propval[0]);
+         /* molar volume */
+         ierr = GetProperty(propval, &propsize, materialmapping, "molarvolume", buffer, filesize); CHKERRQ(ierr);
+         assert(propsize == 1);
+         currentmaterial->molarvolume = atof(propval[0]);
+         /* initial composition */
+         ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
+         assert(propsize == user->ncp);
+         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+         for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+         /* chemical energy type */
+         {
+          ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
+          assert(propsize == 1);
+          if        (!strcmp(propval[0], "quadratic" )) {
+              currentmaterial->model = QUADRATIC_CHEMENERGY;
+              QUAD *currentquad = &currentmaterial->energy.quad;
+              /* solute mobility */
+              {
+               currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
+               ierr = GetProperty(propval, &propsize, materialmapping, "mobilityc", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentquad->mobilityc[propctr] = atof(propval[propctr]);
+              } 
+              /* equilibrium composition */
+              {
+               char ceqmapping[PETSC_MAX_PATH_LEN];
+               currentquad->ceq = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+               TSeries *currentceq = &currentquad->ceq[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentceq++) {
+                   sprintf(ceqmapping, "%s/ceq/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, ceqmapping, "t_coefficient", buffer, filesize);
+                   currentceq->nTser = propsize;
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentceq->coeff[propctr] = atof(propval[propctr]);
+                   ierr = GetProperty(propval, &propsize, ceqmapping, "t_exponent", buffer, filesize);
+                   assert(propsize == currentceq->nTser);
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentceq->exp[propctr] = atoi(propval[propctr]);
+                   currentceq->logCoeff = 0.0;
+               }
+              } 
+              /* reference enthalpy */
+              {
+               char refmapping[PETSC_MAX_PATH_LEN];
+               sprintf(refmapping, "%s/ref_enthalpy",materialmapping);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_coefficient", buffer, filesize);
+               currentquad->ref.nTser = propsize;
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentquad->ref.coeff[propctr] = atof(propval[propctr]);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_exponent", buffer, filesize);
+               assert(propsize == currentquad->ref.nTser);
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentquad->ref.exp[propctr] = atoi(propval[propctr]);
+               currentquad->ref.logCoeff = 0.0;
+              } 
+              /* unary enthalpy */
+              {
+               char unarymapping[PETSC_MAX_PATH_LEN];
+               currentquad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+               TSeries *currentunary = &currentquad->unary[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
+                   sprintf(unarymapping, "%s/unary_enthalpy/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, unarymapping, "t_coefficient", buffer, filesize);
+                   currentunary->nTser = propsize;
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->coeff[propctr] = atof(propval[propctr]);
+                   ierr = GetProperty(propval, &propsize, unarymapping, "t_exponent", buffer, filesize);
+                   assert(propsize == currentunary->nTser);
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->exp[propctr] = atoi(propval[propctr]);
+                   currentunary->logCoeff = 0.0;
+               }
+              } 
+              /* binary enthalpy */
+              {
+               char binarymapping[PETSC_MAX_PATH_LEN];
+               currentquad->binary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+               TSeries *currentbinary = &currentquad->binary[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentbinary++) {
+                   sprintf(binarymapping, "%s/binary_enthalpy/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, binarymapping, "t_coefficient", buffer, filesize);
+                   currentbinary->nTser = propsize;
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentbinary->coeff[propctr] = atof(propval[propctr]);
+                   ierr = GetProperty(propval, &propsize, binarymapping, "t_exponent", buffer, filesize);
+                   assert(propsize == currentbinary->nTser);
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentbinary->exp[propctr] = atoi(propval[propctr]);
+                   currentbinary->logCoeff = 0.0;
+               }
+              } 
+          } else if (!strcmp(propval[0], "calphaddis")) {
+              currentmaterial->model = CALPHAD_CHEMENERGY;
+              CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
+              /* mobility */
+              {
+               char mobmapping[PETSC_MAX_PATH_LEN];
+               currentcalphad->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
+               MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
+                   sprintf(mobmapping, "%s/mobilityc/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, mobmapping, "mobility0", buffer, filesize);
+                   assert(propsize == 1);
+                   currentmobility->m0 = atof(propval[0]);
+                   currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                   currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
+                   TSeries *currentunary = &currentmobility->unary[0];
+                   RK *currentbinary = &currentmobility->binary[0];
+                   for (PetscInt cj=0; cj<user->ncp; cj++, currentunary++) {
+                       sprintf(mobmapping, "%s/mobilityc/%s/unary_migration/%s",materialmapping,user->componentname[c],user->componentname[cj]);
+                       ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
+                       currentunary->nTser = propsize;
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->coeff[propctr] = atof(propval[propctr]);
+                       ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
+                       assert(propsize == currentunary->nTser);
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->exp[propctr] = atoi(propval[propctr]);
+                       currentunary->logCoeff = 0.0;
+                       for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
+                           sprintf(mobmapping, "%s/mobilityc/%s/binary_migration/%s/%s",materialmapping,user->componentname[c],user->componentname[cj],user->componentname[ci]);
+                           ierr = GetProperty(propval, &propsize, mobmapping, "nrk", buffer, filesize);
+                           if (propsize) {currentbinary->n = atoi(propval[0]);} else {currentbinary->n = 0;}
+                           currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                           TSeries *currententhalpy = &currentbinary->enthalpy[0];
+                           for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
+                               sprintf(mobmapping, "%s/mobilityc/%s/binary_migration/%s/%s/rk_%d",materialmapping,user->componentname[c],user->componentname[cj],user->componentname[ci],nrk);
+                               ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
+                               currententhalpy->nTser = propsize;
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
+                               assert(propsize == currententhalpy->nTser);
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                               currententhalpy->logCoeff = 0.0;
+                           }
+                       }
+                   }
+               }    
+              }
+              /* reference enthalpy */
+              {
+               char refmapping[PETSC_MAX_PATH_LEN];
+               sprintf(refmapping, "%s/ref_enthalpy",materialmapping);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_coefficient", buffer, filesize);
+               currentcalphad->ref.nTser = propsize;
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphad->ref.coeff[propctr] = atof(propval[propctr]);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_exponent", buffer, filesize);
+               assert(currentcalphad->ref.nTser == propsize);
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphad->ref.exp[propctr] = atoi(propval[propctr]);
+               currentcalphad->ref.logCoeff = 0.0;
+              }
+              /* unary enthalpy */
+              {
+               char unarymapping[PETSC_MAX_PATH_LEN];
+               currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+               TSeries *currentunary = &currentcalphad->unary[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
+                   sprintf(unarymapping, "%s/unary_enthalpy/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, unarymapping, "t_coefficient", buffer, filesize);
+                   currentunary->nTser = propsize;
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->coeff[propctr] = atof(propval[propctr]);
+                   ierr = GetProperty(propval, &propsize, unarymapping, "t_exponent", buffer, filesize);
+                   assert(propsize == currentunary->nTser);
+                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->exp[propctr] = atoi(propval[propctr]);
+                   ierr = GetProperty(propval, &propsize, unarymapping, "tlnt_coefficient", buffer, filesize);
+                   if (propsize) {currentunary->logCoeff = atof(propval[0]);} else {currentunary->logCoeff = 0.0;}
+               }
+              }
+              /* binary enthalpy */
+              {
+               char binarymapping[PETSC_MAX_PATH_LEN];
+               currentcalphad->binary = (RK *) malloc(user->ncp*(user->ncp-1)*sizeof(struct RK)/2);
+               RK *currentbinary = &currentcalphad->binary[0];
+               for (PetscInt ck=0; ck<user->ncp; ck++) {
+                   for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
+                       sprintf(binarymapping, "%s/binary_enthalpy/%s/%s",materialmapping,user->componentname[ck],user->componentname[cj]);
+                       ierr = GetProperty(propval, &propsize, binarymapping, "nrk", buffer, filesize);
+                       if (propsize) {currentbinary->n = atoi(propval[0]);} else {currentbinary->n = 0;}
+                       currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                       TSeries *currententhalpy = &currentbinary->enthalpy[0];
+                       for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
+                           sprintf(binarymapping, "%s/binary_enthalpy/%s/%s/rk_%d",materialmapping,user->componentname[ck],user->componentname[cj],nrk);
+                           ierr = GetProperty(propval, &propsize, binarymapping, "t_coefficient", buffer, filesize);
+                           currententhalpy->nTser = propsize;
+                           for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                           ierr = GetProperty(propval, &propsize, binarymapping, "t_exponent", buffer, filesize);
+                           assert(propsize == currententhalpy->nTser);
+                           for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                           currententhalpy->logCoeff = 0.0;
+                       }
+                   }
+               }
+              }  
+              /* ternary enthalpy */
+              {
+               char ternarymapping[PETSC_MAX_PATH_LEN];
+               currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ncp-1)*(user->ncp-2)*sizeof(struct RK)/6);
+               RK *currentternary = &currentcalphad->ternary[0];
+               for (PetscInt ck=0;ck<user->ncp;ck++) {
+                   for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
+                       for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
+                           sprintf(ternarymapping, "%s/ternary_enthalpy/%s/%s/%s",materialmapping,user->componentname[ck],user->componentname[cj],user->componentname[ci]);
+                           ierr = GetProperty(propval, &propsize, ternarymapping, "nrk", buffer, filesize);
+                           if (propsize) {currentternary->n = atoi(propval[0]);} else {currentternary->n = 0;}
+                           currentternary->enthalpy = (TSeries *) malloc(currentternary->n*sizeof(TSeries));
+                           currentternary->i = malloc(currentternary->n*sizeof(PetscInt));
+                           TSeries *currententhalpy = &currentternary->enthalpy[0];
+                           for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
+                               sprintf(ternarymapping, "%s/ternary_enthalpy/%s/%s/%s/rk_%d",materialmapping,user->componentname[ck],user->componentname[cj],user->componentname[ci],nrk);
+                               ierr = GetProperty(propval, &propsize, ternarymapping, "t_coefficient", buffer, filesize);
+                               currententhalpy->nTser = propsize;
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, ternarymapping, "t_exponent", buffer, filesize);
+                               assert(propsize == currententhalpy->nTser);
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, ternarymapping, "index", buffer, filesize);
+                               assert(propsize == 1);
+                               currentternary->i[nrk] = atoi(propval[0]);
+                               currententhalpy->logCoeff = 0.0;
+                           }
+                       }
+                   }
+               }        
+              }  
+          } else {
+              currentmaterial->model = NONE_CHEMENERGY;
+          }
+         }
+     }
     }
-    assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
-    free(substr);    
 
-    substr = Extract(buffer, "<solution_parameters>", "</solution_parameters>");
-    tok = strtok_r(substr, "\n", &savetok);
-    /* default AMR parameters */
-    user->amrparams.initrefine = 1;
-    user->amrparams.initcoarsen = 0;
-    user->amrparams.maxnrefine = 1;
-    user->amrparams.minnrefine = 1;
-    user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        user->amrparams.initblocksize[dim] = 2;
+    /* Parsing config file interface */
+    {
+     INTERFACE *currentinterface = &user->interface[0];
+     for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
+         char interfacemapping[PETSC_MAX_PATH_LEN];
+         sprintf(interfacemapping,"interface/%s",user->interfacename[interface]);
+         /* interface energy */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "energy", buffer, filesize); CHKERRQ(ierr);
+         assert(propsize == 1);
+         currentinterface->energy = 0.0;
+         /* interface mobility */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "mobility", buffer, filesize); CHKERRQ(ierr);
+         assert(propsize == 1);
+         currentinterface->mobility = 0.0;
+         /* segregation potential */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "potential", buffer, filesize);
+         assert(ierr || propsize == user->ncp);
+         currentinterface->potential = malloc(user->ncp*sizeof(PetscReal));
+         memset(currentinterface->potential,0,user->ncp*sizeof(PetscReal));
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->potential[propctr] = atof(propval[propctr]);
+         /* interface solute mobility */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "mobilityc", buffer, filesize);
+         assert(ierr || propsize == user->ncp);
+         currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
+         memset(currentinterface->mobilityc,0,user->ncp*sizeof(PetscReal));
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
+     }    
     }
-    /* default solution parameters */
-    user->solparams.finaltime = 1.0;
-    user->solparams.timestep = TOL;
-    user->solparams.mintimestep = TOL;
-    user->solparams.maxtimestep = LARGE;
-    user->solparams.step = 0;    
-    user->solparams.interfacewidth = 4.0;
-    user->solparams.temperature = 300.0;
-    user->solparams.reltol = 1e-6;
-    user->solparams.abstol = 1e-6;
-    user->solparams.outputfreq = 1;
-    strncpy(user->solparams.outfile, "output", 128);
-    strncpy(user->solparams.petscoptions, "", PETSC_MAX_PATH_LEN);
-    /* initialise solution parameters */
-    while (tok !=NULL) {
-        // process the line
-        if (strstr(tok, "finaltime ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.finaltime);
-        }
-        if (strstr(tok, "timestep0 ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.timestep);
-        }
-        if (strstr(tok, "timestepmin ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.mintimestep);
-        }
-        if (strstr(tok, "timestepmax ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.maxtimestep);
-        }
-        if (strstr(tok, "interfacewidth ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.interfacewidth);
-        }    
-        if (strstr(tok, "temperature ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.temperature);
-        }    
-        if (strstr(tok, "initblocksize ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            for (PetscInt dim=0; dim<user->dim; ++dim) {
-                sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initblocksize[dim]);
-            }
-        }    
-        if (strstr(tok, "initrefine ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initrefine);
-        }    
-        if (strstr(tok, "initcoarsen ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.initcoarsen);
-        }    
-        if (strstr(tok, "maxnrefine ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.maxnrefine);
-        }    
-        if (strstr(tok, "minnrefine ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.minnrefine);
-        }    
-        if (strstr(tok, "amrinterval ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->amrparams.amrinterval);
-        }    
-        if (strstr(tok, "reltol ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.reltol);
-        }
-        if (strstr(tok, "abstol ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%lf", &user->solparams.abstol);
-        }
-        if (strstr(tok, "outputfreq ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%d", &user->solparams.outputfreq);
-        }    
-        if (strstr(tok, "outfile ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            sscanf(strtok_r(NULL, " ", &savemtok), "%s", user->solparams.outfile);
-        }    
-        if (strstr(tok, "petscoptions ") != NULL) {
-            char *mtok, *savemtok;
-            mtok = strtok_r(tok, " ", &savemtok);
-            mtok = strtok_r(NULL, " ", &savemtok);
-            while (mtok != NULL) {
-                strcat(user->solparams.petscoptions,mtok);
-                strcat(user->solparams.petscoptions," ");
-                mtok = strtok_r(NULL, " ", &savemtok);
-            }
-        }    
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
+
+    /* Parsing config file solution parameters */
+    {
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "interpolation", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1);
+     if        (!strcmp(propval[0], "linear"   )) {
+         user->interpolation = LINEAR_INTERPOLATION;
+     } else if (!strcmp(propval[0], "quadratic")) {
+         user->interpolation = QUADRATIC_INTERPOLATION;
+     } else if (!strcmp(propval[0], "cubic"    )) {
+         user->interpolation = CUBIC_INTERPOLATION;
+     } else {
+         user->interpolation = NONE_INTERPOLATION;
+     }
+     assert(user->interpolation != NONE_INTERPOLATION);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "finaltime", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.finaltime = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.timestep = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmin", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.mintimestep = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.temperature = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == user->dim); 
+     user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
+     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->amrparams.initblocksize[propctr] = atoi(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "initrefine", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->amrparams.initrefine = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "initcoarsen", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->amrparams.initcoarsen = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "maxnrefine", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->amrparams.maxnrefine = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "minnrefine", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->amrparams.minnrefine = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "amrinterval", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->amrparams.amrinterval = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "reltol", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.reltol = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "abstol", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.abstol = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "outputfreq", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.outputfreq = atoi(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "outfile", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); strcpy(user->solparams.outfile,propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "petscoptions", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); strcpy(user->solparams.petscoptions,propval[0]);
+     strcat(user->solparams.petscoptions," -dm_p4est_brick_bounds ");
+     for (PetscInt dim=0; dim<user->dim; ++dim) {
+         char strval[128];
+         sprintf(strval,"0.0,%lf",user->size[dim]);
+         strcat(user->solparams.petscoptions,strval);
+         if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
+     }
+     strcat(user->solparams.petscoptions," -dm_p4est_brick_size ");
+     for (PetscInt dim=0; dim<user->dim; ++dim) {
+         char strval[128];
+         sprintf(strval,"%d",user->amrparams.initblocksize[dim]);
+         strcat(user->solparams.petscoptions,strval);
+         if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
+     }
+     for (PetscInt dim=0; dim<user->dim; ++dim) {
+         assert(user->amrparams.initblocksize[dim]*FastPow(2,user->amrparams.initrefine) == user->resolution[dim]);
+     }
     }
-    strcat(user->solparams.petscoptions," -dm_p4est_brick_bounds ");
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        char strval[128];
-        sprintf(strval,"0.0,%lf",user->size[dim]);
-        strcat(user->solparams.petscoptions,strval);
-        if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
-    }
-    strcat(user->solparams.petscoptions," -dm_p4est_brick_size ");
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        char strval[128];
-        sprintf(strval,"%d",user->amrparams.initblocksize[dim]);
-        strcat(user->solparams.petscoptions,strval);
-        if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
-    }
-    for (PetscInt dim=0; dim<user->dim; ++dim) {
-        assert(user->amrparams.initblocksize[dim]*FastPow(2,user->amrparams.initrefine) == user->resolution[dim]);
-    }
-    free(substr);    
+
+    /* Parsing config file mappings */
+    {
+     char *tok, *savetok;
+     ierr = GetProperty(propval, &propsize, "mappings", "phase_material_mapping", buffer, filesize); CHKERRQ(ierr);
+     tok = strtok_r(propval[0], "\n", &savetok);
+     PetscInt ctrm=0;
+     while (tok != NULL && ctrm < user->npf) {
+         // process the line
+         if (strstr(tok, "of") != NULL) {
+             char stra[128], strb[128];
+             PetscInt sof,m;
+             sscanf(tok, "%s of %s", stra, strb);
+             sof = atoi(stra); m = atoi(strb);
+             assert(m <= user->nmat);
+             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                 user->phasematerialmapping[j] = m-1;
+             ctrm += sof;
+         } else if (strstr(tok, "to") != NULL) {
+             char stra[128], strb[128];
+             PetscInt m, mfrom, mto;
+             sscanf(tok, "%s to %s", stra, strb);
+             mfrom = atoi(stra); mto = atoi(strb);
+             assert(mfrom <= user->nmat);
+             assert(mto   <= user->nmat);
+             if (mfrom < mto) {
+                 for (m=mfrom;m<=mto;m++) 
+                     user->phasematerialmapping[ctrm++] = m-1;
+             } else {
+                 for (m=mfrom;m>=mto;m--)
+                     user->phasematerialmapping[ctrm++] = m-1;
+             }   
+         }
+         else if (atoi(tok)) {
+             assert(atoi(tok) <= user->nmat);
+             user->phasematerialmapping[ctrm++] = atoi(tok)-1;
+         }
+         //advance the token
+         tok = strtok_r(NULL, "\n", &savetok);
+     }
+     assert(ctrm == user->npf && tok == NULL);
+
+     ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
+     tok = strtok_r(propval[0], "\n", &savetok);
+     PetscInt ctrv=0;
+     while (tok != NULL && ctrv < user->resolution[2]*user->resolution[1]*user->resolution[0]) {
+         // process the line
+         if (strstr(tok, "of") != NULL) {
+             char stra[128], strb[128];
+             PetscInt sof,p;
+             sscanf(tok, "%s of %s", stra, strb);
+             sof = atoi(stra); p = atoi(strb);
+             for (PetscInt j=ctrv;j<ctrv+sof;j++) 
+                 user->phasevoxelmapping[j] = p-1;;
+             ctrv+=sof;
+         } else if (strstr(tok, "to") != NULL) {
+             char stra[128], strb[128];
+             PetscInt p, pfrom, pto;
+             sscanf(tok, "%s to %s", stra, strb);
+             pfrom = atoi(stra); pto = atoi(strb);
+             if (pfrom < pto) {
+                 for (p=pfrom;p<=pto;p++) 
+                     user->phasevoxelmapping[ctrv++] = p-1;
+             } else {
+                 for (p=pfrom;p>=pto;p--)
+                     user->phasevoxelmapping[ctrv++] = p-1;
+             }   
+         }
+         else if (atoi(tok)) {
+             user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
+         }
+         //advance the token
+         tok = strtok_r(NULL, "\n", &savetok);
+     }
+     assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
+
+     ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
+     user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));
+     tok = strtok_r(propval[0], "\n", &savetok);
+     PetscInt ctr=0;
+     while (tok != NULL && ctr < user->npf*user->npf) {
+         // process the line
+         if (strstr(tok, "of") != NULL) {
+             char stra[128], strb[128];
+             PetscInt sof, interface;
+             sscanf(tok, "%s of %s", stra, strb);
+             sof = atoi(stra); interface = atoi(strb);
+             for (PetscInt j=ctr;j<ctr+sof;j++) {
+                 PetscInt row = j/user->npf, col = j%user->npf;
+                 if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
+             }
+             ctr+=sof;
+         } else if (strstr(tok, "to") != NULL) {
+             char stra[128], strb[128];
+             PetscInt interface, interfacefrom, interfaceto;
+             sscanf(tok, "%s to %s", stra, strb);
+             interfacefrom = atoi(stra); interfaceto = atoi(strb);
+             if (interfacefrom < interfaceto) {
+                 for (interface=interfacefrom;interface<=interfaceto;interface++) {
+                     PetscInt row = ctr/user->npf, col = ctr%user->npf;
+                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
+                     ctr++;
+                 }    
+             } else {
+                 for (interface=interfacefrom;interface>=interfaceto;interface--) {
+                     PetscInt row = ctr/user->npf, col = ctr%user->npf;
+                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
+                     ctr++;
+                 }    
+             }   
+         } else if (atoi(tok)) {
+             PetscInt interface = atoi(tok);
+             PetscInt row = ctr/user->npf, col = ctr%user->npf;
+             if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
+             ctr++;
+         }
+         //advance the token
+         tok = strtok_r(NULL, "\n", &savetok);
+     }
+     assert(ctr == user->npf*user->npf);
+    } 
+
     free(buffer);   
-    PetscFunctionReturn(0);
-}
-
-/*
- SetUpInterface - Import interface types from interface file
- */
-PetscErrorCode SetUpInterface(AppCtx *user)
-{
-    char           interfacefile[PETSC_MAX_PATH_LEN] = "";
-    char           *buffer = 0, *substr = 0;
-    PetscMPIInt    rank;
-    
-    PetscFunctionBeginUser;  
-    MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
-    PetscOptionsGetString(NULL,NULL,"-interfacefile",interfacefile,PETSC_MAX_PATH_LEN,NULL);
-    FILE *infile=NULL;
-    if (rank == 0) {
-        infile = fopen (interfacefile, "r");
-        if (infile==NULL) {
-            printf("Error: input file can't be opened. \n");
-            printf("Error: Please make sure the file %s is in the CWD.\n",interfacefile);
-            return 1;
-        }
-    }
-    PetscInt filesize;
-    if (infile) {
-        fseek(infile, 0, SEEK_END);
-        filesize = ftell(infile);
-        fseek(infile, 0, SEEK_SET);
-    }    
-    MPI_Bcast(&filesize,1,MPIU_INT ,0,PETSC_COMM_WORLD);
-    buffer = malloc(filesize);
-    if (rank == 0) {
-        fread(buffer, 1, filesize, infile);
-        fclose(infile);
-    }
-    MPI_Bcast(buffer,filesize,MPI_CHAR,0,PETSC_COMM_WORLD);
-    
-    char *tok, *savetok;
-    substr = Extract(buffer, "<header>", "</header>");
-    tok = strtok_r(substr, "\n", &savetok);
-    while (tok !=NULL) {
-        /* number of interface families */
-        if (strstr(tok, "n_interfaces") != NULL) {
-            char stra[128], strb[128];
-            sscanf(tok, "%s %s", stra,strb); user->nf = atoi(strb);
-            user->interface = (INTERFACE *) malloc(user->nf*sizeof(struct INTERFACE));
-            INTERFACE *currentinterface = &user->interface[0];
-            for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
-                currentinterface->energy = 0.0;
-                currentinterface->mobility = 0.0;
-                currentinterface->potential = malloc(user->ncp*sizeof(PetscReal));
-                currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-                memset(currentinterface->potential,0,user->ncp*sizeof(PetscReal));
-                memset(currentinterface->mobilityc,0,user->ncp*sizeof(PetscReal));
-            }    
-                
-        }
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
-    }
-    assert(user->nf >= 0);
-    free(substr);
-    
-    INTERFACE *currentinterface = &user->interface[0];
-    for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
-        char starttag[128], endtag[128];
-        sprintf(starttag, "<interface %d>",interface+1);        
-        sprintf(endtag  , "</interface %d>",interface+1);        
-        substr = Extract(buffer,starttag,endtag);
-        assert(substr != NULL);
-        tok = strtok_r(substr, "\n", &savetok);
-        while (tok !=NULL) {
-            char stra[128], strb[128];
-            if (strstr(tok, "energy") != NULL) {
-                sscanf(tok, "%s %s", stra,strb); currentinterface->energy = atof(strb);
-                assert(currentinterface->energy >= 0.0);
-            }
-            if (strstr(tok, "mobility") != NULL) {
-                sscanf(tok, "%s %s", stra,strb); currentinterface->mobility = atof(strb);
-                assert(currentinterface->mobility >= 0.0);
-            }
-            if (strstr(tok, "potential") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                PetscInt c = 0;
-                while (mtok != NULL) {
-                    PetscReal potential;
-                    sscanf(mtok, "%lf", &potential);
-                    currentinterface->potential[c] = potential;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                    c++;
-                }
-                assert(c == user->ncp);
-            }
-            if (strstr(tok, "mobilityc") != NULL) {
-                char *mtok, *savemtok;
-                mtok = strtok_r(tok, " ", &savemtok);
-                mtok = strtok_r(NULL, " ", &savemtok);
-                PetscInt c = 0;
-                while (mtok != NULL) {
-                    PetscReal mobilityc;
-                    sscanf(mtok, "%lf", &mobilityc);
-                    currentinterface->mobilityc[c] = mobilityc;
-                    mtok = strtok_r(NULL, " ", &savemtok);
-                    c++;
-                }
-                assert(c == user->ncp);
-            }
-            //advance the token
-            tok = strtok_r(NULL, "\n", &savetok);
-        }
-        free(substr);
-    }
-    user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));
-    
-    substr = Extract(buffer, "<interface_mapping>", "</interface_mapping>");
-    tok = strtok_r(substr, "\n", &savetok);
-    PetscInt ctr=0;
-    while (tok != NULL && ctr < user->npf*user->npf) {
-        // process the line
-        if (strstr(tok, "of") != NULL) {
-            char stra[128], strb[128];
-            PetscInt sof, interface;
-            sscanf(tok, "%s of %s", stra, strb);
-            sof = atoi(stra); interface = atoi(strb);
-            for (PetscInt j=ctr;j<ctr+sof;j++) {
-                PetscInt row = j/user->npf, col = j%user->npf;
-                if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
-            }
-            ctr+=sof;
-        } else if (strstr(tok, "to") != NULL) {
-            char stra[128], strb[128];
-            PetscInt interface, interfacefrom, interfaceto;
-            sscanf(tok, "%s to %s", stra, strb);
-            interfacefrom = atoi(stra); interfaceto = atoi(strb);
-            if (interfacefrom < interfaceto) {
-                for (interface=interfacefrom;interface<=interfaceto;interface++) {
-                    PetscInt row = ctr/user->npf, col = ctr%user->npf;
-                    if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-                    ctr++;
-                }    
-            } else {
-                for (interface=interfacefrom;interface>=interfaceto;interface--) {
-                    PetscInt row = ctr/user->npf, col = ctr%user->npf;
-                    if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-                    ctr++;
-                }    
-            }   
-        } else if (atoi(tok)) {
-            PetscInt interface = atoi(tok);
-            PetscInt row = ctr/user->npf, col = ctr%user->npf;
-            if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-            ctr++;
-        }
-        //advance the token
-        tok = strtok_r(NULL, "\n", &savetok);
-    }
-    assert(ctr == user->npf*user->npf);
-    free(substr);
-    free(buffer);    
     PetscFunctionReturn(0);
 }
 

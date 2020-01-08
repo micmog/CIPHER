@@ -547,8 +547,7 @@ int main(int argc,char **args)
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Initialize problem parameters
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-  ierr = SetUpGeometry(&ctx); CHKERRQ(ierr);
-  ierr = SetUpInterface(&ctx); CHKERRQ(ierr);
+  ierr = SetUpConfig(&ctx); CHKERRQ(ierr);
   utility_init(&ctx);
   material_init(&ctx);
   ctx.rejectstage = 0;
