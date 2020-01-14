@@ -1,0 +1,525 @@
+---
+header:
+  grid : [64, 64, 64]
+  size : [64, 64, 64]
+  n_phases : 3
+  materials : [matrix, precipitate]
+  interfaces : [grainboundary, pptboundary]
+  components : [al, cu, mg, zn]
+
+solution_parameters:
+  finaltime : 72000.0 
+  timestep0 : 1e-9
+  timestepmin : 1e-9
+  timestepmax : 1e+2
+  temperature : 393.0
+  interfacewidth : 4
+  initblocksize : [2, 2, 2]
+  initrefine : 5
+  maxnrefine : 5
+  minnrefine : 3
+  initcoarsen : 3
+  amrinterval : 200 
+  reltol : 1e-6
+  abstol : 1e-6 
+  outputfreq : 5000
+  outfile : GBP
+  interpolation: cubic
+  petscoptions : -ts_adapt_monitor
+
+material:
+  matrix:
+    chemicalenergy : calphaddis
+    molarvolume : 1e-6
+    statekineticcoeff : 5e-1
+    c0 : [0.90, 0.02, 0.04, 0.04]
+    mobilityc :
+      al :
+        mobility0 : 1.0e-18
+        unary_migration : 
+          al : 
+            t_coefficient : [-127200.0, -92.98]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-181583.4, -99.8]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-127200.0, -92.98]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-83255.0, -92.92]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            zn : 
+              nrk : 2
+              rk_0 : 
+                t_coefficient : [30169.0, -111.83]
+                t_exponent: [0, 1]
+              rk_1 : 
+                t_coefficient : [11835.0, 39.0]
+                t_exponent: [0, 1]
+      cu :
+        mobility0 : 1.0e-18
+        unary_migration : 
+          al : 
+            t_coefficient : [-131000.0, -81.395]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-204670.0, -83.14]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-112499.0, -81.26]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-91608.6, -82.63]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            cu : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-31461.4, 78.91]
+                t_exponent: [0, 1]
+            mg : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 175000.0
+                t_exponent: 0
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : -250000.0
+                t_exponent: 0
+          cu : 
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-4930.8, -24.75]
+                t_exponent: [0, 1]
+      mg :
+        mobility0 : 1.0e-18
+        unary_migration : 
+          al : 
+            t_coefficient : [-119000.0, -95.72]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-170567.0, -98.84]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-112499.0, -81.25]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-71147.6, -67.0]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            cu : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 200000.0
+                t_exponent: 0
+            mg : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 53551.0
+                t_exponent: 0
+          cu : 
+            mg : 
+              nrk : 3
+              rk_0 : 
+                t_coefficient : 125000.0
+                t_exponent: 0
+              rk_1 : 
+                t_coefficient : 50000.0
+                t_exponent: 0
+              rk_2 : 
+                t_coefficient : 50000.0
+                t_exponent: 0
+      zn :
+        mobility0 : 1.0e-18
+        unary_migration : 
+          al : 
+            t_coefficient : [-120000.0, -88.44]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-190832.4, -86.10]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-73706.0, -86.15]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-76569.0, -86.20]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            zn : 
+              nrk : 2
+              rk_0 : 
+                t_coefficient : [-40720.0, 31.7]
+                t_exponent: [0, 1]
+              rk_1 : 
+                t_coefficient : [147763.0, -133.7]
+                t_exponent: [0, 1]
+          cu : 
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-68455.6, 36.0]
+                t_exponent: [0, 1]
+    unary_enthalpy : 
+      al : 
+        t_coefficient : [-7976.15, 137.093038, -1.884662e-3, -8.77664e-6, 74092.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -24.3671976
+      cu : 
+        t_coefficient : [-7770.458, 130.485235, -2.65684e-3, 1.29223e-6, 52478.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -24.112392
+      mg : 
+        t_coefficient : [-5767.34, 142.775547, 4.858e-3, -1.393669e-6, 78950.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -26.1849782
+      zn : 
+        t_coefficient : [-4315.967, 116.900389, -1.712034e-3, 1.264963e-6]
+        t_exponent: [0, 1, 2, 3]
+        tlnt_coefficient : -23.701314
+    binary_enthalpy : 
+      al : 
+        cu : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [-53520.0, 2.0]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [38590.0, -2.0]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : 1170.0
+            t_exponent: 0
+        mg : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [4971.0, -3.500025]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [225.0, 0.1]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [950.0, 2.5e-5]
+            t_exponent: [0, 1]
+        zn : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [4971.0, -3.500025]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [225.0, 0.1]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [950.0, 2.5e-5]
+            t_exponent: [0, 1]
+      cu : 
+        mg : 
+          nrk : 1
+          rk_0 :     
+            t_coefficient : [-22279.28, 5.868]
+            t_exponent: [0, 1]
+        zn : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [-42803.75, 10.02258]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [2936.39, -3.05323]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [9034.20, -5.39314]
+            t_exponent: [0, 1]
+      mg : 
+        zn : 
+          nrk : 2
+          rk_0 :     
+            t_coefficient : [-3056.82, 5.63801]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [-3127.26, 5.65563]
+            t_exponent: [0, 1]
+    ternary_enthalpy : 
+      al : 
+        cu : 
+          mg : 
+            nrk : 1
+            rk_0 : 
+              index : 0
+              t_coefficient : 60000.0
+              t_exponent: 0
+          zn : 
+            nrk : 3
+            rk_0 : 
+              index : 0
+              t_coefficient : 7.2990788e+4
+              t_exponent: 0
+            rk_1 : 
+              index : 1
+              t_coefficient : 1.6799927e+4
+              t_exponent: 0
+            rk_2 : 
+              index : 2
+              t_coefficient : 5.9580949e+4
+              t_exponent: 0
+  precipitate :
+    chemicalenergy : quadratic
+    molarvolume : 1e-6
+    statekineticcoeff : 5e-1
+    c0 : [0.16757, 0.04471, 0.33333, 0.45439]
+    mobilityc : [7.3451110109984390e-8, 5.3486841665396531e-8, 1.4696210067717206e-6, 2.2897371183228479e-6]
+    ceq : 
+      al :
+        t_coefficient : 0.16757
+        t_exponent : 0
+      cu :  
+        t_coefficient : 0.04471
+        t_exponent: 0
+      mg :  
+        t_coefficient : 0.33333
+        t_exponent: 0
+      zn :  
+        t_coefficient : 0.45439
+        t_exponent: 0
+    ref_enthalpy :
+      t_coefficient : -2.6605e+04
+      t_exponent: 0
+    binary_enthalpy:
+      al :
+        t_coefficient : 1.0e+6
+        t_exponent : 0
+      cu :  
+        t_coefficient : 1.0e+6
+        t_exponent: 0
+      mg :  
+        t_coefficient : 1.0e+6
+        t_exponent: 0
+      zn :  
+        t_coefficient : 1.0e+6
+        t_exponent: 0
+
+interface :
+  grainboundary :
+    energy : 5.0e+8
+    mobility : 1.0e-11
+    potential : [0.0, -0.180e+4, -0.235e+4, -0.170e+4]
+  pptboundary :
+    energy : 5.0e+8
+    mobility : 1.0e-11
+
+mappings:
+  phase_material_mapping : |-
+    2 of 1
+    2
+  voxel_phase_mapping: |-
+    116510 of 1
+    4 of 3
+    59 of 1
+    6 of 3
+    57 of 1
+    8 of 3
+    56 of 1
+    8 of 3
+    56 of 1
+    8 of 3
+    56 of 1
+    8 of 3
+    57 of 1
+    6 of 3
+    59 of 1
+    4 of 3
+    3515 of 1
+    6 of 3
+    57 of 1
+    8 of 3
+    55 of 1
+    10 of 3
+    53 of 1
+    12 of 3
+    52 of 1
+    12 of 3
+    52 of 1
+    12 of 3
+    52 of 1
+    12 of 3
+    52 of 1
+    12 of 3
+    52 of 1
+    12 of 3
+    53 of 1
+    10 of 3
+    55 of 1
+    8 of 3
+    57 of 1
+    6 of 3
+    3321 of 1
+    8 of 3
+    55 of 1
+    10 of 3
+    53 of 1
+    12 of 3
+    51 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    51 of 1
+    12 of 3
+    53 of 1
+    10 of 3
+    55 of 1
+    8 of 3
+    3193 of 1
+    6 of 3
+    56 of 1
+    10 of 3
+    53 of 1
+    12 of 3
+    51 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    49 of 1
+    16 of 3
+    48 of 1
+    16 of 3
+    48 of 1
+    16 of 3
+    48 of 1
+    16 of 3
+    48 of 1
+    16 of 3
+    48 of 1
+    16 of 3
+    49 of 1
+    14 of 3
+    50 of 1
+    14 of 3
+    51 of 1
+    12 of 3
+    53 of 1
+    10 of 3
+    56 of 1
+    6 of 3
+    1565 of 1
+    1565 of 2
+    6 of 3
+    56 of 2
+    10 of 3
+    53 of 2
+    12 of 3
+    51 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    49 of 2
+    16 of 3
+    48 of 2
+    16 of 3
+    48 of 2
+    16 of 3
+    48 of 2
+    16 of 3
+    48 of 2
+    16 of 3
+    48 of 2
+    16 of 3
+    49 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    51 of 2
+    12 of 3
+    53 of 2
+    10 of 3
+    56 of 2
+    6 of 3
+    3193 of 2
+    8 of 3
+    55 of 2
+    10 of 3
+    53 of 2
+    12 of 3
+    51 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    50 of 2
+    14 of 3
+    51 of 2
+    12 of 3
+    53 of 2
+    10 of 3
+    55 of 2
+    8 of 3
+    3321 of 2
+    6 of 3
+    57 of 2
+    8 of 3
+    55 of 2
+    10 of 3
+    53 of 2
+    12 of 3
+    52 of 2
+    12 of 3
+    52 of 2
+    12 of 3
+    52 of 2
+    12 of 3
+    52 of 2
+    12 of 3
+    52 of 2
+    12 of 3
+    53 of 2
+    10 of 3
+    55 of 2
+    8 of 3
+    57 of 2
+    6 of 3
+    3515 of 2
+    4 of 3
+    59 of 2
+    6 of 3
+    57 of 2
+    8 of 3
+    56 of 2
+    8 of 3
+    56 of 2
+    8 of 3
+    56 of 2
+    8 of 3
+    57 of 2
+    6 of 3
+    59 of 2
+    4 of 3
+    116510 of 2
+  interface_mapping: |-
+    2 of 1
+    7 of 2

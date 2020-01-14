@@ -23,8 +23,7 @@
 
 /* Function prototypes */
 EXTERN char *strtok_r(char *, const char *, char **);
-EXTERN PetscErrorCode SetUpGeometry(AppCtx *);
-EXTERN PetscErrorCode SetUpInterface(AppCtx *);
+EXTERN PetscErrorCode SetUpConfig(AppCtx *);
 EXTERN PetscErrorCode SetUpProblem(Vec, AppCtx *);
 
 #undef INIT_IMPORT
