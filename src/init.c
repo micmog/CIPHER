@@ -495,7 +495,13 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.temperature = atof(propval[0]);
+     assert(propsize > 0); user->solparams.n_temperature = propsize;
+     user->solparams.temperature_T = malloc(user->solparams.n_temperature*sizeof(PetscReal));
+     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_T[propctr] = atof(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "time", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == user->solparams.n_temperature);
+     user->solparams.temperature_t = malloc(user->solparams.n_temperature*sizeof(PetscReal));
+     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_t[propctr] = atof(propval[propctr]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == user->dim); 
      user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
@@ -735,6 +741,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 
     /* Set initial phase field values */
     ierr = VecGetArray(solution, &fdof);
+    PetscReal temperature = Interpolate(0.0,user->solparams.temperature_T,user->solparams.temperature_t,user->solparams.n_temperature);
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
 
@@ -750,7 +757,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            ChemicalpotentialImplicit(&dcell[g*user->ndp],currentmaterial->c0,user->solparams.temperature,gslist[g+1],user);
+            ChemicalpotentialImplicit(&dcell[g*user->ndp],currentmaterial->c0,temperature,gslist[g+1],user);
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
             } else {

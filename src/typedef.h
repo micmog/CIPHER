@@ -120,7 +120,8 @@ typedef struct SOLUTIONPARAMS {
     /* phase field parameters */
     PetscReal interfacewidth;
     /* temperature */
-    PetscReal temperature;
+    PetscInt  n_temperature;
+    PetscReal *temperature_T, *temperature_t;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */

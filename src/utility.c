@@ -35,6 +35,25 @@ void I2FFUNC(PetscScalar *FARRAY,uint16_t *IARRAY) {
 }
 
 /*
+ Interpolate y(x) given (y_i,x_i)
+ */
+PetscReal Interpolate(const PetscReal x, const PetscReal *y_i, const PetscReal *x_i, const PetscInt n)
+{
+    if        (x <= x_i[0]) {
+        return y_i[0] + (x - x_i[0])*(y_i[1] - y_i[0])/(x_i[1] - x_i[0]);
+    } else if (x >= x_i[n-1]) {
+        return y_i[n-2] + (x - x_i[n-2])*(y_i[n-2] - y_i[n-1])/(x_i[n-2] - x_i[n-1]);
+    } else {
+        for (PetscInt i=0; i<n-1; i++) {
+            if (x >= x_i[i] && x <= x_i[i+1]) {
+                return y_i[i] + (x - x_i[i])*(y_i[i+1] - y_i[i])/(x_i[i+1] - x_i[i]);
+            }    
+        }
+    }
+    return 0.0;    
+} 
+
+/*
  PetscReal to power of unsigned int
  */
 PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)//*tseries or tseries ? arg is not being changed in funct

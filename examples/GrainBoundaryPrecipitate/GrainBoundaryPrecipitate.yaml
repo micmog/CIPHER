@@ -12,7 +12,8 @@ solution_parameters:
   timestep0 : 1e-9
   timestepmin : 1e-9
   timestepmax : 1e+2
-  temperature : 393.0
+  temperature : [393.0, 393.0]
+  time : [0.0, 1.0]
   interfacewidth : 4
   initblocksize : [2, 2, 2]
   initrefine : 5
