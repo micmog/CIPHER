@@ -50,6 +50,11 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
+/* Nucleation parameters */
+typedef struct NUCLEATION {
+    PetscReal zeldovich_c, beta_c, diffusion_c, gibbs_c;
+} NUCLEATION;
+
 /* Temperature series */
 typedef struct TSeries {
     PetscInt  nTser;
@@ -99,6 +104,7 @@ typedef struct MATERIAL {
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
+    NUCLEATION nucleation;
 } MATERIAL;
 
 /* interface container */
@@ -153,7 +159,7 @@ typedef struct AppCtx {
     PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
-    uint16_t *phasevoxelmapping, *phasematerialmapping;
+    uint16_t *phasevoxelmapping, *phasematerialmapping, *phaseactivemapping;
     interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;

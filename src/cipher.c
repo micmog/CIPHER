@@ -119,8 +119,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         for (g=0; g<setintersect[0]; g++) {
             fluxp[g] = (pcellR[injectionR[g]] - pcellL[injectionL[g]]);
         }        
-        for (c=0; c<user->ndp*user->ndp; c++) {
-            work_vec_MB[c] = (mobilitycvL[c] + mobilitycvR[c])/2.0;
+        if (   (slistL[0] == 1 && !user->phaseactivemapping[slistL[1]]) 
+            || (slistR[0] == 1 && !user->phaseactivemapping[slistR[1]])) {
+            memset(work_vec_MB,0,user->ndp*user->ndp*sizeof(PetscReal));
+        } else {
+            for (c=0; c<user->ndp*user->ndp; c++) {
+                work_vec_MB[c] = (mobilitycvL[c] + mobilitycvR[c])/2.0;
+            }
         }
         for (c=0; c<user->ndp; c++) {
             work_vec_DP[c] = (chempotR[c] - chempotL[c]);
@@ -219,21 +224,26 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    interface_mobility = currentinterface->mobility->m0
-                                       * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
-                                             / R_GAS_CONST/temperature);
-                    rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                 + (caplsource[gk] - caplsource[gj])
-                                                 - (chemsource[gk] - chemsource[gj])
-                                                 * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
-                    rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
+                if (user->phaseactivemapping[slist[gk+1]]) {
+                    for (gj=gk+1; gj<slist[0]; gj++) {
+                        if (user->phaseactivemapping[slist[gj+1]]) {
+                            interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                            currentinterface = &user->interface[interfacekj];
+                            interface_mobility = currentinterface->mobility->m0
+                                               * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
+                                                     / R_GAS_CONST/temperature);
+                            rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                         + (caplsource[gk] - caplsource[gj])
+                                                         - (chemsource[gk] - chemsource[gj])
+                                                         * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                            rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
+                        }
+                    }
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
                              || (pcell[gk] <       TOL && rhs_unconstrained[gk] > 0.0      )
                              || (pcell[gk] > 1.0 - TOL && rhs_unconstrained[gk] < 0.0      );
+                active[gk] = active[gk] && user->phaseactivemapping[slist[gk+1]];
                 if (active[gk]) nactivephases += 1.0;
             }
 
@@ -434,6 +444,9 @@ PetscErrorCode PostStep(TS ts)
     ierr = DMRestoreLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
     ierr = TSSetSolution(ts,solution); CHKERRQ(ierr);
     
+    /* nucleate phases */
+    Nucleation(temperature,currenttime,user);
+
     /* write output */
     ierr = TSGetStepNumber(ts, &user->solparams.step);CHKERRQ(ierr);
     if (user->solparams.step%user->solparams.outputfreq == 0) {

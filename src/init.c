@@ -160,6 +160,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       assert(propsize == 1 && propval[0] > 0);
       user->npf = atoi(propval[0]);
       user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
+      user->phaseactivemapping = malloc(user->npf*sizeof(uint16_t));
+      memset(user->phaseactivemapping,0,user->npf*sizeof(uint16_t));
      }
      /* material names */
      {
@@ -227,6 +229,26 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          /* chempot explicit kinetic coefficient */
          ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
          if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
+         /* nucleation parameters */
+         {
+          NUCLEATION *currentnucleation = &currentmaterial->nucleation;
+          /* state kinetic coefficient */
+          ierr = GetProperty(propval, &propsize, materialmapping, "zeldovich_c", buffer, filesize);
+          assert(propsize <= 1);
+          if (propsize) {currentnucleation->zeldovich_c = atof(propval[0]);} else {currentnucleation->zeldovich_c = 0.0;}
+          /* state kinetic coefficient */
+          ierr = GetProperty(propval, &propsize, materialmapping, "beta_c", buffer, filesize);
+          assert(propsize <= 1);
+          if (propsize) {currentnucleation->beta_c = atof(propval[0]);} else {currentnucleation->beta_c = 0.0;}
+          /* state kinetic coefficient */
+          ierr = GetProperty(propval, &propsize, materialmapping, "diffusion_c", buffer, filesize);
+          assert(propsize <= 1);
+          if (propsize) {currentnucleation->diffusion_c = atof(propval[0]);} else {currentnucleation->diffusion_c = 0.0;}
+          /* state kinetic coefficient */
+          ierr = GetProperty(propval, &propsize, materialmapping, "gibbs_c", buffer, filesize);
+          assert(propsize <= 1);
+          if (propsize) {currentnucleation->gibbs_c = atof(propval[0]);} else {currentnucleation->gibbs_c = 0.0;}
+         }
          /* chemical energy type */
          {
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
@@ -558,6 +580,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     {
      char *tok, *savetok;
      ierr = GetProperty(propval, &propsize, "mappings", "phase_material_mapping", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize);
      tok = strtok_r(propval[0], "\n", &savetok);
      PetscInt ctrm=0;
      while (tok != NULL && ctrm < user->npf) {
@@ -595,20 +618,46 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      assert(ctrm == user->npf && tok == NULL);
 
-     ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
+     ierr = GetProperty(propval, &propsize, "mappings", "phase_active_mapping", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize);
      tok = strtok_r(propval[0], "\n", &savetok);
-     PetscInt ctrv=0, total_cells = user->dim == 2 ? user->resolution[0]*user->resolution[1] 
-                                                   : user->resolution[0]*user->resolution[1]*user->resolution[2];
-     while (tok != NULL && ctrv < total_cells) {
+     ctrm=0;
+     while (tok != NULL && ctrm < user->npf) {
+         // process the line
+         if (strstr(tok, "of") != NULL) {
+             char stra[128], strb[128];
+             PetscInt sof,m;
+             sscanf(tok, "%s of %s", stra, strb);
+             sof = atoi(stra); m = atoi(strb);
+             assert(m == 0 || m == 1);
+             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                 user->phaseactivemapping[j] = m;
+             ctrm += sof;
+         } else {
+             assert(atoi(tok) == 0 || atoi(tok) == 1);
+             user->phaseactivemapping[ctrm++] = atoi(tok);
+         }
+         //advance the token
+         tok = strtok_r(NULL, "\n", &savetok);
+     }
+     assert(ctrm == user->npf && tok == NULL);
+
+     ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize);
+     tok = strtok_r(propval[0], "\n", &savetok);
+     PetscInt total_cells = user->dim == 2 ? user->resolution[0]*user->resolution[1] 
+                                           : user->resolution[0]*user->resolution[1]*user->resolution[2];
+     ctrm=0;
+     while (tok != NULL && ctrm < user->resolution[2]*user->resolution[1]*user->resolution[0]) {
          // process the line
          if (strstr(tok, "of") != NULL) {
              char stra[128], strb[128];
              PetscInt sof,p;
              sscanf(tok, "%s of %s", stra, strb);
              sof = atoi(stra); p = atoi(strb);
-             for (PetscInt j=ctrv;j<ctrv+sof;j++) 
+             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
                  user->phasevoxelmapping[j] = p-1;;
-             ctrv+=sof;
+             ctrm+=sof;
          } else if (strstr(tok, "to") != NULL) {
              char stra[128], strb[128];
              PetscInt p, pfrom, pto;
@@ -616,36 +665,37 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              pfrom = atoi(stra); pto = atoi(strb);
              if (pfrom < pto) {
                  for (p=pfrom;p<=pto;p++) 
-                     user->phasevoxelmapping[ctrv++] = p-1;
+                     user->phasevoxelmapping[ctrm++] = p-1;
              } else {
                  for (p=pfrom;p>=pto;p--)
-                     user->phasevoxelmapping[ctrv++] = p-1;
+                     user->phasevoxelmapping[ctrm++] = p-1;
              }   
          }
          else if (atoi(tok)) {
-             user->phasevoxelmapping[ctrv++] = atoi(tok)-1;
+             user->phasevoxelmapping[ctrm++] = atoi(tok)-1;
          }
          //advance the token
          tok = strtok_r(NULL, "\n", &savetok);
      }
-     assert(ctrv == total_cells && tok == NULL);
+     assert(ctrm == total_cells && tok == NULL);
 
      ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize);
      user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));
      tok = strtok_r(propval[0], "\n", &savetok);
-     PetscInt ctr=0;
-     while (tok != NULL && ctr < user->npf*user->npf) {
+     ctrm=0;
+     while (tok != NULL && ctrm < user->npf*user->npf) {
          // process the line
          if (strstr(tok, "of") != NULL) {
              char stra[128], strb[128];
              PetscInt sof, interface;
              sscanf(tok, "%s of %s", stra, strb);
              sof = atoi(stra); interface = atoi(strb);
-             for (PetscInt j=ctr;j<ctr+sof;j++) {
+             for (PetscInt j=ctrm;j<ctrm+sof;j++) {
                  PetscInt row = j/user->npf, col = j%user->npf;
                  if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
              }
-             ctr+=sof;
+             ctrm+=sof;
          } else if (strstr(tok, "to") != NULL) {
              char stra[128], strb[128];
              PetscInt interface, interfacefrom, interfaceto;
@@ -653,27 +703,27 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              interfacefrom = atoi(stra); interfaceto = atoi(strb);
              if (interfacefrom < interfaceto) {
                  for (interface=interfacefrom;interface<=interfaceto;interface++) {
-                     PetscInt row = ctr/user->npf, col = ctr%user->npf;
-                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-                     ctr++;
+                     PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+                     if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+                     ctrm++;
                  }    
              } else {
                  for (interface=interfacefrom;interface>=interfaceto;interface--) {
-                     PetscInt row = ctr/user->npf, col = ctr%user->npf;
-                     if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-                     ctr++;
+                     PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+                     if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+                     ctrm++;
                  }    
              }   
          } else if (atoi(tok)) {
              PetscInt interface = atoi(tok);
-             PetscInt row = ctr/user->npf, col = ctr%user->npf;
-             if (col > row) user->interfacelist[ctr] = (unsigned char) interface-1;
-             ctr++;
+             PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+             if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+             ctrm++;
          }
          //advance the token
          tok = strtok_r(NULL, "\n", &savetok);
      }
-     assert(ctr == user->npf*user->npf);
+     assert(ctrm == user->npf*user->npf);
     } 
 
     free(buffer);   

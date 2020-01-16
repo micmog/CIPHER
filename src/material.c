@@ -27,6 +27,27 @@ typedef struct MATFUNC {
 static MATFUNC *Matfunc;
 
 /*
+ Nucleation model for new phases
+ */
+void Nucleation(const PetscReal current_time, const PetscReal temperature, const AppCtx *user)
+{
+    PetscReal zeldovich, beta, incubation_t, nucleation_probability, random_number;
+    NUCLEATION *currentnucleation;
+    
+    for (PetscInt p=0; p<user->npf; p++) {
+        if (!user->phaseactivemapping[p]) {
+            currentnucleation = &user->material[user->phasematerialmapping[p]].nucleation;
+            zeldovich = currentnucleation->zeldovich_c/sqrt(temperature);
+            beta = currentnucleation->beta_c*exp(currentnucleation->diffusion_c/temperature);
+            incubation_t = 1.0/(2.0*zeldovich*zeldovich*beta);
+            nucleation_probability = zeldovich*beta*exp(currentnucleation->gibbs_c/temperature - incubation_t/current_time);
+            random_number = (rand()/(double)RAND_MAX);
+            if (random_number < nucleation_probability) user->phaseactivemapping[p] = 1; 
+        }
+    }
+}
+
+/*
  Chemenergy - CALPHAD model for chemical energy
  */
 static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)

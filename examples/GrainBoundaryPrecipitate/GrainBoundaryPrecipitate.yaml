@@ -325,6 +325,8 @@ mappings:
   phase_material_mapping : |-
     2 of 1
     2
+  phase_active_mapping : |-
+    3 of 1
   voxel_phase_mapping: |-
     116510 of 1
     4 of 3
