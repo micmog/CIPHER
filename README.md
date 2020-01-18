@@ -57,13 +57,15 @@ cd $PETSC_DIR/$PETSC_ARCH/externalpackages
 wget http://ftp.mcs.anl.gov/pub/petsc/externalpackages/Triangle.tar.gz
 #next one is HDF5
 wget https://support.hdfgroup.org/ftp/HDF5/prev-releases/hdf5-1.8/hdf5-1.8.18/src/hdf5-1.8.18.tar.gz
+#next one is YAML
+wget http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz
 #and finally Chaco:
 wget  http://ftp.mcs.anl.gov/pub/petsc/externalpackages/Chaco-2.2-p2.tar.gz
 #Load cmake (required to install some external packages):
 module load tools/gcc/cmake/3.11.4
 #Navigate to the folder containing PETSc and configure it, including the necessary flags:
 cd $PETSC_DIR
-./configure  --with-pthread --download-metis --download-parmetis --download-chaco=$PWD/$PETSC_ARCH/externalpackages/Chaco-2.2-p2.tar.gz --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --download-hypre --download-ml --download-triangle=$PWD/$PETSC_ARCH/externalpackages/Triangle.tar.gz --download-ctetgen --download-hdf5=$PWD/$PETSC_ARCH/externalpackages/hdf5-1.8.18.tar.gz --with-zlib --with-p4est-dir=$P4EST_DIR --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=$PETSC_ARCH PETSC_DIR=$PETSC_DIR
+./configure  --with-pthread --download-yaml=$PWD/$PETSC_ARCH/externalpackages/yaml-0.1.4.tar.gz --download-metis --download-parmetis --download-chaco=$PWD/$PETSC_ARCH/externalpackages/Chaco-2.2-p2.tar.gz --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --download-hypre --download-ml --download-triangle=$PWD/$PETSC_ARCH/externalpackages/Triangle.tar.gz --download-ctetgen --download-hdf5=$PWD/$PETSC_ARCH/externalpackages/hdf5-1.8.18.tar.gz --with-zlib --with-p4est-dir=$P4EST_DIR --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=$PETSC_ARCH PETSC_DIR=$PETSC_DIR
 #Then make PETSc:
 make PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH
 make install PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH all
