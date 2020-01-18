@@ -450,22 +450,20 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          /* interface energy */
          ierr = GetProperty(propval, &propsize, interfacemapping, "energy", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
-         currentinterface->energy = 0.0;
+         currentinterface->energy = atof(propval[0]);
          /* interface mobility */
          ierr = GetProperty(propval, &propsize, interfacemapping, "mobility", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
-         currentinterface->mobility = 0.0;
+         currentinterface->mobility = atof(propval[0]);
          /* segregation potential */
          ierr = GetProperty(propval, &propsize, interfacemapping, "potential", buffer, filesize);
          assert(ierr || propsize == user->ncp);
          currentinterface->potential = malloc(user->ncp*sizeof(PetscReal));
-         memset(currentinterface->potential,0,user->ncp*sizeof(PetscReal));
          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->potential[propctr] = atof(propval[propctr]);
          /* interface solute mobility */
          ierr = GetProperty(propval, &propsize, interfacemapping, "mobilityc", buffer, filesize);
          assert(ierr || propsize == user->ncp);
          currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-         memset(currentinterface->mobilityc,0,user->ncp*sizeof(PetscReal));
          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
      }    
     }
