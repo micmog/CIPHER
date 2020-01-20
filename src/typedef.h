@@ -122,7 +122,6 @@ typedef struct SOLUTIONPARAMS {
     /* temperature */
     PetscInt  n_temperature;
     PetscReal *temperature_T, *temperature_t;
-    PetscReal statekineticcoeff;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */

@@ -205,8 +205,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     PF_OFFSET = AS_OFFSET+AS_SIZE;
     PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
     DP_OFFSET = PF_OFFSET+PF_SIZE;
-    DP_SIZE   = PF_SIZE*user->ndp;
-    CP_OFFSET = 0;
+    DP_SIZE   = user->ndp;
+    CP_OFFSET = DP_OFFSET+DP_SIZE;
     CP_SIZE   = PF_SIZE*user->ncp;
 
     /* Parsing config file material */
@@ -495,8 +495,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      assert(propsize == user->solparams.n_temperature);
      user->solparams.temperature_t = malloc(user->solparams.n_temperature*sizeof(PetscReal));
      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_t[propctr] = atof(propval[propctr]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "statekineticcoeff", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.statekineticcoeff = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == user->dim); 
      user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
@@ -674,12 +672,12 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscErrorCode    ierr;
     Vec               solutionl;
     PetscScalar       *fdof, *fdofl, *offset, *offsetg;
-    PetscInt          localcell, cell, face, phase, g;
+    PetscInt          localcell, cell, face, phase, g, c;
     PetscInt          conesize, supp, nsupp;
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
     uint16_t          gslist[AS_SIZE], nalist[AS_SIZE];
-    PetscScalar       *pcell, *dcell;
+    PetscScalar       *pcell, *dcell, *ccell, chempot_im[DP_SIZE], chempot_ex[DP_SIZE];
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
 
@@ -747,15 +745,19 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         F2IFUNC(gslist,&offset[AS_OFFSET]);
         pcell  = &offset[PF_OFFSET];
         dcell  = &offset[DP_OFFSET];
+        ccell  = &offset[CP_OFFSET];
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            ChemicalpotentialImplicit(&dcell[g*user->ndp],currentmaterial->c0,temperature,gslist[g+1],user);
+            memcpy(&ccell[g*user->ncp],currentmaterial->c0,user->ncp*sizeof(PetscReal));
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
+                ChemicalpotentialImplicit(chempot_im,&ccell[g*user->ncp],temperature,gslist[g+1],user);
+                ChemicalpotentialExplicit(chempot_ex,&ccell[g*user->ncp],temperature,gslist[g+1],user);
+                for (c=0; c<user->ndp; c++) dcell[c] = chempot_ex[c] + chempot_im[c];
             } else {
                 pcell[g] = 0.0;
             }
