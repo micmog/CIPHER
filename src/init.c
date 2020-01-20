@@ -206,7 +206,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
     DP_OFFSET = PF_OFFSET+PF_SIZE;
     DP_SIZE   = PF_SIZE*user->ndp;
-    
     CP_OFFSET = 0;
     CP_SIZE   = PF_SIZE*user->ncp;
 
@@ -216,10 +215,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
          char materialmapping[PETSC_MAX_PATH_LEN];
          sprintf(materialmapping,"material/%s",user->materialname[m]);
-         /* state kinetic coefficient */
-         ierr = GetProperty(propval, &propsize, materialmapping, "statekineticcoeff", buffer, filesize); CHKERRQ(ierr);
-         assert(propsize == 1);
-         currentmaterial->statekineticcoeff = atof(propval[0]);
          /* molar volume */
          ierr = GetProperty(propval, &propsize, materialmapping, "molarvolume", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
@@ -500,6 +495,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      assert(propsize == user->solparams.n_temperature);
      user->solparams.temperature_t = malloc(user->solparams.n_temperature*sizeof(PetscReal));
      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_t[propctr] = atof(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "statekineticcoeff", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == 1); user->solparams.statekineticcoeff = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == user->dim); 
      user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
@@ -527,7 +524,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      strcat(user->solparams.petscoptions," -dm_p4est_brick_bounds ");
      for (PetscInt dim=0; dim<user->dim; ++dim) {
          char strval[128];
-         sprintf(strval,"0.0,%lf",user->size[dim]);
+         sprintf(strval,"0.0,%e",user->size[dim]);
          strcat(user->solparams.petscoptions,strval);
          if (dim <user->dim-1) strcat(user->solparams.petscoptions,",");
      }
@@ -586,8 +583,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 
      ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
      tok = strtok_r(propval[0], "\n", &savetok);
-     PetscInt ctrv=0;
-     while (tok != NULL && ctrv < user->resolution[2]*user->resolution[1]*user->resolution[0]) {
+     PetscInt ctrv=0, total_cells = user->dim == 2 ? user->resolution[0]*user->resolution[1] 
+                                                   : user->resolution[0]*user->resolution[1]*user->resolution[2];
+     while (tok != NULL && ctrv < total_cells) {
          // process the line
          if (strstr(tok, "of") != NULL) {
              char stra[128], strb[128];
@@ -616,7 +614,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          //advance the token
          tok = strtok_r(NULL, "\n", &savetok);
      }
-     assert(ctrv == user->resolution[0]*user->resolution[1]*user->resolution[2] && tok == NULL);
+     assert(ctrv == total_cells && tok == NULL);
 
      ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
      user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));

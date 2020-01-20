@@ -96,7 +96,7 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscReal molarvolume, statekineticcoeff;
+    PetscReal molarvolume;
     PetscReal *c0;
     CHEMFE energy;
 } MATERIAL;
@@ -122,6 +122,7 @@ typedef struct SOLUTIONPARAMS {
     /* temperature */
     PetscInt  n_temperature;
     PetscReal *temperature_T, *temperature_t;
+    PetscReal statekineticcoeff;
     /* tolerances */
     PetscReal reltol, abstol;
     /* output parameters */

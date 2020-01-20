@@ -183,6 +183,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         chempot = &chempot_global[cell*user->ndp];
         composition = &composition_global[cell*CP_SIZE];
         composition0 = &composition0_global[cell*CP_SIZE];
+        mobilitycv = &mobilitycv_global[cell*user->ndp*user->ndp];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
         plapl = &offset[PF_OFFSET];
@@ -240,7 +241,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
                                                          + (caplsource[gk] - caplsource[gj])
                                                          - (chemsource[gk] - chemsource[gj])
-                                                         * sqrt(interpolant[gk]*interpolant[gj]));
+                                                         * 8.0/PETSC_PI*sqrt(interpolant[gk]*interpolant[gj]));
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
@@ -259,7 +260,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                             rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
                                                                  + (caplsource[gk] - caplsource[gj])
                                                                  - (chemsource[gk] - chemsource[gj])
-                                                                 * sqrt(interpolant[gk]*interpolant[gj]));
+                                                                 * 8.0/PETSC_PI*sqrt(interpolant[gk]*interpolant[gj]));
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
                         }
                     }
@@ -274,7 +275,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (c=0; c<user->ndp; c++) {
-                    work_vec_DP[g*user->ndp+c] = currentmaterial->statekineticcoeff
+                    work_vec_DP[g*user->ndp+c] = (user->solparams.statekineticcoeff*mobilitycv[c*(user->ndp+1)])
                                                * (composition[g*user->ncp+c] - composition0[g*user->ncp+c]);
                     work_vec_CP[c] += interpolant[g]*work_vec_DP[g*user->ndp+c];
                 }
