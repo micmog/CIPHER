@@ -50,7 +50,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_MB[user->ndp*user->ndp];
     PetscReal         composition_global[CP_SIZE*user->ninteriorcells]; 
-    PetscReal         mobilitycv_global[user->ndp*user->ndp*user->ninteriorcells]; 
+    PetscReal         mobilitycv_global[user->ndp*user->ndp*user->ninteriorcells], interface_mobility; 
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -223,10 +223,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                         + (caplsource[gk] - caplsource[gj])
-                                                         - (chemsource[gk] - chemsource[gj])
-                                                         * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                    interface_mobility = currentinterface->mobility->m0
+                                       * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
+                                             / R_GAS_CONST/temperature);
+                    rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                 + (caplsource[gk] - caplsource[gj])
+                                                 - (chemsource[gk] - chemsource[gj])
+                                                 * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
@@ -242,10 +245,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         if (active[gj]) {
                             interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
-                            rhsval = currentinterface->mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                                 + (caplsource[gk] - caplsource[gj])
-                                                                 - (chemsource[gk] - chemsource[gj])
-                                                                 * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                            interface_mobility = currentinterface->mobility->m0
+                                               * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
+                                                     / R_GAS_CONST/temperature);
+                            rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
+                                                         + (caplsource[gk] - caplsource[gj])
+                                                         - (chemsource[gk] - chemsource[gj])
+                                                         * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
                         }
                     }

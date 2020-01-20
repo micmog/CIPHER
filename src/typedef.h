@@ -103,8 +103,9 @@ typedef struct MATERIAL {
 
 /* interface container */
 typedef struct INTERFACE {
-    PetscReal energy, mobility;
+    PetscReal energy;
     PetscReal *potential, *mobilityc;
+    MOBILITY *mobility;
 } INTERFACE;
 
 /* AMR solparams */
