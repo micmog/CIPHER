@@ -447,9 +447,22 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          assert(propsize == 1);
          currentinterface->energy = atof(propval[0]);
          /* interface mobility */
-         ierr = GetProperty(propval, &propsize, interfacemapping, "mobility", buffer, filesize); CHKERRQ(ierr);
-         assert(propsize == 1);
-         currentinterface->mobility = atof(propval[0]);
+         {
+          char mobmapping[PETSC_MAX_PATH_LEN];
+          currentinterface->mobility = (MOBILITY *) malloc(sizeof(MOBILITY));
+          sprintf(mobmapping, "%s/mobility",interfacemapping);
+          ierr = GetProperty(propval, &propsize, mobmapping, "m0", buffer, filesize); CHKERRQ(ierr);
+          assert(propsize == 1); currentinterface->mobility->m0 = atof(propval[0]);
+          currentinterface->mobility->unary = (TSeries *) malloc(sizeof(TSeries));
+          sprintf(mobmapping, "%s/mobility/activation_energy",interfacemapping);
+          ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
+          currentinterface->mobility->unary->nTser = propsize;
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobility->unary->coeff[propctr] = atof(propval[propctr]);
+          ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
+          assert(propsize == currentinterface->mobility->unary->nTser);
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobility->unary->exp[propctr] = atoi(propval[propctr]);
+          currentinterface->mobility->unary->logCoeff = 0.0;
+         }
          /* segregation potential */
          ierr = GetProperty(propval, &propsize, interfacemapping, "potential", buffer, filesize);
          assert(ierr || propsize == user->ncp);
