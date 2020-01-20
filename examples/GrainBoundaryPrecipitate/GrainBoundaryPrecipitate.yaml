@@ -14,6 +14,7 @@ solution_parameters:
   timestepmax : 1e+2
   temperature : [393.0, 393.0]
   time : [0.0, 1.0]
+  statekineticcoeff : 1e+3
   interfacewidth : 4
   initblocksize : [2, 2, 2]
   initrefine : 5
@@ -32,11 +33,10 @@ material:
   matrix:
     chemicalenergy : calphaddis
     molarvolume : 1e-6
-    statekineticcoeff : 5e-1
     c0 : [0.90, 0.02, 0.04, 0.04]
     mobilityc :
       al :
-        mobility0 : 1.0e-18
+        mobility0 : 1.0e+18
         unary_migration : 
           al : 
             t_coefficient : [-127200.0, -92.98]
@@ -61,7 +61,7 @@ material:
                 t_coefficient : [11835.0, 39.0]
                 t_exponent: [0, 1]
       cu :
-        mobility0 : 1.0e-18
+        mobility0 : 1.0e+18
         unary_migration : 
           al : 
             t_coefficient : [-131000.0, -81.395]
@@ -99,7 +99,7 @@ material:
                 t_coefficient : [-4930.8, -24.75]
                 t_exponent: [0, 1]
       mg :
-        mobility0 : 1.0e-18
+        mobility0 : 1.0e+18
         unary_migration : 
           al : 
             t_coefficient : [-119000.0, -95.72]
@@ -138,7 +138,7 @@ material:
                 t_coefficient : 50000.0
                 t_exponent: 0
       zn :
-        mobility0 : 1.0e-18
+        mobility0 : 1.0e+18
         unary_migration : 
           al : 
             t_coefficient : [-120000.0, -88.44]
@@ -272,9 +272,8 @@ material:
   precipitate :
     chemicalenergy : quadratic
     molarvolume : 1e-6
-    statekineticcoeff : 5e-1
     c0 : [0.16757, 0.04471, 0.33333, 0.45439]
-    mobilityc : [7.3451110109984390e-8, 5.3486841665396531e-8, 1.4696210067717206e-6, 2.2897371183228479e-6]
+    mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
     ceq : 
       al :
         t_coefficient : 0.16757
