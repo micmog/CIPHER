@@ -301,6 +301,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           } else if (!strcmp(propval[0], "calphaddis")) {
               currentmaterial->model = CALPHAD_CHEMENERGY;
               CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
+              /* stabilisation constant */
+              ierr = GetProperty(propval, &propsize, materialmapping, "stabilisation_const", buffer, filesize);
+              if (propsize) {assert(propsize == 1); currentcalphad->stabilisation_const = atof(propval[0]);} else {currentcalphad->stabilisation_const = 0.0;}
               /* mobility */
               {
                char mobmapping[PETSC_MAX_PATH_LEN];
@@ -768,9 +771,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
             memcpy(&ccell[g*user->ncp],currentmaterial->c0,user->ncp*sizeof(PetscReal));
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
-                ChemicalpotentialImplicit(chempot_im,&ccell[g*user->ncp],temperature,gslist[g+1],user);
-                ChemicalpotentialExplicit(chempot_ex,&ccell[g*user->ncp],temperature,gslist[g+1],user);
-                for (c=0; c<user->ndp; c++) dcell[c] = chempot_ex[c] + chempot_im[c];
+                Chemicalpotential(dcell,&ccell[g*user->ncp],temperature,gslist[g+1],user);
             } else {
                 pcell[g] = 0.0;
             }

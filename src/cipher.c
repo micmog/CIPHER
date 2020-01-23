@@ -42,7 +42,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         interpolant[PF_SIZE], caplflux[PF_SIZE], caplsource[PF_SIZE];
     PetscReal         chemsource[PF_SIZE], rhs_unconstrained[PF_SIZE];
     PetscBool         active[PF_SIZE];
-    PetscReal         dmdc[user->ndp*user->ndp];
+    PetscReal         dmdc[user->ndp*user->ndp], dcdm[user->ndp*user->ndp];
     uint16_t          setintersect[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     PetscReal         nactivephases, rhsval, triplejunctionenergy;
     PetscInt          g, gi, gj, gk, c, interfacekj, interfaceji, interfaceki;
@@ -78,6 +78,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
 
             EvalInterpolant(interpolant,pcell,slist[0]);
             memset(mobilitycv,0,user->ndp*user->ndp*sizeof(PetscReal));
+            memcpy(composition,composition0,CP_SIZE*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
                 ChemicalpotentialExplicit(chempot_ex,&composition0[g*user->ncp],temperature,slist[g+1],user);
                 for (c=0; c<user->ndp; c++) chempot_im[c] = chempot[c] - chempot_ex[c];
@@ -276,11 +277,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
             for (c=0; c<user->ndp; c++) work_vec_DP[c] += dlapl[c];
             
-            memset(dmdc,0,user->ndp*user->ndp*sizeof(PetscReal));
+            memset(dcdm,0,user->ndp*user->ndp*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
-                ChemicalpotentialImplicitTangent(work_vec_MB,&composition[g*user->ncp],temperature,slist[g+1],user);
-                for (c=0; c<user->ndp*user->ndp; c++) dmdc[c] += interpolant[g]*work_vec_MB[c];
-            }  
+                CompositionTangent(work_vec_MB,&composition[g*user->ncp],temperature,slist[g+1],user);
+                for (c=0; c<user->ndp*user->ndp; c++) dcdm[c] += interpolant[g]*work_vec_MB[c];
+            }
+            Invertmatrix(dmdc,dcdm,user->ndp);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,user->ndp);  
         }    
     }

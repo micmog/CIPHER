@@ -76,6 +76,7 @@ typedef struct CALPHAD {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
+    PetscReal stabilisation_const;
     MOBILITY *mobilityc;
 } CALPHAD;
 
