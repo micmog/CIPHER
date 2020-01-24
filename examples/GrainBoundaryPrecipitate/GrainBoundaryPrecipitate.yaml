@@ -31,7 +31,8 @@ solution_parameters:
 material:
   matrix:
     chemicalenergy : calphaddis
-    molarvolume : 1e-6
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
     c0 : [0.90, 0.02, 0.04, 0.04]
     mobilityc :
       al :
@@ -270,7 +271,8 @@ material:
               t_exponent: 0
   precipitate :
     chemicalenergy : quadratic
-    molarvolume : 1e-6
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
     c0 : [0.16757, 0.04471, 0.33333, 0.45439]
     mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
     ceq : 
@@ -300,7 +302,7 @@ material:
         t_coefficient : 1.0e+6
         t_exponent: 0
       zn :  
-        t_coefficient : 1.0e+6
+        t_coefficient : 0.0e+6
         t_exponent: 0
 
 interface :
