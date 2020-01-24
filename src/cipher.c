@@ -654,7 +654,7 @@ int main(int argc,char **args)
         for (dim=ctx.dim-1; dim>0; --dim) {
             off = (off*ctx.resolution[dim-1] + ioff[dim-1]);
         }
-        ierr = DMSetLabelValue(ctx.da_solution, "phase", cell, ctx.phasevoxelmapping[off]);CHKERRQ(ierr);
+        ierr = DMSetLabelValue(ctx.da_solution, "phase", cell, ctx.voxelphasemapping[off]);CHKERRQ(ierr);
     }
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
   }

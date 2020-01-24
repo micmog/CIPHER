@@ -159,7 +159,7 @@ typedef struct AppCtx {
     PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
-    uint16_t *phasevoxelmapping, *phasematerialmapping, *phaseactivemapping;
+    uint16_t *voxelphasemapping, *phasematerialmapping, *phaseactivemapping;
     interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;

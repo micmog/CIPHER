@@ -146,7 +146,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       user->resolution = malloc(user->dim*sizeof(PetscInt));
       user->size = malloc(user->dim*sizeof(PetscReal));
       for (PetscInt propctr = 0; propctr < propsize; propctr++) user->resolution[propctr] = atoi(propval[propctr]);
-      user->phasevoxelmapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
+      user->voxelphasemapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
      }
      /* size */
      {
@@ -656,7 +656,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              sscanf(tok, "%s of %s", stra, strb);
              sof = atoi(stra); p = atoi(strb);
              for (PetscInt j=ctrm;j<ctrm+sof;j++) 
-                 user->phasevoxelmapping[j] = p-1;;
+                 user->voxelphasemapping[j] = p-1;;
              ctrm+=sof;
          } else if (strstr(tok, "to") != NULL) {
              char stra[128], strb[128];
@@ -665,14 +665,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              pfrom = atoi(stra); pto = atoi(strb);
              if (pfrom < pto) {
                  for (p=pfrom;p<=pto;p++) 
-                     user->phasevoxelmapping[ctrm++] = p-1;
+                     user->voxelphasemapping[ctrm++] = p-1;
              } else {
                  for (p=pfrom;p>=pto;p--)
-                     user->phasevoxelmapping[ctrm++] = p-1;
+                     user->voxelphasemapping[ctrm++] = p-1;
              }   
          }
          else if (atoi(tok)) {
-             user->phasevoxelmapping[ctrm++] = atoi(tok)-1;
+             user->voxelphasemapping[ctrm++] = atoi(tok)-1;
          }
          //advance the token
          tok = strtok_r(NULL, "\n", &savetok);
