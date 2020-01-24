@@ -76,7 +76,6 @@ typedef struct CALPHAD {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
-    PetscReal stabilisation_const;
     MOBILITY *mobilityc;
 } CALPHAD;
 
@@ -97,7 +96,7 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
-    PetscReal molarvolume;
+    PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
 } MATERIAL;

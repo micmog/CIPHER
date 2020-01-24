@@ -207,7 +207,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     DP_OFFSET = PF_OFFSET+PF_SIZE;
     DP_SIZE   = user->ndp;
     CP_OFFSET = DP_OFFSET+DP_SIZE;
-    CP_SIZE   = PF_SIZE*user->ncp;
+    CP_SIZE   = PF_SIZE*user->ndp;
 
     /* Parsing config file material */
     {
@@ -224,6 +224,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          assert(propsize == user->ncp);
          currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
          for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+         /* chempot explicit kinetic coefficient */
+         ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
+         if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
          /* chemical energy type */
          {
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
@@ -301,9 +304,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           } else if (!strcmp(propval[0], "calphaddis")) {
               currentmaterial->model = CALPHAD_CHEMENERGY;
               CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
-              /* stabilisation constant */
-              ierr = GetProperty(propval, &propsize, materialmapping, "stabilisation_const", buffer, filesize);
-              if (propsize) {assert(propsize == 1); currentcalphad->stabilisation_const = atof(propval[0]);} else {currentcalphad->stabilisation_const = 0.0;}
               /* mobility */
               {
                char mobmapping[PETSC_MAX_PATH_LEN];
@@ -688,12 +688,12 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscErrorCode    ierr;
     Vec               solutionl;
     PetscScalar       *fdof, *fdofl, *offset, *offsetg;
-    PetscInt          localcell, cell, face, phase, g, c;
+    PetscInt          localcell, cell, face, phase, g;
     PetscInt          conesize, supp, nsupp;
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
     uint16_t          gslist[AS_SIZE], nalist[AS_SIZE];
-    PetscScalar       *pcell, *dcell, *ccell, chempot_im[DP_SIZE], chempot_ex[DP_SIZE];
+    PetscScalar       *pcell, *dcell, *ccell;
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
 
@@ -768,10 +768,10 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            memcpy(&ccell[g*user->ncp],currentmaterial->c0,user->ncp*sizeof(PetscReal));
+            ChemicalpotentialExplicit(&ccell[g*user->ndp],currentmaterial->c0,temperature,gslist[g+1],user);
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
-                Chemicalpotential(dcell,&ccell[g*user->ncp],temperature,gslist[g+1],user);
+                Chemicalpotential(dcell,currentmaterial->c0,temperature,gslist[g+1],user);
             } else {
                 pcell[g] = 0.0;
             }

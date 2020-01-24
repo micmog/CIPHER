@@ -407,63 +407,22 @@ void ChemicalpotentialTangent(PetscReal *chempottangent, const PetscReal *compos
  */
 static void Composition_calphad(PetscReal *composition, const PetscReal *chempot_im, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    PetscInt iter, c;
-    PetscReal err_current, err_lastinc, sum_const, step_length, RT;
-    PetscReal jac_consta, jac_constb;
-    PetscReal solution[numcomps-1], solution0[numcomps-1], residual[numcomps-1], search_direction[numcomps-1];
     const CALPHAD *currentcalphad = &energy.calphad;
     
-    for (PetscInt c=0; c<numcomps-1; c++) solution[c] = composition[c];
-    err_lastinc = LARGE; iter = 0; step_length = 1.0; RT = R_GAS_CONST*temperature;
+    PetscReal RT = R_GAS_CONST*temperature;
     
-    do {
-        sum_const = 0.0;
-        for (c=0; c<numcomps-1; c++) {
-            residual[c] = exp(  (   chempot_im[c] 
-                                 - currentcalphad->stabilisation_const*(solution[c] - composition[c])
+    PetscReal sum_const = 0.0;
+    for (PetscInt c=0; c<numcomps-1; c++) {
+        composition[c] = exp(  (   chempot_im[c] 
                                  - SumTSeries(temperature,currentcalphad->unary[c         ]) 
                                  + SumTSeries(temperature,currentcalphad->unary[numcomps-1]))/RT);
-            sum_const += residual[c];
-        }
-        err_current = 0.0;
-        for (c=0; c<numcomps-1; c++) {
-            residual[c] = solution[c] - residual[c]/(1.0 + sum_const);
-            err_current += residual[c]*residual[c];
-        } 
-        err_current = sqrt(err_current);
-        if (err_current < err_lastinc) {
-            err_lastinc = err_current;
-            for (c=0; c<numcomps-1; c++) solution0[c] = solution[c];
-            step_length = step_length >= 1.0 ? 1.0 : 2.0*step_length;
-            jac_consta = 1.0; jac_constb = 0.0;
-            for (c=0; c<numcomps-1; c++) {
-                jac_consta -= solution[c]
-                            * (      currentcalphad->stabilisation_const*solution[c]/RT)
-                            / (1.0 + currentcalphad->stabilisation_const*solution[c]/RT);
-                jac_constb += solution[c]*residual[c]
-                            / (1.0 + currentcalphad->stabilisation_const*solution[c]/RT);
-            }
-            memset(search_direction,0,(numcomps-1)*sizeof(PetscReal));
-            for (c=0; c<numcomps-1; c++)
-                search_direction[c] = residual[c]
-                                    / (1.0 + currentcalphad->stabilisation_const*solution[c]/RT)
-                                    + (jac_constb/jac_consta)
-                                    * (      currentcalphad->stabilisation_const*solution[c]/RT)
-                                    / (1.0 + currentcalphad->stabilisation_const*solution[c]/RT);
+        sum_const += composition[c];
+    }
 
-            for (c=0; c<numcomps-1; c++) solution[c] = solution0[c] - step_length*search_direction[c];
-        } else {
-            step_length = 0.5*step_length;
-            for (c=0; c<numcomps-1; c++) solution[c] = solution0[c] - step_length*search_direction[c];
-
-        }
-        iter++; assert(iter < 100);
-    } while (err_current > 1e-10);
-    
     composition[numcomps-1] = 1.0;
-    for (c=0; c<numcomps-1; c++) {
-        composition[c         ]  = solution[c];   
-        composition[numcomps-1] -= solution[c];
+    for (PetscInt c=0; c<numcomps-1; c++) {
+        composition[c         ]  = composition[c]/(1.0 + sum_const);   
+        composition[numcomps-1] -= composition[c];
     } 
 }
 
@@ -505,38 +464,12 @@ void Composition(PetscReal *composition, const PetscReal *chempot_im, const Pets
  */
 static void CompositionTangent_calphad(PetscReal *compositiontangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    PetscReal RT, sum_consta, sum_constb;
-    PetscReal d[numcomps-1];
-    PetscReal u1[numcomps-1], u2[numcomps-1], u3[numcomps-1];
-    PetscReal v1[numcomps-1], v2[numcomps-1], v3[numcomps-1];
-    const CALPHAD *currentcalphad = &energy.calphad;
-    
-    RT = R_GAS_CONST*temperature;
-    sum_consta = 1.0; sum_constb = 0.0;
-    for (PetscInt c=0; c<numcomps-1; c++) {
-        sum_consta -= composition[c]
-                    * (      currentcalphad->stabilisation_const*composition[c]/RT)
-                    / (1.0 + currentcalphad->stabilisation_const*composition[c]/RT);
-        sum_constb = (composition[c]*composition[c]/RT)
-                   / (1.0 + currentcalphad->stabilisation_const*composition[c]/RT);
-    }
-    sum_constb = 0.0;
-    for (PetscInt c=0; c<numcomps-1; c++) {
-        d [c] = (composition[c]/RT)/(1.0 + currentcalphad->stabilisation_const*composition[c]/RT);
-        u1[c] = -d[c];
-        u2[c] = (currentcalphad->stabilisation_const*composition[c]/RT/sum_consta)
-              / (1.0 + currentcalphad->stabilisation_const*composition[c]/RT);
-        u3[c] = sum_constb*u2[c];
-        v1[c] = composition[c];
-        v2[c] = composition[c]*composition[c]/RT;
-        v3[c] = composition[c];
-    }
-    
+    PetscReal RT = R_GAS_CONST*temperature;
     memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     for (PetscInt cj=0; cj<numcomps-1; cj++) {
-        compositiontangent[cj*(numcomps-1)+cj] += d[cj];
+        compositiontangent[cj*(numcomps-1)+cj] += composition[cj]/RT;
         for (PetscInt ci=0; ci<numcomps-1; ci++) {
-            compositiontangent[cj*(numcomps-1)+ci] += u1[cj]*v1[ci] + u2[cj]*v2[ci] + u3[cj]*v3[ci];
+            compositiontangent[cj*(numcomps-1)+ci] -= composition[cj]*composition[ci]/RT;
         }
     }        
 }
