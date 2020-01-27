@@ -1,7 +1,7 @@
 ---
 header:
-  grid : [2, 2, 512]
-  size : [2, 2, 512]
+  grid : [4, 512]
+  size : [4, 512]
   n_phases : 2
   materials : [solid, liquid]
   interfaces : [solid-liquid]
@@ -16,8 +16,8 @@ solution_parameters:
   time : [0.0, 1.0]
   statekineticcoeff : 1e+3
   interfacewidth : 4
-  initblocksize : [2, 2, 512]
-  initrefine : 0
+  initblocksize : [2, 256]
+  initrefine : 1
   maxnrefine : 0
   minnrefine : 0
   initcoarsen : 0
