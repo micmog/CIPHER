@@ -1,0 +1,1893 @@
+---
+header:
+  grid : [1024, 1024]
+  size : [1024, 1024]
+  n_phases : 130
+  n_sites : 128
+  materials : [matrix, precipitate]
+  nuclei : [precipitate]
+  interfaces : [grainboundary, pptboundary]
+  components : [al, cu, mg, zn]
+
+solution_parameters:
+  starttime : 0.0e-1
+  finaltime : 1.0e+3 
+  temperature : [670.551445, 636.375662, 609.131489, 586.197539, 566.162957, 547.760427, 531.809684, 517.70194, 503.837393, 491.543497, 479.203502, 468.647896, 457.915658, 446.690134, 439.270547, 429.070013, 420.869632, 413.350812, 405.210109, 398.885464, 392.261214, 385.01996, 380.369108, 374.771391, 369.348221, 366.482281, 360.441687, 340.931969, 327.256493, 318.137464, 310.569737, 305.225508, 300.832882, 297.240243, 296.749415, 296.749415]
+  time : [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0, 260.0, 310.0, 360.0, 410.0, 460.0, 510.0, 560.0, 610.0, 660.0, 661.0]
+  interfacewidth : 4
+  initblocksize : [2, 2]
+  initrefine : 9
+  maxnrefine : 9
+  minnrefine : 1
+  initcoarsen : 9
+  amrinterval : 200 
+  outputfreq : 5000
+  interpolation: cubic
+  petscoptions : -ts_adapt_monitor
+  random_seed : 1579993586
+
+material:
+  matrix:
+    chemicalenergy : calphaddis
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
+    c0 : [0.9360, 0.0103, 0.0268, 0.0269]
+    mobilityc :
+      al :
+        mobility0 : 1.0e+18
+        unary_migration : 
+          al : 
+            t_coefficient : [-127200.0, -92.98]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-181583.4, -99.8]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-127200.0, -92.98]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-83255.0, -92.92]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            zn : 
+              nrk : 2
+              rk_0 : 
+                t_coefficient : [30169.0, -111.83]
+                t_exponent: [0, 1]
+              rk_1 : 
+                t_coefficient : [11835.0, 39.0]
+                t_exponent: [0, 1]
+      cu :
+        mobility0 : 1.0e+18
+        unary_migration : 
+          al : 
+            t_coefficient : [-131000.0, -81.395]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-204670.0, -83.14]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-112499.0, -81.26]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-91608.6, -82.63]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            cu : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-31461.4, 78.91]
+                t_exponent: [0, 1]
+            mg : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 175000.0
+                t_exponent: 0
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : -250000.0
+                t_exponent: 0
+          cu : 
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-4930.8, -24.75]
+                t_exponent: [0, 1]
+      mg :
+        mobility0 : 1.0e+18
+        unary_migration : 
+          al : 
+            t_coefficient : [-119000.0, -95.72]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-170567.0, -98.84]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-112499.0, -81.25]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-71147.6, -67.0]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            cu : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 200000.0
+                t_exponent: 0
+            mg : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : 53551.0
+                t_exponent: 0
+          cu : 
+            mg : 
+              nrk : 3
+              rk_0 : 
+                t_coefficient : 125000.0
+                t_exponent: 0
+              rk_1 : 
+                t_coefficient : 50000.0
+                t_exponent: 0
+              rk_2 : 
+                t_coefficient : 50000.0
+                t_exponent: 0
+      zn :
+        mobility0 : 1.0e+18
+        unary_migration : 
+          al : 
+            t_coefficient : [-120000.0, -88.44]
+            t_exponent: [0, 1]
+          cu : 
+            t_coefficient : [-190832.4, -86.10]
+            t_exponent: [0, 1]
+          mg : 
+            t_coefficient : [-73706.0, -86.15]
+            t_exponent: [0, 1]
+          zn : 
+            t_coefficient : [-76569.0, -86.20]
+            t_exponent: [0, 1]
+        binary_migration : 
+          al : 
+            zn : 
+              nrk : 2
+              rk_0 : 
+                t_coefficient : [-40720.0, 31.7]
+                t_exponent: [0, 1]
+              rk_1 : 
+                t_coefficient : [147763.0, -133.7]
+                t_exponent: [0, 1]
+          cu : 
+            zn : 
+              nrk : 1
+              rk_0 : 
+                t_coefficient : [-68455.6, 36.0]
+                t_exponent: [0, 1]
+    unary_enthalpy : 
+      al : 
+        t_coefficient : [-7976.15, 137.093038, -1.884662e-3, -8.77664e-6, 74092.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -24.3671976
+      cu : 
+        t_coefficient : [-7770.458, 130.485235, -2.65684e-3, 1.29223e-6, 52478.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -24.112392
+      mg : 
+        t_coefficient : [-5767.34, 142.775547, 4.858e-3, -1.393669e-6, 78950.0]
+        t_exponent: [0, 1, 2, 3, -1]
+        tlnt_coefficient : -26.1849782
+      zn : 
+        t_coefficient : [-4315.967, 116.900389, -1.712034e-3, 1.264963e-6]
+        t_exponent: [0, 1, 2, 3]
+        tlnt_coefficient : -23.701314
+    binary_enthalpy : 
+      al : 
+        cu : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [-53520.0, 2.0]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [38590.0, -2.0]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : 1170.0
+            t_exponent: 0
+        mg : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [4971.0, -3.500025]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [225.0, 0.1]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [950.0, 2.5e-5]
+            t_exponent: [0, 1]
+        zn : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [4971.0, -3.500025]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [225.0, 0.1]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [950.0, 2.5e-5]
+            t_exponent: [0, 1]
+      cu : 
+        mg : 
+          nrk : 1
+          rk_0 :     
+            t_coefficient : [-22279.28, 5.868]
+            t_exponent: [0, 1]
+        zn : 
+          nrk : 3
+          rk_0 :     
+            t_coefficient : [-42803.75, 10.02258]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [2936.39, -3.05323]
+            t_exponent: [0, 1]
+          rk_2 :     
+            t_coefficient : [9034.20, -5.39314]
+            t_exponent: [0, 1]
+      mg : 
+        zn : 
+          nrk : 2
+          rk_0 :     
+            t_coefficient : [-3056.82, 5.63801]
+            t_exponent: [0, 1]
+          rk_1 :     
+            t_coefficient : [-3127.26, 5.65563]
+            t_exponent: [0, 1]
+    ternary_enthalpy : 
+      al : 
+        cu : 
+          mg : 
+            nrk : 1
+            rk_0 : 
+              index : 0
+              t_coefficient : 60000.0
+              t_exponent: 0
+          zn : 
+            nrk : 3
+            rk_0 : 
+              index : 0
+              t_coefficient : 7.2990788e+4
+              t_exponent: 0
+            rk_1 : 
+              index : 1
+              t_coefficient : 1.6799927e+4
+              t_exponent: 0
+            rk_2 : 
+              index : 3
+              t_coefficient : 5.9580949e+4
+              t_exponent: 0
+  precipitate :
+    chemicalenergy : quadratic
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
+    c0 : [0.217306322, 0.143556608, 0.3329534, 0.30618367]
+    mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
+    ceq :
+      al :
+        t_coefficient : [-9.473562506959e-3, 1.54008503132e-4, 2.59436543e-7]
+        t_exponent : [0, 1, 2]
+      cu :
+        t_coefficient : [7.5199584060444e-2, -9.3528572126e-5, 2.85505079e-7]
+        t_exponent: [0, 1, 2]
+      mg :
+        t_coefficient : [3.09230386232181e-1, 1.04675038950e-4, -1.07525450e-7]
+        t_exponent: [0, 1, 2]
+      zn :
+        t_coefficient : [5.54898797748947e-1, 1.37558070551e-4, -7.45761812e-7]
+        t_exponent: [0, 1, 2]
+    ref_enthalpy :
+      t_coefficient : [-1.681743263355992e+4, -2.162892636441e+1, -2.745732102e-2]
+      t_exponent: [0, 1, 2]
+    binary_enthalpy:
+      al :
+        t_coefficient : 1.0e+6
+        t_exponent : 0
+      cu :
+        t_coefficient : 1.0e+6
+        t_exponent: 0
+      mg :
+        t_coefficient : 1.0e+6
+        t_exponent: 0
+      zn :
+        t_coefficient : 0.0e+6
+        t_exponent: 0
+
+nucleus:
+  precipitate :
+    matrix : [0, 1]
+    length_scale : 10.0
+    minsize : 1.0
+    atomic_volume : 16.0
+    gamma : 0.1
+    shape_factor : 0.01
+    migration : 1.0e+4
+    D0: 1.0e+10
+  
+interface :
+  grainboundary :
+    energy : 2.0e+8
+    mobility : 
+      m0: 1.0e+2
+      activation_energy:
+        t_coefficient : -1.0e+5
+        t_exponent: 0
+  pptboundary :
+    energy : 1.0e+8
+    mobility : 
+      m0: 1.0e+2
+      activation_energy:
+        t_coefficient : -1.0e+5
+        t_exponent: 0
+
+mappings:
+  phase_material_mapping : |-
+    2 of 1
+    128 of 2
+  site_phase_mapping : |-
+    3 to 130
+  site_nucleus_mapping : |-
+    128 of 1
+  voxel_phase_mapping: |-
+    524288 of 1
+    524288 of 2
+  voxel_site_mapping: |-
+    520192 of 1
+    2 of 2
+    4 of 1
+    4 of 3
+    4 of 1
+    4 of 4
+    4 of 1
+    4 of 5
+    4 of 1
+    4 of 6
+    4 of 1
+    4 of 7
+    4 of 1
+    4 of 8
+    4 of 1
+    4 of 9
+    4 of 1
+    4 of 10
+    4 of 1
+    4 of 11
+    4 of 1
+    4 of 12
+    4 of 1
+    4 of 13
+    4 of 1
+    4 of 14
+    4 of 1
+    4 of 15
+    4 of 1
+    4 of 16
+    4 of 1
+    4 of 17
+    4 of 1
+    4 of 18
+    4 of 1
+    4 of 19
+    4 of 1
+    4 of 20
+    4 of 1
+    4 of 21
+    4 of 1
+    4 of 22
+    4 of 1
+    4 of 23
+    4 of 1
+    4 of 24
+    4 of 1
+    4 of 25
+    4 of 1
+    4 of 26
+    4 of 1
+    4 of 27
+    4 of 1
+    4 of 28
+    4 of 1
+    4 of 29
+    4 of 1
+    4 of 30
+    4 of 1
+    4 of 31
+    4 of 1
+    4 of 32
+    4 of 1
+    4 of 33
+    4 of 1
+    4 of 34
+    4 of 1
+    4 of 35
+    4 of 1
+    4 of 36
+    4 of 1
+    4 of 37
+    4 of 1
+    4 of 38
+    4 of 1
+    4 of 39
+    4 of 1
+    4 of 40
+    4 of 1
+    4 of 41
+    4 of 1
+    4 of 42
+    4 of 1
+    4 of 43
+    4 of 1
+    4 of 44
+    4 of 1
+    4 of 45
+    4 of 1
+    4 of 46
+    4 of 1
+    4 of 47
+    4 of 1
+    4 of 48
+    4 of 1
+    4 of 49
+    4 of 1
+    4 of 50
+    4 of 1
+    4 of 51
+    4 of 1
+    4 of 52
+    4 of 1
+    4 of 53
+    4 of 1
+    4 of 54
+    4 of 1
+    4 of 55
+    4 of 1
+    4 of 56
+    4 of 1
+    4 of 57
+    4 of 1
+    4 of 58
+    4 of 1
+    4 of 59
+    4 of 1
+    4 of 60
+    4 of 1
+    4 of 61
+    4 of 1
+    4 of 62
+    4 of 1
+    4 of 63
+    4 of 1
+    4 of 64
+    4 of 1
+    4 of 65
+    4 of 1
+    4 of 66
+    4 of 1
+    4 of 67
+    4 of 1
+    4 of 68
+    4 of 1
+    4 of 69
+    4 of 1
+    4 of 70
+    4 of 1
+    4 of 71
+    4 of 1
+    4 of 72
+    4 of 1
+    4 of 73
+    4 of 1
+    4 of 74
+    4 of 1
+    4 of 75
+    4 of 1
+    4 of 76
+    4 of 1
+    4 of 77
+    4 of 1
+    4 of 78
+    4 of 1
+    4 of 79
+    4 of 1
+    4 of 80
+    4 of 1
+    4 of 81
+    4 of 1
+    4 of 82
+    4 of 1
+    4 of 83
+    4 of 1
+    4 of 84
+    4 of 1
+    4 of 85
+    4 of 1
+    4 of 86
+    4 of 1
+    4 of 87
+    4 of 1
+    4 of 88
+    4 of 1
+    4 of 89
+    4 of 1
+    4 of 90
+    4 of 1
+    4 of 91
+    4 of 1
+    4 of 92
+    4 of 1
+    4 of 93
+    4 of 1
+    4 of 94
+    4 of 1
+    4 of 95
+    4 of 1
+    4 of 96
+    4 of 1
+    4 of 97
+    4 of 1
+    4 of 98
+    4 of 1
+    4 of 99
+    4 of 1
+    4 of 100
+    4 of 1
+    4 of 101
+    4 of 1
+    4 of 102
+    4 of 1
+    4 of 103
+    4 of 1
+    4 of 104
+    4 of 1
+    4 of 105
+    4 of 1
+    4 of 106
+    4 of 1
+    4 of 107
+    4 of 1
+    4 of 108
+    4 of 1
+    4 of 109
+    4 of 1
+    4 of 110
+    4 of 1
+    4 of 111
+    4 of 1
+    4 of 112
+    4 of 1
+    4 of 113
+    4 of 1
+    4 of 114
+    4 of 1
+    4 of 115
+    4 of 1
+    4 of 116
+    4 of 1
+    4 of 117
+    4 of 1
+    4 of 118
+    4 of 1
+    4 of 119
+    4 of 1
+    4 of 120
+    4 of 1
+    4 of 121
+    4 of 1
+    4 of 122
+    4 of 1
+    4 of 123
+    4 of 1
+    4 of 124
+    4 of 1
+    4 of 125
+    4 of 1
+    4 of 126
+    4 of 1
+    4 of 127
+    4 of 1
+    4 of 128
+    4 of 1
+    4 of 129
+    4 of 1
+    2 of 130
+    3 of 2
+    2 of 1
+    6 of 3
+    2 of 1
+    6 of 4
+    2 of 1
+    6 of 5
+    2 of 1
+    6 of 6
+    2 of 1
+    6 of 7
+    2 of 1
+    6 of 8
+    2 of 1
+    6 of 9
+    2 of 1
+    6 of 10
+    2 of 1
+    6 of 11
+    2 of 1
+    6 of 12
+    2 of 1
+    6 of 13
+    2 of 1
+    6 of 14
+    2 of 1
+    6 of 15
+    2 of 1
+    6 of 16
+    2 of 1
+    6 of 17
+    2 of 1
+    6 of 18
+    2 of 1
+    6 of 19
+    2 of 1
+    6 of 20
+    2 of 1
+    6 of 21
+    2 of 1
+    6 of 22
+    2 of 1
+    6 of 23
+    2 of 1
+    6 of 24
+    2 of 1
+    6 of 25
+    2 of 1
+    6 of 26
+    2 of 1
+    6 of 27
+    2 of 1
+    6 of 28
+    2 of 1
+    6 of 29
+    2 of 1
+    6 of 30
+    2 of 1
+    6 of 31
+    2 of 1
+    6 of 32
+    2 of 1
+    6 of 33
+    2 of 1
+    6 of 34
+    2 of 1
+    6 of 35
+    2 of 1
+    6 of 36
+    2 of 1
+    6 of 37
+    2 of 1
+    6 of 38
+    2 of 1
+    6 of 39
+    2 of 1
+    6 of 40
+    2 of 1
+    6 of 41
+    2 of 1
+    6 of 42
+    2 of 1
+    6 of 43
+    2 of 1
+    6 of 44
+    2 of 1
+    6 of 45
+    2 of 1
+    6 of 46
+    2 of 1
+    6 of 47
+    2 of 1
+    6 of 48
+    2 of 1
+    6 of 49
+    2 of 1
+    6 of 50
+    2 of 1
+    6 of 51
+    2 of 1
+    6 of 52
+    2 of 1
+    6 of 53
+    2 of 1
+    6 of 54
+    2 of 1
+    6 of 55
+    2 of 1
+    6 of 56
+    2 of 1
+    6 of 57
+    2 of 1
+    6 of 58
+    2 of 1
+    6 of 59
+    2 of 1
+    6 of 60
+    2 of 1
+    6 of 61
+    2 of 1
+    6 of 62
+    2 of 1
+    6 of 63
+    2 of 1
+    6 of 64
+    2 of 1
+    6 of 65
+    2 of 1
+    6 of 66
+    2 of 1
+    6 of 67
+    2 of 1
+    6 of 68
+    2 of 1
+    6 of 69
+    2 of 1
+    6 of 70
+    2 of 1
+    6 of 71
+    2 of 1
+    6 of 72
+    2 of 1
+    6 of 73
+    2 of 1
+    6 of 74
+    2 of 1
+    6 of 75
+    2 of 1
+    6 of 76
+    2 of 1
+    6 of 77
+    2 of 1
+    6 of 78
+    2 of 1
+    6 of 79
+    2 of 1
+    6 of 80
+    2 of 1
+    6 of 81
+    2 of 1
+    6 of 82
+    2 of 1
+    6 of 83
+    2 of 1
+    6 of 84
+    2 of 1
+    6 of 85
+    2 of 1
+    6 of 86
+    2 of 1
+    6 of 87
+    2 of 1
+    6 of 88
+    2 of 1
+    6 of 89
+    2 of 1
+    6 of 90
+    2 of 1
+    6 of 91
+    2 of 1
+    6 of 92
+    2 of 1
+    6 of 93
+    2 of 1
+    6 of 94
+    2 of 1
+    6 of 95
+    2 of 1
+    6 of 96
+    2 of 1
+    6 of 97
+    2 of 1
+    6 of 98
+    2 of 1
+    6 of 99
+    2 of 1
+    6 of 100
+    2 of 1
+    6 of 101
+    2 of 1
+    6 of 102
+    2 of 1
+    6 of 103
+    2 of 1
+    6 of 104
+    2 of 1
+    6 of 105
+    2 of 1
+    6 of 106
+    2 of 1
+    6 of 107
+    2 of 1
+    6 of 108
+    2 of 1
+    6 of 109
+    2 of 1
+    6 of 110
+    2 of 1
+    6 of 111
+    2 of 1
+    6 of 112
+    2 of 1
+    6 of 113
+    2 of 1
+    6 of 114
+    2 of 1
+    6 of 115
+    2 of 1
+    6 of 116
+    2 of 1
+    6 of 117
+    2 of 1
+    6 of 118
+    2 of 1
+    6 of 119
+    2 of 1
+    6 of 120
+    2 of 1
+    6 of 121
+    2 of 1
+    6 of 122
+    2 of 1
+    6 of 123
+    2 of 1
+    6 of 124
+    2 of 1
+    6 of 125
+    2 of 1
+    6 of 126
+    2 of 1
+    6 of 127
+    2 of 1
+    6 of 128
+    2 of 1
+    6 of 129
+    2 of 1
+    3 of 130
+    4 of 2
+    8 of 3
+    8 of 4
+    8 of 5
+    8 of 6
+    8 of 7
+    8 of 8
+    8 of 9
+    8 of 10
+    8 of 11
+    8 of 12
+    8 of 13
+    8 of 14
+    8 of 15
+    8 of 16
+    8 of 17
+    8 of 18
+    8 of 19
+    8 of 20
+    8 of 21
+    8 of 22
+    8 of 23
+    8 of 24
+    8 of 25
+    8 of 26
+    8 of 27
+    8 of 28
+    8 of 29
+    8 of 30
+    8 of 31
+    8 of 32
+    8 of 33
+    8 of 34
+    8 of 35
+    8 of 36
+    8 of 37
+    8 of 38
+    8 of 39
+    8 of 40
+    8 of 41
+    8 of 42
+    8 of 43
+    8 of 44
+    8 of 45
+    8 of 46
+    8 of 47
+    8 of 48
+    8 of 49
+    8 of 50
+    8 of 51
+    8 of 52
+    8 of 53
+    8 of 54
+    8 of 55
+    8 of 56
+    8 of 57
+    8 of 58
+    8 of 59
+    8 of 60
+    8 of 61
+    8 of 62
+    8 of 63
+    8 of 64
+    8 of 65
+    8 of 66
+    8 of 67
+    8 of 68
+    8 of 69
+    8 of 70
+    8 of 71
+    8 of 72
+    8 of 73
+    8 of 74
+    8 of 75
+    8 of 76
+    8 of 77
+    8 of 78
+    8 of 79
+    8 of 80
+    8 of 81
+    8 of 82
+    8 of 83
+    8 of 84
+    8 of 85
+    8 of 86
+    8 of 87
+    8 of 88
+    8 of 89
+    8 of 90
+    8 of 91
+    8 of 92
+    8 of 93
+    8 of 94
+    8 of 95
+    8 of 96
+    8 of 97
+    8 of 98
+    8 of 99
+    8 of 100
+    8 of 101
+    8 of 102
+    8 of 103
+    8 of 104
+    8 of 105
+    8 of 106
+    8 of 107
+    8 of 108
+    8 of 109
+    8 of 110
+    8 of 111
+    8 of 112
+    8 of 113
+    8 of 114
+    8 of 115
+    8 of 116
+    8 of 117
+    8 of 118
+    8 of 119
+    8 of 120
+    8 of 121
+    8 of 122
+    8 of 123
+    8 of 124
+    8 of 125
+    8 of 126
+    8 of 127
+    8 of 128
+    8 of 129
+    4 of 130
+    4 of 2
+    8 of 3
+    8 of 4
+    8 of 5
+    8 of 6
+    8 of 7
+    8 of 8
+    8 of 9
+    8 of 10
+    8 of 11
+    8 of 12
+    8 of 13
+    8 of 14
+    8 of 15
+    8 of 16
+    8 of 17
+    8 of 18
+    8 of 19
+    8 of 20
+    8 of 21
+    8 of 22
+    8 of 23
+    8 of 24
+    8 of 25
+    8 of 26
+    8 of 27
+    8 of 28
+    8 of 29
+    8 of 30
+    8 of 31
+    8 of 32
+    8 of 33
+    8 of 34
+    8 of 35
+    8 of 36
+    8 of 37
+    8 of 38
+    8 of 39
+    8 of 40
+    8 of 41
+    8 of 42
+    8 of 43
+    8 of 44
+    8 of 45
+    8 of 46
+    8 of 47
+    8 of 48
+    8 of 49
+    8 of 50
+    8 of 51
+    8 of 52
+    8 of 53
+    8 of 54
+    8 of 55
+    8 of 56
+    8 of 57
+    8 of 58
+    8 of 59
+    8 of 60
+    8 of 61
+    8 of 62
+    8 of 63
+    8 of 64
+    8 of 65
+    8 of 66
+    8 of 67
+    8 of 68
+    8 of 69
+    8 of 70
+    8 of 71
+    8 of 72
+    8 of 73
+    8 of 74
+    8 of 75
+    8 of 76
+    8 of 77
+    8 of 78
+    8 of 79
+    8 of 80
+    8 of 81
+    8 of 82
+    8 of 83
+    8 of 84
+    8 of 85
+    8 of 86
+    8 of 87
+    8 of 88
+    8 of 89
+    8 of 90
+    8 of 91
+    8 of 92
+    8 of 93
+    8 of 94
+    8 of 95
+    8 of 96
+    8 of 97
+    8 of 98
+    8 of 99
+    8 of 100
+    8 of 101
+    8 of 102
+    8 of 103
+    8 of 104
+    8 of 105
+    8 of 106
+    8 of 107
+    8 of 108
+    8 of 109
+    8 of 110
+    8 of 111
+    8 of 112
+    8 of 113
+    8 of 114
+    8 of 115
+    8 of 116
+    8 of 117
+    8 of 118
+    8 of 119
+    8 of 120
+    8 of 121
+    8 of 122
+    8 of 123
+    8 of 124
+    8 of 125
+    8 of 126
+    8 of 127
+    8 of 128
+    8 of 129
+    4 of 130
+    4 of 2
+    8 of 3
+    8 of 4
+    8 of 5
+    8 of 6
+    8 of 7
+    8 of 8
+    8 of 9
+    8 of 10
+    8 of 11
+    8 of 12
+    8 of 13
+    8 of 14
+    8 of 15
+    8 of 16
+    8 of 17
+    8 of 18
+    8 of 19
+    8 of 20
+    8 of 21
+    8 of 22
+    8 of 23
+    8 of 24
+    8 of 25
+    8 of 26
+    8 of 27
+    8 of 28
+    8 of 29
+    8 of 30
+    8 of 31
+    8 of 32
+    8 of 33
+    8 of 34
+    8 of 35
+    8 of 36
+    8 of 37
+    8 of 38
+    8 of 39
+    8 of 40
+    8 of 41
+    8 of 42
+    8 of 43
+    8 of 44
+    8 of 45
+    8 of 46
+    8 of 47
+    8 of 48
+    8 of 49
+    8 of 50
+    8 of 51
+    8 of 52
+    8 of 53
+    8 of 54
+    8 of 55
+    8 of 56
+    8 of 57
+    8 of 58
+    8 of 59
+    8 of 60
+    8 of 61
+    8 of 62
+    8 of 63
+    8 of 64
+    8 of 65
+    8 of 66
+    8 of 67
+    8 of 68
+    8 of 69
+    8 of 70
+    8 of 71
+    8 of 72
+    8 of 73
+    8 of 74
+    8 of 75
+    8 of 76
+    8 of 77
+    8 of 78
+    8 of 79
+    8 of 80
+    8 of 81
+    8 of 82
+    8 of 83
+    8 of 84
+    8 of 85
+    8 of 86
+    8 of 87
+    8 of 88
+    8 of 89
+    8 of 90
+    8 of 91
+    8 of 92
+    8 of 93
+    8 of 94
+    8 of 95
+    8 of 96
+    8 of 97
+    8 of 98
+    8 of 99
+    8 of 100
+    8 of 101
+    8 of 102
+    8 of 103
+    8 of 104
+    8 of 105
+    8 of 106
+    8 of 107
+    8 of 108
+    8 of 109
+    8 of 110
+    8 of 111
+    8 of 112
+    8 of 113
+    8 of 114
+    8 of 115
+    8 of 116
+    8 of 117
+    8 of 118
+    8 of 119
+    8 of 120
+    8 of 121
+    8 of 122
+    8 of 123
+    8 of 124
+    8 of 125
+    8 of 126
+    8 of 127
+    8 of 128
+    8 of 129
+    4 of 130
+    4 of 2
+    8 of 3
+    8 of 4
+    8 of 5
+    8 of 6
+    8 of 7
+    8 of 8
+    8 of 9
+    8 of 10
+    8 of 11
+    8 of 12
+    8 of 13
+    8 of 14
+    8 of 15
+    8 of 16
+    8 of 17
+    8 of 18
+    8 of 19
+    8 of 20
+    8 of 21
+    8 of 22
+    8 of 23
+    8 of 24
+    8 of 25
+    8 of 26
+    8 of 27
+    8 of 28
+    8 of 29
+    8 of 30
+    8 of 31
+    8 of 32
+    8 of 33
+    8 of 34
+    8 of 35
+    8 of 36
+    8 of 37
+    8 of 38
+    8 of 39
+    8 of 40
+    8 of 41
+    8 of 42
+    8 of 43
+    8 of 44
+    8 of 45
+    8 of 46
+    8 of 47
+    8 of 48
+    8 of 49
+    8 of 50
+    8 of 51
+    8 of 52
+    8 of 53
+    8 of 54
+    8 of 55
+    8 of 56
+    8 of 57
+    8 of 58
+    8 of 59
+    8 of 60
+    8 of 61
+    8 of 62
+    8 of 63
+    8 of 64
+    8 of 65
+    8 of 66
+    8 of 67
+    8 of 68
+    8 of 69
+    8 of 70
+    8 of 71
+    8 of 72
+    8 of 73
+    8 of 74
+    8 of 75
+    8 of 76
+    8 of 77
+    8 of 78
+    8 of 79
+    8 of 80
+    8 of 81
+    8 of 82
+    8 of 83
+    8 of 84
+    8 of 85
+    8 of 86
+    8 of 87
+    8 of 88
+    8 of 89
+    8 of 90
+    8 of 91
+    8 of 92
+    8 of 93
+    8 of 94
+    8 of 95
+    8 of 96
+    8 of 97
+    8 of 98
+    8 of 99
+    8 of 100
+    8 of 101
+    8 of 102
+    8 of 103
+    8 of 104
+    8 of 105
+    8 of 106
+    8 of 107
+    8 of 108
+    8 of 109
+    8 of 110
+    8 of 111
+    8 of 112
+    8 of 113
+    8 of 114
+    8 of 115
+    8 of 116
+    8 of 117
+    8 of 118
+    8 of 119
+    8 of 120
+    8 of 121
+    8 of 122
+    8 of 123
+    8 of 124
+    8 of 125
+    8 of 126
+    8 of 127
+    8 of 128
+    8 of 129
+    4 of 130
+    3 of 2
+    2 of 1
+    6 of 3
+    2 of 1
+    6 of 4
+    2 of 1
+    6 of 5
+    2 of 1
+    6 of 6
+    2 of 1
+    6 of 7
+    2 of 1
+    6 of 8
+    2 of 1
+    6 of 9
+    2 of 1
+    6 of 10
+    2 of 1
+    6 of 11
+    2 of 1
+    6 of 12
+    2 of 1
+    6 of 13
+    2 of 1
+    6 of 14
+    2 of 1
+    6 of 15
+    2 of 1
+    6 of 16
+    2 of 1
+    6 of 17
+    2 of 1
+    6 of 18
+    2 of 1
+    6 of 19
+    2 of 1
+    6 of 20
+    2 of 1
+    6 of 21
+    2 of 1
+    6 of 22
+    2 of 1
+    6 of 23
+    2 of 1
+    6 of 24
+    2 of 1
+    6 of 25
+    2 of 1
+    6 of 26
+    2 of 1
+    6 of 27
+    2 of 1
+    6 of 28
+    2 of 1
+    6 of 29
+    2 of 1
+    6 of 30
+    2 of 1
+    6 of 31
+    2 of 1
+    6 of 32
+    2 of 1
+    6 of 33
+    2 of 1
+    6 of 34
+    2 of 1
+    6 of 35
+    2 of 1
+    6 of 36
+    2 of 1
+    6 of 37
+    2 of 1
+    6 of 38
+    2 of 1
+    6 of 39
+    2 of 1
+    6 of 40
+    2 of 1
+    6 of 41
+    2 of 1
+    6 of 42
+    2 of 1
+    6 of 43
+    2 of 1
+    6 of 44
+    2 of 1
+    6 of 45
+    2 of 1
+    6 of 46
+    2 of 1
+    6 of 47
+    2 of 1
+    6 of 48
+    2 of 1
+    6 of 49
+    2 of 1
+    6 of 50
+    2 of 1
+    6 of 51
+    2 of 1
+    6 of 52
+    2 of 1
+    6 of 53
+    2 of 1
+    6 of 54
+    2 of 1
+    6 of 55
+    2 of 1
+    6 of 56
+    2 of 1
+    6 of 57
+    2 of 1
+    6 of 58
+    2 of 1
+    6 of 59
+    2 of 1
+    6 of 60
+    2 of 1
+    6 of 61
+    2 of 1
+    6 of 62
+    2 of 1
+    6 of 63
+    2 of 1
+    6 of 64
+    2 of 1
+    6 of 65
+    2 of 1
+    6 of 66
+    2 of 1
+    6 of 67
+    2 of 1
+    6 of 68
+    2 of 1
+    6 of 69
+    2 of 1
+    6 of 70
+    2 of 1
+    6 of 71
+    2 of 1
+    6 of 72
+    2 of 1
+    6 of 73
+    2 of 1
+    6 of 74
+    2 of 1
+    6 of 75
+    2 of 1
+    6 of 76
+    2 of 1
+    6 of 77
+    2 of 1
+    6 of 78
+    2 of 1
+    6 of 79
+    2 of 1
+    6 of 80
+    2 of 1
+    6 of 81
+    2 of 1
+    6 of 82
+    2 of 1
+    6 of 83
+    2 of 1
+    6 of 84
+    2 of 1
+    6 of 85
+    2 of 1
+    6 of 86
+    2 of 1
+    6 of 87
+    2 of 1
+    6 of 88
+    2 of 1
+    6 of 89
+    2 of 1
+    6 of 90
+    2 of 1
+    6 of 91
+    2 of 1
+    6 of 92
+    2 of 1
+    6 of 93
+    2 of 1
+    6 of 94
+    2 of 1
+    6 of 95
+    2 of 1
+    6 of 96
+    2 of 1
+    6 of 97
+    2 of 1
+    6 of 98
+    2 of 1
+    6 of 99
+    2 of 1
+    6 of 100
+    2 of 1
+    6 of 101
+    2 of 1
+    6 of 102
+    2 of 1
+    6 of 103
+    2 of 1
+    6 of 104
+    2 of 1
+    6 of 105
+    2 of 1
+    6 of 106
+    2 of 1
+    6 of 107
+    2 of 1
+    6 of 108
+    2 of 1
+    6 of 109
+    2 of 1
+    6 of 110
+    2 of 1
+    6 of 111
+    2 of 1
+    6 of 112
+    2 of 1
+    6 of 113
+    2 of 1
+    6 of 114
+    2 of 1
+    6 of 115
+    2 of 1
+    6 of 116
+    2 of 1
+    6 of 117
+    2 of 1
+    6 of 118
+    2 of 1
+    6 of 119
+    2 of 1
+    6 of 120
+    2 of 1
+    6 of 121
+    2 of 1
+    6 of 122
+    2 of 1
+    6 of 123
+    2 of 1
+    6 of 124
+    2 of 1
+    6 of 125
+    2 of 1
+    6 of 126
+    2 of 1
+    6 of 127
+    2 of 1
+    6 of 128
+    2 of 1
+    6 of 129
+    2 of 1
+    3 of 130
+    2 of 2
+    4 of 1
+    4 of 3
+    4 of 1
+    4 of 4
+    4 of 1
+    4 of 5
+    4 of 1
+    4 of 6
+    4 of 1
+    4 of 7
+    4 of 1
+    4 of 8
+    4 of 1
+    4 of 9
+    4 of 1
+    4 of 10
+    4 of 1
+    4 of 11
+    4 of 1
+    4 of 12
+    4 of 1
+    4 of 13
+    4 of 1
+    4 of 14
+    4 of 1
+    4 of 15
+    4 of 1
+    4 of 16
+    4 of 1
+    4 of 17
+    4 of 1
+    4 of 18
+    4 of 1
+    4 of 19
+    4 of 1
+    4 of 20
+    4 of 1
+    4 of 21
+    4 of 1
+    4 of 22
+    4 of 1
+    4 of 23
+    4 of 1
+    4 of 24
+    4 of 1
+    4 of 25
+    4 of 1
+    4 of 26
+    4 of 1
+    4 of 27
+    4 of 1
+    4 of 28
+    4 of 1
+    4 of 29
+    4 of 1
+    4 of 30
+    4 of 1
+    4 of 31
+    4 of 1
+    4 of 32
+    4 of 1
+    4 of 33
+    4 of 1
+    4 of 34
+    4 of 1
+    4 of 35
+    4 of 1
+    4 of 36
+    4 of 1
+    4 of 37
+    4 of 1
+    4 of 38
+    4 of 1
+    4 of 39
+    4 of 1
+    4 of 40
+    4 of 1
+    4 of 41
+    4 of 1
+    4 of 42
+    4 of 1
+    4 of 43
+    4 of 1
+    4 of 44
+    4 of 1
+    4 of 45
+    4 of 1
+    4 of 46
+    4 of 1
+    4 of 47
+    4 of 1
+    4 of 48
+    4 of 1
+    4 of 49
+    4 of 1
+    4 of 50
+    4 of 1
+    4 of 51
+    4 of 1
+    4 of 52
+    4 of 1
+    4 of 53
+    4 of 1
+    4 of 54
+    4 of 1
+    4 of 55
+    4 of 1
+    4 of 56
+    4 of 1
+    4 of 57
+    4 of 1
+    4 of 58
+    4 of 1
+    4 of 59
+    4 of 1
+    4 of 60
+    4 of 1
+    4 of 61
+    4 of 1
+    4 of 62
+    4 of 1
+    4 of 63
+    4 of 1
+    4 of 64
+    4 of 1
+    4 of 65
+    4 of 1
+    4 of 66
+    4 of 1
+    4 of 67
+    4 of 1
+    4 of 68
+    4 of 1
+    4 of 69
+    4 of 1
+    4 of 70
+    4 of 1
+    4 of 71
+    4 of 1
+    4 of 72
+    4 of 1
+    4 of 73
+    4 of 1
+    4 of 74
+    4 of 1
+    4 of 75
+    4 of 1
+    4 of 76
+    4 of 1
+    4 of 77
+    4 of 1
+    4 of 78
+    4 of 1
+    4 of 79
+    4 of 1
+    4 of 80
+    4 of 1
+    4 of 81
+    4 of 1
+    4 of 82
+    4 of 1
+    4 of 83
+    4 of 1
+    4 of 84
+    4 of 1
+    4 of 85
+    4 of 1
+    4 of 86
+    4 of 1
+    4 of 87
+    4 of 1
+    4 of 88
+    4 of 1
+    4 of 89
+    4 of 1
+    4 of 90
+    4 of 1
+    4 of 91
+    4 of 1
+    4 of 92
+    4 of 1
+    4 of 93
+    4 of 1
+    4 of 94
+    4 of 1
+    4 of 95
+    4 of 1
+    4 of 96
+    4 of 1
+    4 of 97
+    4 of 1
+    4 of 98
+    4 of 1
+    4 of 99
+    4 of 1
+    4 of 100
+    4 of 1
+    4 of 101
+    4 of 1
+    4 of 102
+    4 of 1
+    4 of 103
+    4 of 1
+    4 of 104
+    4 of 1
+    4 of 105
+    4 of 1
+    4 of 106
+    4 of 1
+    4 of 107
+    4 of 1
+    4 of 108
+    4 of 1
+    4 of 109
+    4 of 1
+    4 of 110
+    4 of 1
+    4 of 111
+    4 of 1
+    4 of 112
+    4 of 1
+    4 of 113
+    4 of 1
+    4 of 114
+    4 of 1
+    4 of 115
+    4 of 1
+    4 of 116
+    4 of 1
+    4 of 117
+    4 of 1
+    4 of 118
+    4 of 1
+    4 of 119
+    4 of 1
+    4 of 120
+    4 of 1
+    4 of 121
+    4 of 1
+    4 of 122
+    4 of 1
+    4 of 123
+    4 of 1
+    4 of 124
+    4 of 1
+    4 of 125
+    4 of 1
+    4 of 126
+    4 of 1
+    4 of 127
+    4 of 1
+    4 of 128
+    4 of 1
+    4 of 129
+    4 of 1
+    2 of 130
+    520192 of 1
+  interface_mapping: |-
+    2 of 1
+    16898 of 2
