@@ -173,8 +173,13 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       } else {
           user->nsites = 0;
       }
-      user->siteactivity = malloc(user->nsites*sizeof(char));
-      for (PetscInt site=0;site<user->nsites;site++) user->siteactivity[site] = 1;
+      user->siteoffset = user->worldrank*(1 + ((user->nsites - 1)/user->worldsize));
+      user->nsites_local = (  user->siteoffset + (1 + ((user->nsites - 1)/user->worldsize)) < user->nsites
+                            ? user->siteoffset + (1 + ((user->nsites - 1)/user->worldsize)) : user->nsites)
+                         - user->siteoffset;
+      user->siteactivity_global = malloc(user->nsites*sizeof(char));
+      user->siteactivity_local = malloc(user->nsites_local*sizeof(char));
+      for (PetscInt site=0;site<user->nsites_local;site++) user->siteactivity_local[site] = 1;
       user->sitenucleusmapping = malloc(user->nsites*sizeof(PetscInt));
       user->sitephasemapping = malloc(user->nsites*sizeof(PetscInt));
      }
@@ -605,9 +610,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      if (propsize) {assert(propsize == 1); user->solparams.abstol = atof(propval[0]);} 
      else {user->solparams.abstol = 1.0e-6;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "random_seed", buffer, filesize);
-     if (propsize) {assert(propsize == 1); user->solparams.randomseed = atoi(propval[0]);} 
-     else {user->solparams.randomseed = time(0);}
-     MPI_Bcast(&user->solparams.randomseed,1,MPIU_INT,0,PETSC_COMM_WORLD);
+     if (propsize) {assert(propsize == 1); user->solparams.randomseed = atoi(propval[0]) + user->worldrank;} 
+     else {user->solparams.randomseed = time(0) + user->worldrank;}
      PetscPrintf(PETSC_COMM_WORLD,"Using random seed: %d\n",user->solparams.randomseed);
      srand(user->solparams.randomseed);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "outputfreq", buffer, filesize);

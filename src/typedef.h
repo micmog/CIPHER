@@ -150,7 +150,6 @@ typedef struct AppCtx {
     /* number of phases, materials, interfaces and components */
     PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
-    PetscInt nsites, nnuclei;
     char **componentname, **materialname, **interfacename, **nucleusname;
     /* grid resolution */
     PetscInt dim, *resolution;
@@ -170,8 +169,10 @@ typedef struct AppCtx {
     PetscInt *voxelphasemapping, *phasematerialmapping;
     PetscInt *voxelsitemapping, *sitenucleusmapping, *sitephasemapping;
     /* nucleation parameters */
+    PetscInt nsites, nsites_local, siteoffset, nnuclei;
     NUCLEUS *nucleus;
-    char *siteactivity;
+    char *siteactivity_local, *siteactivity_global;
+    PetscSF nucleation_sf;
     /* interface material parameters */
     INTERFACE *interface;
     PetscInt *interfacelist;
