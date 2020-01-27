@@ -130,6 +130,8 @@ typedef struct SOLUTIONPARAMS {
     /* temperature */
     PetscInt  n_temperature;
     PetscReal *temperature_T, *temperature_t;
+    /* interpolation */
+    interpolation_t interpolation;
     /* tolerances */
     PetscReal reltol, abstol;
     /* random seed */
@@ -144,7 +146,7 @@ typedef struct SOLUTIONPARAMS {
 /* solution parameters */
 typedef struct AppCtx {
     /* MPI rank */
-    PetscMPIInt rank;
+    PetscMPIInt worldrank, worldsize;
     /* number of phases, materials, interfaces and components */
     PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
@@ -165,11 +167,11 @@ typedef struct AppCtx {
     PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
-    NUCLEUS *nucleus;
     PetscInt *voxelphasemapping, *phasematerialmapping;
     PetscInt *voxelsitemapping, *sitenucleusmapping, *sitephasemapping;
-    PetscInt *siteactivity;
-    interpolation_t interpolation;
+    /* nucleation parameters */
+    NUCLEUS *nucleus;
+    char *siteactivity;
     /* interface material parameters */
     INTERFACE *interface;
     PetscInt *interfacelist;

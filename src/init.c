@@ -108,7 +108,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     /* Read config file to buffer */
     PetscOptionsGetString(NULL,NULL,"--config",configfile,PETSC_MAX_PATH_LEN,NULL);
     FILE *infile=NULL;
-    if (user->rank == 0) {
+    if (user->worldrank == 0) {
         infile = fopen (configfile, "r");
         if (infile==NULL) {
             printf("Error: config file can't be opened. \n");
@@ -169,15 +169,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       ierr = GetProperty(propval, &propsize, "header", "n_sites", buffer, filesize);
       if (propsize) {
           assert(propsize == 1 && atoi(propval[0]) > 0);
-          user->siteactivity = malloc((atoi(propval[0])+1)*sizeof(PetscInt));
-          user->siteactivity[0] = atoi(propval[0]);
-          for (PetscInt site=0;site<user->siteactivity[0];site++) user->siteactivity[site+1] = 1;
+          user->nsites = atoi(propval[0]);
       } else {
-          user->siteactivity = malloc(sizeof(PetscInt));
-          user->siteactivity[0] = 0;
+          user->nsites = 0;
       }
-      user->sitenucleusmapping = malloc(user->siteactivity[0]*sizeof(PetscInt));
-      user->sitephasemapping = malloc(user->siteactivity[0]*sizeof(PetscInt));
+      user->siteactivity = malloc(user->nsites*sizeof(char));
+      for (PetscInt site=0;site<user->nsites;site++) user->siteactivity[site] = 1;
+      user->sitenucleusmapping = malloc(user->nsites*sizeof(PetscInt));
+      user->sitephasemapping = malloc(user->nsites*sizeof(PetscInt));
      }
      /* material names */
      {
@@ -552,15 +551,15 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interpolation", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1);
      if        (!strcmp(propval[0], "linear"   )) {
-         user->interpolation = LINEAR_INTERPOLATION;
+         user->solparams.interpolation = LINEAR_INTERPOLATION;
      } else if (!strcmp(propval[0], "quadratic")) {
-         user->interpolation = QUADRATIC_INTERPOLATION;
+         user->solparams.interpolation = QUADRATIC_INTERPOLATION;
      } else if (!strcmp(propval[0], "cubic"    )) {
-         user->interpolation = CUBIC_INTERPOLATION;
+         user->solparams.interpolation = CUBIC_INTERPOLATION;
      } else {
-         user->interpolation = NONE_INTERPOLATION;
+         user->solparams.interpolation = NONE_INTERPOLATION;
      }
-     assert(user->interpolation != NONE_INTERPOLATION);
+     assert(user->solparams.interpolation != NONE_INTERPOLATION);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "finaltime", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.finaltime = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "starttime", buffer, filesize);
@@ -762,12 +761,12 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      assert(ctrm == user->npf*user->npf);
 
-     if (user->siteactivity[0]) {
+     if (user->nsites) {
          ierr = GetProperty(propval, &propsize, "mappings", "site_nucleus_mapping", buffer, filesize);
          assert(propsize);
          tok = strtok_r(propval[0], "\n", &savetok);
          ctrm=0;
-         while (tok != NULL && ctrm < user->siteactivity[0]) {
+         while (tok != NULL && ctrm < user->nsites) {
              // process the line
              if (strstr(tok, "of") != NULL) {
                  char stra[128], strb[128];
@@ -799,13 +798,13 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              //advance the token
              tok = strtok_r(NULL, "\n", &savetok);
          }
-         assert(ctrm == user->siteactivity[0] && tok == NULL);
+         assert(ctrm == user->nsites && tok == NULL);
 
          ierr = GetProperty(propval, &propsize, "mappings", "site_phase_mapping", buffer, filesize);
          assert(propsize);
          tok = strtok_r(propval[0], "\n", &savetok);
          ctrm=0;
-         while (tok != NULL && ctrm < user->siteactivity[0]) {
+         while (tok != NULL && ctrm < user->nsites) {
              // process the line
              if (strstr(tok, "of") != NULL) {
                  char stra[128], strb[128];
@@ -837,7 +836,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              //advance the token
              tok = strtok_r(NULL, "\n", &savetok);
          }
-         assert(ctrm == user->siteactivity[0] && tok == NULL);
+         assert(ctrm == user->nsites && tok == NULL);
 
          ierr = GetProperty(propval, &propsize, "mappings", "voxel_site_mapping", buffer, filesize);
          assert(propsize);

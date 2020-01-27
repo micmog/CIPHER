@@ -601,13 +601,13 @@ void SimplexProjection(PetscReal *out, PetscReal *in, int size)
  */
 void utility_init(const AppCtx *user)
 {
-    if        (user->interpolation == LINEAR_INTERPOLATION) {
+    if        (user->solparams.interpolation == LINEAR_INTERPOLATION) {
         Interpolant = &Interpolant_linear;
         InterpolantDerivative = &InterpolantDerivative_linear;
-    } else if (user->interpolation == QUADRATIC_INTERPOLATION ) {
+    } else if (user->solparams.interpolation == QUADRATIC_INTERPOLATION ) {
         Interpolant = &Interpolant_quad;
         InterpolantDerivative = &InterpolantDerivative_quad;
-    } else if (user->interpolation == CUBIC_INTERPOLATION ) {
+    } else if (user->solparams.interpolation == CUBIC_INTERPOLATION ) {
         Interpolant = &Interpolant_cubic;
         InterpolantDerivative = &InterpolantDerivative_cubic;
     }

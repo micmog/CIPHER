@@ -27,7 +27,7 @@
 /* Global variables declarations */
 
 /* Function prototypes */
-EXTERN PetscInt Nucleation(const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+EXTERN char Nucleation(const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
 EXTERN void Chemenergy(PetscReal *, const PetscReal *, const PetscReal *, const PetscReal, const uint16_t *, const AppCtx *);
 EXTERN void ChemicalpotentialExplicit(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void ChemicalpotentialExplicitTangent(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);

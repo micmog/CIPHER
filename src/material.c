@@ -32,9 +32,9 @@ static MATFUNC *Matfunc;
 /*
  Nucleation model for new phases
  */
-PetscInt Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
-                    const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                    const PetscInt siteID, const AppCtx *user)
+char Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
+                const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                const PetscInt siteID, const AppCtx *user)
 {
     NUCLEUS *currentnucleus = &user->nucleus[user->sitenucleusmapping[siteID]];
     PetscReal KbT = KBANGST2*temperature;
@@ -54,9 +54,9 @@ PetscInt Nucleation(const PetscReal current_time, const PetscReal current_timest
         PetscReal site_probability = current_timestep * zeldovich * beta
                                    * nucleation_probability * exp(-incubation_time/current_time);
         PetscReal random_number = (rand()/(double)RAND_MAX);
-        if (random_number < site_probability) return 0;
+        if (random_number < site_probability) return 1;
     }
-    return 1;
+    return 0;
 }
 
 /*
