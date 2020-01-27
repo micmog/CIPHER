@@ -9,8 +9,6 @@ header:
 
 solution_parameters:
   finaltime : 72000.0 
-  timestep0 : 1e-9
-  timestepmin : 1e-9
   timestepmax : 1e+2
   temperature : [393.0, 393.0]
   time : [0.0, 1.0]
@@ -21,8 +19,6 @@ solution_parameters:
   minnrefine : 3
   initcoarsen : 3
   amrinterval : 200 
-  reltol : 1e-4
-  abstol : 1e-4 
   outputfreq : 5000
   outfile : GBP
   interpolation: cubic
@@ -309,14 +305,15 @@ interface :
   grainboundary :
     energy : 5.0e+8
     mobility : 
-      m0: 1.0e+2
+      m0: 2.0e+2
       activation_energy:
         t_coefficient : -1.0e+5
         t_exponent: 0
+    potential : [0.175e+4, -0.180e+4, -0.235e+4]  
   pptboundary :
     energy : 5.0e+8
     mobility : 
-      m0: 1.0e+2
+      m0: 2.0e+2
       activation_energy:
         t_coefficient : -1.0e+5
         t_exponent: 0
@@ -325,8 +322,6 @@ mappings:
   phase_material_mapping : |-
     2 of 1
     2
-  phase_active_mapping : |-
-    3 of 1
   voxel_phase_mapping: |-
     116510 of 1
     4 of 3
