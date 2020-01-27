@@ -11,6 +11,9 @@
 #define MATERIAL_IMPORT
 #include "material.h"
 
+#define ANGSTROM 1.0e-10
+#define KBANGST2 1.38064852E-3
+
 /* constitutive functions */
 typedef struct MATFUNC {
     void (*Chemenergy) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
@@ -29,22 +32,31 @@ static MATFUNC *Matfunc;
 /*
  Nucleation model for new phases
  */
-void Nucleation(const PetscReal current_time, const PetscReal temperature, const AppCtx *user)
+PetscInt Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
+                    const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                    const PetscInt siteID, const AppCtx *user)
 {
-    PetscReal zeldovich, beta, incubation_t, nucleation_probability, random_number;
-    NUCLEATION *currentnucleation;
-    
-    for (PetscInt p=0; p<user->npf; p++) {
-        if (!user->phaseactivemapping[p]) {
-            currentnucleation = &user->material[user->phasematerialmapping[p]].nucleation;
-            zeldovich = currentnucleation->zeldovich_c/sqrt(temperature);
-            beta = currentnucleation->beta_c*exp(currentnucleation->diffusion_c/temperature);
-            incubation_t = 1.0/(2.0*zeldovich*zeldovich*beta);
-            nucleation_probability = zeldovich*beta*exp(currentnucleation->gibbs_c/temperature - incubation_t/current_time);
-            random_number = (rand()/(double)RAND_MAX);
-            if (random_number < nucleation_probability) user->phaseactivemapping[p] = 1; 
-        }
+    NUCLEUS *currentnucleus = &user->nucleus[user->sitenucleusmapping[siteID]];
+    PetscReal KbT = KBANGST2*temperature;
+    PetscReal radius_c = 2.0*currentnucleus->gamma*volume/gv/ANGSTROM;
+    if (   radius_c < currentnucleus->lengthscale*pow(volume,1.0/user->dim)
+        && radius_c > currentnucleus->minsize) {
+        PetscReal zeldovich = currentnucleus->atomicvolume
+                            * sqrt(currentnucleus->gamma/KbT)
+                            / (2.0*PETSC_PI*radius_c*radius_c);
+        PetscReal beta = 4.0*PETSC_PI
+                       * currentnucleus->D0*exp(-currentnucleus->migration/temperature)
+                       * radius_c/currentnucleus->atomicvolume;
+        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta);
+        PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentnucleus->gamma*radius_c*radius_c)
+                                               * currentnucleus->shapefactor
+                                               / (3.0*KbT));
+        PetscReal site_probability = current_timestep * zeldovich * beta
+                                   * nucleation_probability * exp(-incubation_time/current_time);
+        PetscReal random_number = (rand()/(double)RAND_MAX);
+        if (random_number < site_probability) return 0;
     }
+    return 1;
 }
 
 /*

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <time.h>
 #include <petscdm.h>
 #include <petscdmplex.h>
 #include <petscdmforest.h>
@@ -100,15 +101,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 {
     char           configfile[PETSC_MAX_PATH_LEN] = "";
     unsigned char  *buffer = 0;
-    PetscMPIInt    rank;
+    PetscInt       total_cells;
     
     PetscFunctionBeginUser;
 
     /* Read config file to buffer */
-    MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
     PetscOptionsGetString(NULL,NULL,"--config",configfile,PETSC_MAX_PATH_LEN,NULL);
     FILE *infile=NULL;
-    if (rank == 0) {
+    if (user->rank == 0) {
         infile = fopen (configfile, "r");
         if (infile==NULL) {
             printf("Error: config file can't be opened. \n");
@@ -146,7 +146,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       user->resolution = malloc(user->dim*sizeof(PetscInt));
       user->size = malloc(user->dim*sizeof(PetscReal));
       for (PetscInt propctr = 0; propctr < propsize; propctr++) user->resolution[propctr] = atoi(propval[propctr]);
-      user->voxelphasemapping = malloc(user->resolution[2]*user->resolution[1]*user->resolution[0]*sizeof(uint16_t));
+      total_cells = user->dim == 2 ? user->resolution[0]*user->resolution[1] 
+                                   : user->resolution[0]*user->resolution[1]*user->resolution[2];
+      user->voxelphasemapping = malloc(total_cells*sizeof(PetscInt));
+      user->voxelsitemapping = malloc(total_cells*sizeof(PetscInt));
      }
      /* size */
      {
@@ -154,14 +157,27 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       assert(propsize == user->dim);
       for (PetscInt propctr = 0; propctr < propsize; propctr++) user->size[propctr] = atof(propval[propctr]);
      }
-     /* n_phases */
+     /* number of phases */
      {
       ierr = GetProperty(propval, &propsize, "header", "n_phases", buffer, filesize); CHKERRQ(ierr);
-      assert(propsize == 1 && propval[0] > 0);
+      assert(propsize == 1 && atoi(propval[0]) > 0);
       user->npf = atoi(propval[0]);
-      user->phasematerialmapping = malloc(user->npf*sizeof(uint16_t));
-      user->phaseactivemapping = malloc(user->npf*sizeof(uint16_t));
-      memset(user->phaseactivemapping,0,user->npf*sizeof(uint16_t));
+      user->phasematerialmapping = malloc(user->npf*sizeof(PetscInt));
+     }
+     /* number of nucleation sites */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "n_sites", buffer, filesize);
+      if (propsize) {
+          assert(propsize == 1 && atoi(propval[0]) > 0);
+          user->siteactivity = malloc((atoi(propval[0])+1)*sizeof(PetscInt));
+          user->siteactivity[0] = atoi(propval[0]);
+          for (PetscInt site=0;site<user->siteactivity[0];site++) user->siteactivity[site+1] = 1;
+      } else {
+          user->siteactivity = malloc(sizeof(PetscInt));
+          user->siteactivity[0] = 0;
+      }
+      user->sitenucleusmapping = malloc(user->siteactivity[0]*sizeof(PetscInt));
+      user->sitephasemapping = malloc(user->siteactivity[0]*sizeof(PetscInt));
      }
      /* material names */
      {
@@ -174,6 +190,18 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           strcpy(user->materialname[m],propval[m]);
       }    
       user->material = (MATERIAL *) malloc(user->nmat*sizeof(struct MATERIAL));
+     }
+     /* nuclei names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "nuclei", buffer, filesize);
+      assert(propsize >= 0);
+      user->nnuclei = propsize;
+      user->nucleusname = malloc(user->nnuclei*sizeof(char *));
+      for (PetscInt n=0; n<user->nnuclei; n++) {
+          user->nucleusname[n] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->nucleusname[n],propval[n]);
+      }    
+      user->nucleus = (NUCLEUS *) malloc(user->nnuclei*sizeof(struct NUCLEUS));
      }
      /* interface names */
      {
@@ -229,26 +257,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          /* chempot explicit kinetic coefficient */
          ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
          if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
-         /* nucleation parameters */
-         {
-          NUCLEATION *currentnucleation = &currentmaterial->nucleation;
-          /* state kinetic coefficient */
-          ierr = GetProperty(propval, &propsize, materialmapping, "zeldovich_c", buffer, filesize);
-          assert(propsize <= 1);
-          if (propsize) {currentnucleation->zeldovich_c = atof(propval[0]);} else {currentnucleation->zeldovich_c = 0.0;}
-          /* state kinetic coefficient */
-          ierr = GetProperty(propval, &propsize, materialmapping, "beta_c", buffer, filesize);
-          assert(propsize <= 1);
-          if (propsize) {currentnucleation->beta_c = atof(propval[0]);} else {currentnucleation->beta_c = 0.0;}
-          /* state kinetic coefficient */
-          ierr = GetProperty(propval, &propsize, materialmapping, "diffusion_c", buffer, filesize);
-          assert(propsize <= 1);
-          if (propsize) {currentnucleation->diffusion_c = atof(propval[0]);} else {currentnucleation->diffusion_c = 0.0;}
-          /* state kinetic coefficient */
-          ierr = GetProperty(propval, &propsize, materialmapping, "gibbs_c", buffer, filesize);
-          assert(propsize <= 1);
-          if (propsize) {currentnucleation->gibbs_c = atof(propval[0]);} else {currentnucleation->gibbs_c = 0.0;}
-         }
          /* chemical energy type */
          {
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
@@ -461,6 +469,42 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
     }
 
+    /* Parsing config file nucleation */
+    {
+     NUCLEUS *currentnucleus = &user->nucleus[0];
+     for (PetscInt n=0; n<user->nnuclei; n++,currentnucleus++) {
+         char nucleusmapping[PETSC_MAX_PATH_LEN];
+         sprintf(nucleusmapping,"nucleus/%s",user->nucleusname[n]);
+         /* matrix phases */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "matrix", buffer, filesize);
+         assert(propsize > 0); currentnucleus->matrixlist[0] = propsize;
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentnucleus->matrixlist[propctr+1] = atoi(propval[propctr]);
+         /* surface energy */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "gamma", buffer, filesize);
+         assert(propsize == 1); currentnucleus->gamma = atof(propval[0]);
+         /* heterogeneous nucleation shape factor */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
+         if (propsize) {assert(propsize == 1); currentnucleus->shapefactor = atof(propval[0]);} 
+         else {currentnucleus->shapefactor = 1.0;}
+         /* normalized diffusion coefficient */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
+         assert(propsize == 1); currentnucleus->D0 = atof(propval[0]);
+         /* normalized migration energy */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
+         assert(propsize == 1); currentnucleus->migration = atof(propval[0]);
+         /* lattice parameter */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
+         if (propsize) {assert(propsize == 1); currentnucleus->minsize = atof(propval[0]);} 
+         else {currentnucleus->minsize = 0.0;}
+         /* atomic volume */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "atomic_volume", buffer, filesize);
+         assert(propsize == 1); currentnucleus->atomicvolume = atof(propval[0]);
+         /* normalization length scale */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
+         assert(propsize == 1); currentnucleus->lengthscale = atof(propval[0]);
+     }
+    }
+
     /* Parsing config file interface */
     {
      INTERFACE *currentinterface = &user->interface[0];
@@ -490,14 +534,16 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          }
          /* segregation potential */
          ierr = GetProperty(propval, &propsize, interfacemapping, "potential", buffer, filesize);
-         assert(ierr || propsize == user->ncp);
-         currentinterface->potential = malloc(user->ncp*sizeof(PetscReal));
-         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->potential[propctr] = atof(propval[propctr]);
+         if (propsize) {
+             assert(propsize == user->ndp); currentinterface->potential = malloc(user->ndp*sizeof(PetscReal));
+             for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->potential[propctr] = atof(propval[propctr]);
+         } else {currentinterface->potential = NULL;}
          /* interface solute mobility */
          ierr = GetProperty(propval, &propsize, interfacemapping, "mobilityc", buffer, filesize);
-         assert(ierr || propsize == user->ncp);
-         currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
+         if (propsize) {
+             assert(propsize == user->ncp); currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
+             for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
+         } else {currentinterface->mobilityc = NULL;}
      }    
     }
 
@@ -517,12 +563,18 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      assert(user->interpolation != NONE_INTERPOLATION);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "finaltime", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.finaltime = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.timestep = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmin", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.mintimestep = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "starttime", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.starttime = atof(propval[0]);} 
+     else {user->solparams.starttime = 0.0;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); 
+     if (propsize) {assert(propsize == 1); user->solparams.timestep = atof(propval[0]);} 
+     else {user->solparams.timestep = 1.0e-18;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmin", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.mintimestep = atof(propval[0]);} 
+     else {user->solparams.mintimestep = 1.0e-18;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
+     else {user->solparams.maxtimestep = user->solparams.finaltime;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
@@ -547,16 +599,27 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      assert(propsize == 1); user->amrparams.minnrefine = atoi(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "amrinterval", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->amrparams.amrinterval = atoi(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "reltol", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.reltol = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "abstol", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.abstol = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "outputfreq", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.outputfreq = atoi(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "outfile", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); strcpy(user->solparams.outfile,propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "petscoptions", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); strcpy(user->solparams.petscoptions,propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "reltol", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.reltol = atof(propval[0]);} 
+     else {user->solparams.reltol = 1.0e-6;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "abstol", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.abstol = atof(propval[0]);} 
+     else {user->solparams.abstol = 1.0e-6;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "random_seed", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.randomseed = atoi(propval[0]);} 
+     else {user->solparams.randomseed = time(0);}
+     MPI_Bcast(&user->solparams.randomseed,1,MPIU_INT,0,PETSC_COMM_WORLD);
+     PetscPrintf(PETSC_COMM_WORLD,"Using random seed: %d\n",user->solparams.randomseed);
+     srand(user->solparams.randomseed);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "outputfreq", buffer, filesize);
+     if (propsize) {assert(propsize == 1); user->solparams.outputfreq = atoi(propval[0]);} 
+     else {user->solparams.outputfreq = 1;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "outfile", buffer, filesize);
+     if (propsize) {assert(propsize == 1); strcpy(user->solparams.outfile,propval[0]);} 
+     else {strcpy(user->solparams.outfile,"output");}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "petscoptions", buffer, filesize);
+     if (propsize) {assert(propsize == 1); strcpy(user->solparams.petscoptions,propval[0]);} 
+     else {strcpy(user->solparams.petscoptions,"");}
      strcat(user->solparams.petscoptions," -dm_p4est_brick_bounds ");
      for (PetscInt dim=0; dim<user->dim; ++dim) {
          char strval[128];
@@ -618,37 +681,11 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      assert(ctrm == user->npf && tok == NULL);
 
-     ierr = GetProperty(propval, &propsize, "mappings", "phase_active_mapping", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize);
-     tok = strtok_r(propval[0], "\n", &savetok);
-     ctrm=0;
-     while (tok != NULL && ctrm < user->npf) {
-         // process the line
-         if (strstr(tok, "of") != NULL) {
-             char stra[128], strb[128];
-             PetscInt sof,m;
-             sscanf(tok, "%s of %s", stra, strb);
-             sof = atoi(stra); m = atoi(strb);
-             assert(m == 0 || m == 1);
-             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
-                 user->phaseactivemapping[j] = m;
-             ctrm += sof;
-         } else {
-             assert(atoi(tok) == 0 || atoi(tok) == 1);
-             user->phaseactivemapping[ctrm++] = atoi(tok);
-         }
-         //advance the token
-         tok = strtok_r(NULL, "\n", &savetok);
-     }
-     assert(ctrm == user->npf && tok == NULL);
-
      ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
      tok = strtok_r(propval[0], "\n", &savetok);
-     PetscInt total_cells = user->dim == 2 ? user->resolution[0]*user->resolution[1] 
-                                           : user->resolution[0]*user->resolution[1]*user->resolution[2];
      ctrm=0;
-     while (tok != NULL && ctrm < user->resolution[2]*user->resolution[1]*user->resolution[0]) {
+     while (tok != NULL && ctrm < total_cells) {
          // process the line
          if (strstr(tok, "of") != NULL) {
              char stra[128], strb[128];
@@ -681,7 +718,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 
      ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
-     user->interfacelist = malloc(user->npf*user->npf*sizeof(uint16_t));
+     user->interfacelist = malloc(user->npf*user->npf*sizeof(PetscInt));
      tok = strtok_r(propval[0], "\n", &savetok);
      ctrm=0;
      while (tok != NULL && ctrm < user->npf*user->npf) {
@@ -724,6 +761,119 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          tok = strtok_r(NULL, "\n", &savetok);
      }
      assert(ctrm == user->npf*user->npf);
+
+     if (user->siteactivity[0]) {
+         ierr = GetProperty(propval, &propsize, "mappings", "site_nucleus_mapping", buffer, filesize);
+         assert(propsize);
+         tok = strtok_r(propval[0], "\n", &savetok);
+         ctrm=0;
+         while (tok != NULL && ctrm < user->siteactivity[0]) {
+             // process the line
+             if (strstr(tok, "of") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt sof,m;
+                 sscanf(tok, "%s of %s", stra, strb);
+                 sof = atoi(stra); m = atoi(strb);
+                 assert(m <= user->nnuclei);
+                 for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                     user->sitenucleusmapping[j] = m-1;
+                 ctrm += sof;
+             } else if (strstr(tok, "to") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt m, mfrom, mto;
+                 sscanf(tok, "%s to %s", stra, strb);
+                 mfrom = atoi(stra); mto = atoi(strb);
+                 assert(mfrom <= user->nnuclei);
+                 assert(mto   <= user->nnuclei);
+                 if (mfrom < mto) {
+                     for (m=mfrom;m<=mto;m++) 
+                         user->sitenucleusmapping[ctrm++] = m-1;
+                 } else {
+                     for (m=mfrom;m>=mto;m--)
+                         user->sitenucleusmapping[ctrm++] = m-1;
+                 }   
+             } else if (atoi(tok)) {
+                 assert(atoi(tok) <= user->nnuclei);
+                 user->sitenucleusmapping[ctrm++] = atoi(tok)-1;
+             }
+             //advance the token
+             tok = strtok_r(NULL, "\n", &savetok);
+         }
+         assert(ctrm == user->siteactivity[0] && tok == NULL);
+
+         ierr = GetProperty(propval, &propsize, "mappings", "site_phase_mapping", buffer, filesize);
+         assert(propsize);
+         tok = strtok_r(propval[0], "\n", &savetok);
+         ctrm=0;
+         while (tok != NULL && ctrm < user->siteactivity[0]) {
+             // process the line
+             if (strstr(tok, "of") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt sof,m;
+                 sscanf(tok, "%s of %s", stra, strb);
+                 sof = atoi(stra); m = atoi(strb);
+                 assert(m <= user->npf);
+                 for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                     user->sitephasemapping[j] = m-1;
+                 ctrm += sof;
+             } else if (strstr(tok, "to") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt m, mfrom, mto;
+                 sscanf(tok, "%s to %s", stra, strb);
+                 mfrom = atoi(stra); mto = atoi(strb);
+                 assert(mfrom <= user->npf);
+                 assert(mto   <= user->npf);
+                 if (mfrom < mto) {
+                     for (m=mfrom;m<=mto;m++) 
+                         user->sitephasemapping[ctrm++] = m-1;
+                 } else {
+                     for (m=mfrom;m>=mto;m--)
+                         user->sitephasemapping[ctrm++] = m-1;
+                 }   
+             } else if (atoi(tok)) {
+                 assert(atoi(tok) <= user->npf);
+                 user->sitephasemapping[ctrm++] = atoi(tok)-1;
+             }
+             //advance the token
+             tok = strtok_r(NULL, "\n", &savetok);
+         }
+         assert(ctrm == user->siteactivity[0] && tok == NULL);
+
+         ierr = GetProperty(propval, &propsize, "mappings", "voxel_site_mapping", buffer, filesize);
+         assert(propsize);
+         tok = strtok_r(propval[0], "\n", &savetok);
+         ctrm=0;
+         while (tok != NULL && ctrm < total_cells) {
+             // process the line
+             if (strstr(tok, "of") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt sof,p;
+                 sscanf(tok, "%s of %s", stra, strb);
+                 sof = atoi(stra); p = atoi(strb);
+                 for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                     user->voxelsitemapping[j] = p-1;;
+                 ctrm+=sof;
+             } else if (strstr(tok, "to") != NULL) {
+                 char stra[128], strb[128];
+                 PetscInt p, pfrom, pto;
+                 sscanf(tok, "%s to %s", stra, strb);
+                 pfrom = atoi(stra); pto = atoi(strb);
+                 if (pfrom < pto) {
+                     for (p=pfrom;p<=pto;p++) 
+                         user->voxelsitemapping[ctrm++] = p-1;
+                 } else {
+                     for (p=pfrom;p>=pto;p--)
+                         user->voxelsitemapping[ctrm++] = p-1;
+                 }   
+             }
+             else if (atoi(tok)) {
+                 user->voxelsitemapping[ctrm++] = atoi(tok)-1;
+             }
+             //advance the token
+             tok = strtok_r(NULL, "\n", &savetok);
+         }
+         assert(ctrm == total_cells && tok == NULL);
+     }
     } 
 
     free(buffer);   

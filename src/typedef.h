@@ -50,10 +50,12 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
-/* Nucleation parameters */
-typedef struct NUCLEATION {
-    PetscReal zeldovich_c, beta_c, diffusion_c, gibbs_c;
-} NUCLEATION;
+/* Nucleus parameters */
+typedef struct NUCLEUS {
+    uint16_t matrixlist[MAXAP+1];
+    PetscReal D0, migration, gamma, shapefactor;
+    PetscReal minsize, atomicvolume, lengthscale;
+} NUCLEUS;
 
 /* Temperature series */
 typedef struct TSeries {
@@ -104,7 +106,6 @@ typedef struct MATERIAL {
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0;
     CHEMFE energy;
-    NUCLEATION nucleation;
 } MATERIAL;
 
 /* interface container */
@@ -122,7 +123,7 @@ typedef struct AMRPARAMS {
 /* solution solparams */
 typedef struct SOLUTIONPARAMS {
     /* time parameters */
-    PetscReal finaltime, timestep, mintimestep, maxtimestep;
+    PetscReal starttime, finaltime, timestep, mintimestep, maxtimestep;
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
@@ -131,6 +132,8 @@ typedef struct SOLUTIONPARAMS {
     PetscReal *temperature_T, *temperature_t;
     /* tolerances */
     PetscReal reltol, abstol;
+    /* random seed */
+    PetscInt  randomseed;
     /* output parameters */
     PetscInt  outputfreq;
     char      outfile[128];
@@ -140,10 +143,13 @@ typedef struct SOLUTIONPARAMS {
 
 /* solution parameters */
 typedef struct AppCtx {
+    /* MPI rank */
+    PetscMPIInt rank;
     /* number of phases, materials, interfaces and components */
     PetscInt npf, ndp, ncp, ntp;
     PetscInt nf, nmat;
-    char **componentname, **materialname, **interfacename;
+    PetscInt nsites, nnuclei;
+    char **componentname, **materialname, **interfacename, **nucleusname;
     /* grid resolution */
     PetscInt dim, *resolution;
     PetscReal *size;
@@ -159,11 +165,14 @@ typedef struct AppCtx {
     PetscReal *cellgeom;
     /* phase material parameters */
     MATERIAL *material;
-    uint16_t *voxelphasemapping, *phasematerialmapping, *phaseactivemapping;
+    NUCLEUS *nucleus;
+    PetscInt *voxelphasemapping, *phasematerialmapping;
+    PetscInt *voxelsitemapping, *sitenucleusmapping, *sitephasemapping;
+    PetscInt *siteactivity;
     interpolation_t interpolation;
     /* interface material parameters */
     INTERFACE *interface;
-    uint16_t *interfacelist;
+    PetscInt *interfacelist;
     /* solution solparams */
     SOLUTIONPARAMS solparams;
     /* AMR solparams */
