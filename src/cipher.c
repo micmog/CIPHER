@@ -373,143 +373,143 @@ PetscErrorCode PostStep(TS ts)
     temperature = Interpolate(currenttime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     
     /* Update nucleation events */
-    {
-     PetscReal composition[PF_SIZE*user->ncp];
-     PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
-     PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
-     char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
+    if (user->nsites) {
+        PetscReal composition[PF_SIZE*user->ncp];
+        PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
+        PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
+        char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
 
-     ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
-     ierr = DMGetLabel(user->da_solution, "site", &slabel);
-     ierr = VecGetArray(solution,&fdof);
-     memset(gv_leaf,0,user->nsites*sizeof(PetscReal));
-     memset(volume_leaf,0,user->nsites*sizeof(PetscReal));
-     for (site = 0; site<user->nsites; site++) {
-         if (user->siteactivity_global[site]) {
-             DMLabelGetStratumIS(slabel, site+1, &siteIS);
-             nsitecells = 0;
-             if (siteIS) {
-                 ISGetLocalSize(siteIS, &nsitecells);
-                 ISGetIndices(siteIS, &sitecells);
-             }    
-             site_phase = user->sitephasemapping[site];
-             currentnucleus = &user->nucleus[user->sitenucleusmapping[site]];
-             currentmaterial = &user->material[user->phasematerialmapping[site_phase]];
-             for (cell = 0; cell < nsitecells; ++cell) {
-                 ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
-                 if (ngdof > 0) {
-                     /* get cell state */
-                     offset = NULL;
-                     ierr = DMPlexPointGlobalRef(user->da_solution, sitecells[cell], fdof, &offset);
-                     F2IFUNC(slist,&offset[AS_OFFSET]);
-                     pcell = &offset[PF_OFFSET];
-                     dcell = &offset[DP_OFFSET];
-                     ccell = &offset[CP_OFFSET];
+        ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
+        ierr = DMGetLabel(user->da_solution, "site", &slabel);
+        ierr = VecGetArray(solution,&fdof);
+        memset(gv_leaf,0,user->nsites*sizeof(PetscReal));
+        memset(volume_leaf,0,user->nsites*sizeof(PetscReal));
+        for (site = 0; site<user->nsites; site++) {
+            if (user->siteactivity_global[site]) {
+                DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                nsitecells = 0;
+                if (siteIS) {
+                    ISGetLocalSize(siteIS, &nsitecells);
+                    ISGetIndices(siteIS, &sitecells);
+                }    
+                site_phase = user->sitephasemapping[site];
+                currentnucleus = &user->nucleus[user->sitenucleusmapping[site]];
+                currentmaterial = &user->material[user->phasematerialmapping[site_phase]];
+                for (cell = 0; cell < nsitecells; ++cell) {
+                    ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
+                    if (ngdof > 0) {
+                        /* get cell state */
+                        offset = NULL;
+                        ierr = DMPlexPointGlobalRef(user->da_solution, sitecells[cell], fdof, &offset);
+                        F2IFUNC(slist,&offset[AS_OFFSET]);
+                        pcell = &offset[PF_OFFSET];
+                        dcell = &offset[DP_OFFSET];
+                        ccell = &offset[CP_OFFSET];
 
-                     /* check that active phases are a subset of matrix phases */
-                     SetIntersection(setintersection,injectionL,injectionR,slist,currentnucleus->matrixlist);
-                     if (setintersection[0] != slist[0]) {user->siteactivity_global[site] = 0; break;}
+                        /* check that active phases are a subset of matrix phases */
+                        SetIntersection(setintersection,injectionL,injectionR,slist,currentnucleus->matrixlist);
+                        if (setintersection[0] != slist[0]) {user->siteactivity_global[site] = 0; break;}
                 
-                     /* calculate phase interpolants */
-                     EvalInterpolant(interpolant,pcell,slist[0]);
+                        /* calculate phase interpolants */
+                        EvalInterpolant(interpolant,pcell,slist[0]);
                 
-                     memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-                     for (gk=0; gk<slist[0]; gk++) {
-                         for (gj=gk+1; gj<slist[0]; gj++) {
-                             interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
-                             currentinterface = &user->interface[interfacekj];
-                             if (currentinterface->potential) {
-                                 for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
-                                                                                   * currentinterface->potential[c];
-                             }    
-                         }
-                     }    
-                     slist[++slist[0]] = site_phase;
-                     ChemicalpotentialExplicit(&ccell[(slist[0]-1)*user->ndp],currentmaterial->c0,temperature,site_phase,user);
-                     for (g =0; g<slist[0];  g++) {
-                         for (c=0; c<user->ndp; c++) chempot_im[c] = dcell[c] - ccell[g*user->ndp+c] - chempot_interface[c];
-                         Composition(&composition[g*user->ncp],chempot_im,temperature,slist[g+1],user);
-                     }
-                     Chemenergy(chemsource,composition,dcell,temperature,slist,user);
-                     cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
-                     for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
-                 }
-             }    
-             if (siteIS) {
-                 ISRestoreIndices(siteIS, &sitecells);
-                 ISDestroy(&siteIS);
-             }
-         }
-     }       
-     PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
-     PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
-     memset(user->siteactivity_global,0,user->nsites*sizeof(char));
-     PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
-     PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+                        memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
+                        for (gk=0; gk<slist[0]; gk++) {
+                            for (gj=gk+1; gj<slist[0]; gj++) {
+                                interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                                currentinterface = &user->interface[interfacekj];
+                                if (currentinterface->potential) {
+                                    for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
+                                                                                      * currentinterface->potential[c];
+                                }    
+                            }
+                        }    
+                        slist[++slist[0]] = site_phase;
+                        ChemicalpotentialExplicit(&ccell[(slist[0]-1)*user->ndp],currentmaterial->c0,temperature,site_phase,user);
+                        for (g =0; g<slist[0];  g++) {
+                            for (c=0; c<user->ndp; c++) chempot_im[c] = dcell[c] - ccell[g*user->ndp+c] - chempot_interface[c];
+                            Composition(&composition[g*user->ncp],chempot_im,temperature,slist[g+1],user);
+                        }
+                        Chemenergy(chemsource,composition,dcell,temperature,slist,user);
+                        cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
+                        for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
+                    }
+                }    
+                if (siteIS) {
+                    ISRestoreIndices(siteIS, &sitecells);
+                    ISDestroy(&siteIS);
+                }
+            }
+        }       
+        PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
+        PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
+        memset(user->siteactivity_global,0,user->nsites*sizeof(char));
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
     
-     memset(gv_root,0,user->nsites_local*sizeof(PetscReal));
-     PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
-     PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
-     memset(volume_root,0,user->nsites_local*sizeof(PetscReal));
-     PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
-     PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
-     memset(deactive_root,0,user->nsites_local*sizeof(char));
-     for (site=0; site<user->nsites_local; site++) {
-         if (user->siteactivity_local[site]) {
-             deactive_root[site] = Nucleation(currenttime,currenttimestep,temperature,
-                                              volume_root[site],gv_root[site],
-                                              user->siteoffset+site,user);
-         }    
-     }  
-     memset(deactive_leaf,0,user->nsites*sizeof(char));
-     PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
-     PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
+        memset(gv_root,0,user->nsites_local*sizeof(PetscReal));
+        PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
+        PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
+        memset(volume_root,0,user->nsites_local*sizeof(PetscReal));
+        PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
+        PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
+        memset(deactive_root,0,user->nsites_local*sizeof(char));
+        for (site=0; site<user->nsites_local; site++) {
+            if (user->siteactivity_local[site]) {
+                deactive_root[site] = Nucleation(currenttime,currenttimestep,temperature,
+                                                 volume_root[site],gv_root[site],
+                                                 user->siteoffset+site,user);
+            }    
+        }  
+        memset(deactive_leaf,0,user->nsites*sizeof(char));
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
 
-     char reset = 0;
-     for (site=0; site<user->nsites; site++) {
-         if (deactive_leaf[site]) {
-             reset = 1;
-             user->siteactivity_global[site] = 0;
-             site_phase = user->sitephasemapping[site];
-             DMLabelGetStratumIS(slabel, site+1, &siteIS);
-             nsitecells = 0;
-             if (siteIS) {
-                 ISGetLocalSize(siteIS, &nsitecells);
-                 ISGetIndices(siteIS, &sitecells);
-             }    
-             for (cell = 0; cell < nsitecells; ++cell) {
-                 ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
-                 if (ngdof > 0) {
-                     /* get cell state */
-                     offset = NULL;
-                     ierr = DMPlexPointGlobalRef(user->da_solution, sitecells[cell], fdof, &offset); CHKERRQ(ierr);
-                     F2IFUNC(slist,&offset[AS_OFFSET]);
-                     pcell = &offset[PF_OFFSET];
-                     dcell = &offset[DP_OFFSET];
-                     ccell = &offset[CP_OFFSET];
+        char reset = 0;
+        for (site=0; site<user->nsites; site++) {
+            if (deactive_leaf[site]) {
+                reset = 1;
+                user->siteactivity_global[site] = 0;
+                site_phase = user->sitephasemapping[site];
+                DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                nsitecells = 0;
+                if (siteIS) {
+                    ISGetLocalSize(siteIS, &nsitecells);
+                    ISGetIndices(siteIS, &sitecells);
+                }    
+                for (cell = 0; cell < nsitecells; ++cell) {
+                    ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
+                    if (ngdof > 0) {
+                        /* get cell state */
+                        offset = NULL;
+                        ierr = DMPlexPointGlobalRef(user->da_solution, sitecells[cell], fdof, &offset); CHKERRQ(ierr);
+                        F2IFUNC(slist,&offset[AS_OFFSET]);
+                        pcell = &offset[PF_OFFSET];
+                        dcell = &offset[DP_OFFSET];
+                        ccell = &offset[CP_OFFSET];
 
-                     /* update cell state */
-                     slist[0] = 1; slist[1] = site_phase;
-                     I2FFUNC(&offset[AS_OFFSET],slist);
-                     pcell[0] = 1.0;
-                     Chemicalpotential(dcell,currentmaterial->c0,temperature,site_phase,user);
-                     ChemicalpotentialExplicit(ccell,currentmaterial->c0,temperature,site_phase,user);
-                 }
-             }
-             if (siteIS) {
-                 ISRestoreIndices(siteIS, &sitecells);
-                 ISDestroy(&siteIS);
-             }
-         }    
-     }        
-     ierr = VecRestoreArray(solution,&fdof);
-     MPI_Allreduce(MPI_IN_PLACE,&reset,1,MPI_CHAR,MPI_LOR,PETSC_COMM_WORLD);
-     if (reset) ierr = TSSetTimeStep(ts,user->solparams.mintimestep);
-     PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
-     PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
-     memset(user->siteactivity_global,0,user->nsites*sizeof(char));
-     PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
-     PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+                        /* update cell state */
+                        slist[0] = 1; slist[1] = site_phase;
+                        I2FFUNC(&offset[AS_OFFSET],slist);
+                        pcell[0] = 1.0;
+                        Chemicalpotential(dcell,currentmaterial->c0,temperature,site_phase,user);
+                        ChemicalpotentialExplicit(ccell,currentmaterial->c0,temperature,site_phase,user);
+                    }
+                }
+                if (siteIS) {
+                    ISRestoreIndices(siteIS, &sitecells);
+                    ISDestroy(&siteIS);
+                }
+            }    
+        }        
+        ierr = VecRestoreArray(solution,&fdof);
+        MPI_Allreduce(MPI_IN_PLACE,&reset,1,MPI_CHAR,MPI_LOR,PETSC_COMM_WORLD);
+        if (reset) ierr = TSSetTimeStep(ts,user->solparams.mintimestep);
+        PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
+        PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
+        memset(user->siteactivity_global,0,user->nsites*sizeof(char));
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
     }
 
     /* Determine active phase set, update composition */
@@ -873,36 +873,36 @@ int main(int argc,char **args)
   }
 
   /* Set up star forest */
-  {
-   PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
-   PetscSFNode *leaves;
-   IS siteIS;
-   DMLabel slabel;
+  if (ctx.nsites) {
+      PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
+      PetscSFNode *leaves;
+      IS siteIS;
+      DMLabel slabel;
 
-   ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
-   ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
-   ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-   memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
-   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-       DMLabelGetStratumIS(slabel, site+1, &siteIS);
-       if (siteIS) {rootctr++; sitepresent[site] = 1;}
-   }
-   ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
-   ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-   sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
-   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-       if (sitepresent[site]) {
-           roots[rootctr] = site;
-           leaves[rootctr].rank = site/sitesperproc;
-           leaves[rootctr].index = site%sitesperproc;
-           rootctr++;
-       }
-   }
-   ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
-   ierr = PetscSFSetUp(ctx.nucleation_sf);
-   memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-   PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-   PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+      ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
+      ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
+      ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+      memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
+      for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+          DMLabelGetStratumIS(slabel, site+1, &siteIS);
+          if (siteIS) {rootctr++; sitepresent[site] = 1;}
+      }
+      ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
+      ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
+      sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
+      for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+          if (sitepresent[site]) {
+              roots[rootctr] = site;
+              leaves[rootctr].rank = site/sitesperproc;
+              leaves[rootctr].index = site%sitesperproc;
+              rootctr++;
+          }
+      }
+      ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
+      ierr = PetscSFSetUp(ctx.nucleation_sf);
+      memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
+      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
   }
   
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1015,39 +1015,39 @@ int main(int argc,char **args)
             }
           }
           
-          {
-           PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
-           PetscSFNode *leaves;
-           IS siteIS;
-           DMLabel slabel;
+          if (ctx.nsites) {
+              PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
+              PetscSFNode *leaves;
+              IS siteIS;
+              DMLabel slabel;
 
-           ierr = PetscSFDestroy(&ctx.nucleation_sf);
-           ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
-           ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
-           ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-           memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
-           for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-               if (ctx.siteactivity_global[site]) {
-                   DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                   if (siteIS) {rootctr++; sitepresent[site] = 1;}
-               }
-           }
-           ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
-           ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-           sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
-           for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-               if (sitepresent[site]) {
-                   roots[rootctr] = site;
-                   leaves[rootctr].rank = site/sitesperproc;
-                   leaves[rootctr].index = site%sitesperproc;
-                   rootctr++;
-               }
-           }
-           ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
-           ierr = PetscSFSetUp(ctx.nucleation_sf);
-           memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-           PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-           PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+              ierr = PetscSFDestroy(&ctx.nucleation_sf);
+              ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
+              ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
+              ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+              memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
+              for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                  if (ctx.siteactivity_global[site]) {
+                      DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                      if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                  }
+              }
+              ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
+              ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
+              sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
+              for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                  if (sitepresent[site]) {
+                      roots[rootctr] = site;
+                      leaves[rootctr].rank = site/sitesperproc;
+                      leaves[rootctr].index = site%sitesperproc;
+                      rootctr++;
+                  }
+              }
+              ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
+              ierr = PetscSFSetUp(ctx.nucleation_sf);
+              memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
+              PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+              PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
           }
 
           {
@@ -1183,39 +1183,39 @@ int main(int argc,char **args)
                     }
                   }
           
-                  {
-                   PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
-                   PetscSFNode *leaves;
-                   IS siteIS;
-                   DMLabel slabel;
+                  if (!ctx.nsites){
+                      PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
+                      PetscSFNode *leaves;
+                      IS siteIS;
+                      DMLabel slabel;
 
-                   ierr = PetscSFDestroy(&ctx.nucleation_sf);
-                   ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
-                   ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
-                   ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-                   memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
-                   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                       if (ctx.siteactivity_global[site]) {
-                           DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                           if (siteIS) {rootctr++; sitepresent[site] = 1;}
-                       }
-                   }
-                   ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
-                   ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-                   sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
-                   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                       if (sitepresent[site]) {
-                           roots[rootctr] = site;
-                           leaves[rootctr].rank = site/sitesperproc;
-                           leaves[rootctr].index = site%sitesperproc;
-                           rootctr++;
-                       }
-                   }
-                   ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
-                   ierr = PetscSFSetUp(ctx.nucleation_sf);
-                   memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-                   PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-                   PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+                      ierr = PetscSFDestroy(&ctx.nucleation_sf);
+                      ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
+                      ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
+                      ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+                      memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
+                      for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                          if (ctx.siteactivity_global[site]) {
+                              DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                              if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                          }
+                      }
+                      ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
+                      ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
+                      sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
+                      for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                          if (sitepresent[site]) {
+                              roots[rootctr] = site;
+                              leaves[rootctr].rank = site/sitesperproc;
+                              leaves[rootctr].index = site%sitesperproc;
+                              rootctr++;
+                          }
+                      }
+                      ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
+                      ierr = PetscSFSetUp(ctx.nucleation_sf);
+                      memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
+                      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+                      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
                   }
               
                   {
