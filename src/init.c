@@ -231,6 +231,17 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       }
       user->ndp = user->ncp-1;
      }
+     /* output names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "outputs", buffer, filesize); CHKERRQ(ierr);
+      assert(propsize >= 0);
+      user->noutputs = propsize;
+      user->outputname = malloc(user->noutputs*sizeof(char *));
+      for (PetscInt o=0; o<user->noutputs; o++) {
+          user->outputname[o] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->outputname[o],propval[o]);
+      }
+     }
     } 
     
     /* field offsets */

@@ -621,9 +621,10 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetStepNumber(ts, &user->solparams.step);CHKERRQ(ierr);
     if (user->solparams.step%user->solparams.outputfreq == 0) {
        Vec               Xout;
-       PetscScalar       *xout, *phase, *avgcomp, composition[PF_SIZE*user->ncp], interpolant[PF_SIZE];
+       PetscScalar       max, *xout, avgcomp[user->ncp], composition[PF_SIZE*user->ncp], interpolant[PF_SIZE];
        char              name[256];
        PetscViewer       viewer;
+       PetscInt          o;
        
        ierr = DMGetGlobalVector(user->da_output,&Xout); CHKERRQ(ierr);
        sprintf(name, "step %d",user->solparams.step);
@@ -642,34 +643,66 @@ PetscErrorCode PostStep(TS ts)
            ccell = &offset[CP_OFFSET];
            offset = NULL;
            ierr = DMPlexPointGlobalRef(user->da_output,cell, xout, &offset); CHKERRQ(ierr);
-           phase = &offset[0];
-           avgcomp = &offset[1];
        
-           PetscReal max = -LARGE;
            EvalInterpolant(interpolant,pcell,slist[0]);
-           for (g=0; g<slist[0]; g++) {
-               if (interpolant[g] > max) {
-                  max = interpolant[g];
-                  phase[0] = (PetscScalar) slist[g+1];
-               }
-           }
-           memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-           for (gk=0; gk<slist[0]; gk++) {
-               for (gj=gk+1; gj<slist[0]; gj++) {
-                   interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
-                   currentinterface = &user->interface[interfacekj];
-                   if (currentinterface->potential) {
-                       for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
-                                                                         * currentinterface->potential[c];
+
+           for (o=0; o<user->noutputs; o++, offset++) {
+               strcpy(name,user->outputname[o]);
+               if (!strcmp(name,"phaseid")) {
+                   max = -LARGE;
+                   for (g=0; g<slist[0]; g++) {
+                       if (interpolant[g] > max) {
+                          max = interpolant[g];
+                          *offset = (PetscScalar) slist[g+1];
+                       }
+                   }
+               } else if (!strcmp(name,"matid")) {
+                   max = -LARGE;
+                   for (g=0; g<slist[0]; g++) {
+                       if (interpolant[g] > max) {
+                          max = interpolant[g];
+                          *offset = (PetscScalar) user->phasematerialmapping[slist[g+1]];
+                       }
+                   }
+               } else if (strstr(name,"_c")) {
+                   memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
+                   for (gk=0; gk<slist[0]; gk++) {
+                       for (gj=gk+1; gj<slist[0]; gj++) {
+                           interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                           currentinterface = &user->interface[interfacekj];
+                           if (currentinterface->potential) {
+                               for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
+                                                                                 * currentinterface->potential[c];
+                           }    
+                       }
                    }    
+                   memset(avgcomp,0,user->ncp*sizeof(PetscReal));
+                   for (g =0; g<slist[0];  g++) {
+                       for (c=0; c<user->ndp; c++) chempot_im[c] = dcell[c] - ccell[g*user->ndp+c] - chempot_interface[c];
+                       Composition(&composition[g*user->ncp],chempot_im,temperature,slist[g+1],user);
+                       for (c=0; c<user->ncp; c++) {
+                           avgcomp[c] += interpolant[g]*composition[g*user->ncp+c];
+                       }    
+                   }
+                   char *tok, *savetok;
+                   tok = strtok_r(name, "_", &savetok);
+                   for (c=0; c<user->ncp; c++) {
+                       if (!strcmp(user->componentname[c],tok)) *offset = avgcomp[c];
+                   }
+               } else if (strstr(name,"_phi")) {
+                   char *tok, *savetok;
+                   tok = strtok_r(name, "_", &savetok);
+                   *offset = 0.0;
+                   for (g=0; g<slist[0]; g++) {
+                       if (slist[g+1] == atoi(tok)) *offset = pcell[g];
+                   }
+               } else if (strstr(name,"_chempot")) {
+                   char *tok, *savetok;
+                   tok = strtok_r(name, "_", &savetok);
+                   for (c=0; c<user->ndp; c++) {
+                       if (!strcmp(user->componentname[c],tok)) *offset = dcell[c];
+                   }
                }
-           }    
-           for (g =0; g<slist[0];  g++) {
-               for (c=0; c<user->ndp; c++) chempot_im[c] = dcell[c] - ccell[g*user->ndp+c] - chempot_interface[c];
-               Composition(&composition[g*user->ncp],chempot_im,temperature,slist[g+1],user);
-               for (c=0; c<user->ncp; c++) {
-                   avgcomp[c] += interpolant[g]*composition[g*user->ncp+c];
-               }    
            }
        }
        ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
@@ -768,7 +801,7 @@ int main(int argc,char **args)
     PetscFE output_fe;
     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
     ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                1+ctx.ncp,
+                                ctx.noutputs,
                                 PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
     ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
     ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
@@ -1022,7 +1055,7 @@ int main(int argc,char **args)
             ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
             ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
             ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                        1+ctx.ncp,
+                                        ctx.noutputs,
                                         PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
             ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
             ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
@@ -1190,7 +1223,7 @@ int main(int argc,char **args)
                     ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
                     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
                     ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                                1+ctx.ncp,
+                                                ctx.noutputs,
                                                 PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
                     ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
                     ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);

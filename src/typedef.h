@@ -176,6 +176,9 @@ typedef struct AppCtx {
     SOLUTIONPARAMS solparams;
     /* AMR solparams */
     AMRPARAMS amrparams;
+    /* outputs */
+    PetscInt noutputs;
+    char **outputname;
 } AppCtx;
 
 #undef TYPEDEF_IMPORT
