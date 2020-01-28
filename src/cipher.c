@@ -64,7 +64,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = DMGetLocalVector(user->da_solution,&laplacian); CHKERRQ(ierr);
     ierr = VecZeroEntries(laplacian); CHKERRQ(ierr);
     ierr = VecGetArray(laplacian,&lap); CHKERRQ(ierr);
-    PetscReal temperature = Interpolate(ftime,user->solparams.temperature_T,user->solparams.temperature_t,user->solparams.n_temperature);
+    PetscReal temperature = Interpolate(ftime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
 
     /* Precalculate cell quantities */
     if (user->ndp) {
@@ -370,7 +370,7 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
     ierr = TSGetTime(ts,&currenttime);CHKERRQ(ierr);
     ierr = TSGetTimeStep(ts,&currenttimestep);CHKERRQ(ierr);
-    temperature = Interpolate(currenttime,user->solparams.temperature_T,user->solparams.temperature_t,user->solparams.n_temperature);
+    temperature = Interpolate(currenttime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     
     /* Update nucleation events */
     {
@@ -697,8 +697,6 @@ static PetscErrorCode InitializeTS(DM dm, AppCtx *user, TS *ts)
   ierr = TSSetDM(*ts, dm);CHKERRQ(ierr);
   ierr = TSSetApplicationContext(*ts, user);CHKERRQ(ierr);
   ierr = TSSetRHSFunction(*ts, NULL, RHSFunction, user);CHKERRQ(ierr);
-  ierr = TSSetMaxTime(*ts,user->solparams.finaltime);CHKERRQ(ierr);
-  ierr = TSSetExactFinalTime(*ts,TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetPostStep(*ts,PostStep); CHKERRQ(ierr);
   ierr = TSGetAdapt(*ts,&adapt); CHKERRQ(ierr);
   ierr = TSAdaptSetType(adapt,TSADAPTDSP); CHKERRQ(ierr);
@@ -1036,168 +1034,175 @@ int main(int argc,char **args)
   }    
   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
 
-  PetscReal currenttime = ctx.solparams.starttime;
+  PetscReal currenttime = ctx.solparams.time[0];
   PetscInt  nsteps = 0;
-  for (;currenttime < ctx.solparams.finaltime;) {
-      ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
-      ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
-      ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
-      ierr = TSSetMaxSteps(ts,nsteps+ctx.amrparams.amrinterval);CHKERRQ(ierr);
-      ierr = TSSolve(ts,solution);CHKERRQ(ierr);
-      ierr = TSGetSolveTime(ts,&currenttime);CHKERRQ(ierr);
-      ierr = TSGetStepNumber(ts,&nsteps);CHKERRQ(ierr);
-      ierr = TSGetTimeStep(ts,&ctx.solparams.timestep);CHKERRQ(ierr);
-      {
-          PetscPrintf(PETSC_COMM_WORLD,"...remeshing...\n");
-          /* Adapt mesh */
-          PetscInt cell;
-          PetscScalar *fdof, *offset;
-          DMLabel adaptlabel;
-          DM postsolforest;
-          Vec lsolution, postvec;
+  for (ctx.solparams.currentloadcase = 0;
+       ctx.solparams.currentloadcase < ctx.solparams.nloadcases-1;
+       ctx.solparams.currentloadcase++) {
+      ctx.solparams.timestep = ctx.solparams.mintimestep;
+      ierr = TSSetMaxTime(ts,ctx.solparams.time[ctx.solparams.currentloadcase+1]);CHKERRQ(ierr);
+      ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
+      for (;currenttime < ctx.solparams.time[ctx.solparams.currentloadcase+1];) {
+          ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
+          ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
+          ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
+          ierr = TSSetMaxSteps(ts,nsteps+ctx.amrparams.amrinterval-nsteps%ctx.amrparams.amrinterval);CHKERRQ(ierr);
+          ierr = TSSolve(ts,solution);CHKERRQ(ierr);
+          ierr = TSGetSolveTime(ts,&currenttime);CHKERRQ(ierr);
+          ierr = TSGetStepNumber(ts,&nsteps);CHKERRQ(ierr);
+          ierr = TSGetTimeStep(ts,&ctx.solparams.timestep);CHKERRQ(ierr);
+          if (!(nsteps%ctx.amrparams.amrinterval)) {
+              PetscPrintf(PETSC_COMM_WORLD,"...remeshing...\n");
+              /* Adapt mesh */
+              PetscInt cell;
+              PetscScalar *fdof, *offset;
+              DMLabel adaptlabel;
+              DM postsolforest;
+              Vec lsolution, postvec;
       
-          ierr = DMLabelCreate(PETSC_COMM_SELF,"adapt",&adaptlabel);CHKERRQ(ierr);
-          ierr = DMLabelSetDefaultValue(adaptlabel,DM_ADAPT_COARSEN);CHKERRQ(ierr);
+              ierr = DMLabelCreate(PETSC_COMM_SELF,"adapt",&adaptlabel);CHKERRQ(ierr);
+              ierr = DMLabelSetDefaultValue(adaptlabel,DM_ADAPT_COARSEN);CHKERRQ(ierr);
 
-          ierr = DMGetLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
-          ierr = DMGlobalToLocalBegin(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
-          ierr = DMGlobalToLocalEnd(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
-          ierr = VecGetArray(lsolution, &fdof); CHKERRQ(ierr);
-          for (cell = 0; cell < ctx.ninteriorcells; ++cell) {
-              offset = NULL;
-              ierr = DMPlexPointLocalRef(ctx.da_solution, cell, fdof, &offset); CHKERRQ(ierr);
-              if (round(offset[AS_OFFSET]) > 1) {
-                  ierr = DMLabelSetValue(adaptlabel, cell, DM_ADAPT_REFINE); CHKERRQ(ierr);
-              }    
-          }
-          ierr = VecRestoreArray(lsolution, &fdof); CHKERRQ(ierr);
-          ierr = DMRestoreLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
+              ierr = DMGetLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
+              ierr = DMGlobalToLocalBegin(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
+              ierr = DMGlobalToLocalEnd(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
+              ierr = VecGetArray(lsolution, &fdof); CHKERRQ(ierr);
+              for (cell = 0; cell < ctx.ninteriorcells; ++cell) {
+                  offset = NULL;
+                  ierr = DMPlexPointLocalRef(ctx.da_solution, cell, fdof, &offset); CHKERRQ(ierr);
+                  if (round(offset[AS_OFFSET]) > 1) {
+                      ierr = DMLabelSetValue(adaptlabel, cell, DM_ADAPT_REFINE); CHKERRQ(ierr);
+                  }    
+              }
+              ierr = VecRestoreArray(lsolution, &fdof); CHKERRQ(ierr);
+              ierr = DMRestoreLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
 
-          { 
-            PetscInt site, nsitecells;
-            const PetscInt *sitecells;
-            IS siteIS;
-            DMLabel slabel;
+              { 
+                PetscInt site, nsitecells;
+                const PetscInt *sitecells;
+                IS siteIS;
+                DMLabel slabel;
        
-            ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-            for (site = 0; site<ctx.nsites; site++) {
-                if (ctx.siteactivity_global[site]) {
-                    DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                    if (siteIS) {
-                        ISGetLocalSize(siteIS, &nsitecells);
-                        ISGetIndices(siteIS, &sitecells);
-                        for (cell = 0; cell < nsitecells; ++cell) {
-                            ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+                for (site = 0; site<ctx.nsites; site++) {
+                    if (ctx.siteactivity_global[site]) {
+                        DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                        if (siteIS) {
+                            ISGetLocalSize(siteIS, &nsitecells);
+                            ISGetIndices(siteIS, &sitecells);
+                            for (cell = 0; cell < nsitecells; ++cell) {
+                                ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                            }
+                            ISRestoreIndices(siteIS, &sitecells);
+                            ISDestroy(&siteIS);
                         }
-                        ISRestoreIndices(siteIS, &sitecells);
-                        ISDestroy(&siteIS);
                     }
                 }
-            }
-          } 
+              } 
 
-          postsolforest = NULL;
-          ierr = DMAdaptLabel(ctx.da_solforest,adaptlabel,&postsolforest);CHKERRQ(ierr);
-          if (postsolforest != NULL) {
-              ierr = DMCreateGlobalVector(postsolforest, &postvec);CHKERRQ(ierr);
-              ierr = DMForestTransferVec(ctx.da_solforest, solution, postsolforest, postvec, PETSC_TRUE, 0.0);CHKERRQ(ierr);
-              ierr = VecDestroy(&solution);CHKERRQ(ierr);
-              ierr = DMDestroy(&ctx.da_solforest);CHKERRQ(ierr);
-              ierr = DMDestroy(&ctx.da_solution);CHKERRQ(ierr);
-              ctx.da_solforest = postsolforest;
-              ierr = DMForestSetAdaptivityForest(ctx.da_solforest,NULL);CHKERRQ(ierr);
-              ierr = DMConvert(ctx.da_solforest,DMPLEX,&ctx.da_solution);CHKERRQ(ierr);
-              ierr = DMCopyDisc(ctx.da_solforest,ctx.da_solution);CHKERRQ(ierr);
-              ierr = DMCreateGlobalVector(ctx.da_solution,&solution);CHKERRQ(ierr);
-              ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
-              ierr = VecDestroy(&postvec);CHKERRQ(ierr);
+              postsolforest = NULL;
+              ierr = DMAdaptLabel(ctx.da_solforest,adaptlabel,&postsolforest);CHKERRQ(ierr);
+              if (postsolforest != NULL) {
+                  ierr = DMCreateGlobalVector(postsolforest, &postvec);CHKERRQ(ierr);
+                  ierr = DMForestTransferVec(ctx.da_solforest, solution, postsolforest, postvec, PETSC_TRUE, 0.0);CHKERRQ(ierr);
+                  ierr = VecDestroy(&solution);CHKERRQ(ierr);
+                  ierr = DMDestroy(&ctx.da_solforest);CHKERRQ(ierr);
+                  ierr = DMDestroy(&ctx.da_solution);CHKERRQ(ierr);
+                  ctx.da_solforest = postsolforest;
+                  ierr = DMForestSetAdaptivityForest(ctx.da_solforest,NULL);CHKERRQ(ierr);
+                  ierr = DMConvert(ctx.da_solforest,DMPLEX,&ctx.da_solution);CHKERRQ(ierr);
+                  ierr = DMCopyDisc(ctx.da_solforest,ctx.da_solution);CHKERRQ(ierr);
+                  ierr = DMCreateGlobalVector(ctx.da_solution,&solution);CHKERRQ(ierr);
+                  ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
+                  ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
-              {
-                PetscSection lsection, gsection;
-                PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+                  {
+                    PetscSection lsection, gsection;
+                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
             
-                ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
-                ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
-                ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
-                free(ctx.localcells);
-                ctx.localcells = malloc((pend-pstart)*sizeof(PetscInt)); 
-                ctx.nlocalcells = 0;
-                ctx.ninteriorcells = 0;
-                for (point = pstart; point < pend; ++point) {
-                    ierr = PetscSectionGetDof(lsection, point, &nldof);
-                    ierr = PetscSectionGetDof(gsection, point, &ngdof);
-                    if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
-                    if (nldof > 0) ++(ctx.ninteriorcells);
-                }
-                ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
-                free(ctx.localfaces);
-                ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
-                for (point = pstart; point < pend; ++point) {
-                    ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
-                    ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
-                    if (nsupp != 2 || nchild > 0) continue;
-                    ctx.localfaces[(ctx.nlocalfaces)++] = point;
-                }
-                free(ctx.cellgeom);
-                ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
-                for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-                    PetscReal cvolume;
-                    ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
-                    ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
-                }
-              }
+                    ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
+                    ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
+                    ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
+                    free(ctx.localcells);
+                    ctx.localcells = malloc((pend-pstart)*sizeof(PetscInt)); 
+                    ctx.nlocalcells = 0;
+                    ctx.ninteriorcells = 0;
+                    for (point = pstart; point < pend; ++point) {
+                        ierr = PetscSectionGetDof(lsection, point, &nldof);
+                        ierr = PetscSectionGetDof(gsection, point, &ngdof);
+                        if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
+                        if (nldof > 0) ++(ctx.ninteriorcells);
+                    }
+                    ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
+                    free(ctx.localfaces);
+                    ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
+                    for (point = pstart; point < pend; ++point) {
+                        ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+                        ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
+                        if (nsupp != 2 || nchild > 0) continue;
+                        ctx.localfaces[(ctx.nlocalfaces)++] = point;
+                    }
+                    free(ctx.cellgeom);
+                    ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
+                    for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
+                        PetscReal cvolume;
+                        ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
+                        ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
+                    }
+                  }
           
-              {
-               PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
-               PetscSFNode *leaves;
-               IS siteIS;
-               DMLabel slabel;
+                  {
+                   PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
+                   PetscSFNode *leaves;
+                   IS siteIS;
+                   DMLabel slabel;
 
-               ierr = PetscSFDestroy(&ctx.nucleation_sf);
-               ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
-               ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
-               ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-               memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
-               for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                   if (ctx.siteactivity_global[site]) {
-                       DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                       if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                   ierr = PetscSFDestroy(&ctx.nucleation_sf);
+                   ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
+                   ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
+                   ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+                   memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
+                   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                       if (ctx.siteactivity_global[site]) {
+                           DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                           if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                       }
                    }
-               }
-               ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
-               ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-               sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
-               for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                   if (sitepresent[site]) {
-                       roots[rootctr] = site;
-                       leaves[rootctr].rank = site/sitesperproc;
-                       leaves[rootctr].index = site%sitesperproc;
-                       rootctr++;
+                   ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
+                   ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
+                   sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
+                   for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
+                       if (sitepresent[site]) {
+                           roots[rootctr] = site;
+                           leaves[rootctr].rank = site/sitesperproc;
+                           leaves[rootctr].index = site%sitesperproc;
+                           rootctr++;
+                       }
                    }
-               }
-               ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
-               ierr = PetscSFSetUp(ctx.nucleation_sf);
-               memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-               PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-               PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-              }
+                   ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
+                   ierr = PetscSFSetUp(ctx.nucleation_sf);
+                   memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
+                   PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+                   PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+                  }
               
-              {
-                PetscFE output_fe;
-                ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
-                ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-                ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                            1+ctx.ncp,
-                                            PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
-                ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
-                ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
-                ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+                  {
+                    PetscFE output_fe;
+                    ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
+                    ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
+                    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                                1+ctx.ncp,
+                                                PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
+                    ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
+                    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+                    ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+                  }
+                  ierr = TSDestroy(&ts);CHKERRQ(ierr);
+                  ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
               }
-              ierr = TSDestroy(&ts);CHKERRQ(ierr);
-              ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
-          }
-          ierr = DMLabelDestroy(&adaptlabel);CHKERRQ(ierr);
-      }    
+              ierr = DMLabelDestroy(&adaptlabel);CHKERRQ(ierr);
+          }    
+      }
   }
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

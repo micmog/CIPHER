@@ -565,11 +565,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          user->solparams.interpolation = NONE_INTERPOLATION;
      }
      assert(user->solparams.interpolation != NONE_INTERPOLATION);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "finaltime", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.finaltime = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "starttime", buffer, filesize);
-     if (propsize) {assert(propsize == 1); user->solparams.starttime = atof(propval[0]);} 
-     else {user->solparams.starttime = 0.0;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "time", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize > 1); user->solparams.nloadcases = propsize; user->solparams.currentloadcase = 0; 
+     user->solparams.time = malloc(user->solparams.nloadcases*sizeof(PetscReal));
+     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.time[propctr] = atof(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
+     assert(propsize == user->solparams.nloadcases);
+     user->solparams.temperature = malloc(user->solparams.nloadcases*sizeof(PetscReal));
+     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature[propctr] = atof(propval[propctr]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); 
      if (propsize) {assert(propsize == 1); user->solparams.timestep = atof(propval[0]);} 
      else {user->solparams.timestep = 1.0e-18;}
@@ -578,17 +581,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      else {user->solparams.mintimestep = 1.0e-18;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
-     else {user->solparams.maxtimestep = user->solparams.finaltime;}
+     else {user->solparams.maxtimestep = user->solparams.time[user->solparams.nloadcases-1];}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize > 0); user->solparams.n_temperature = propsize;
-     user->solparams.temperature_T = malloc(user->solparams.n_temperature*sizeof(PetscReal));
-     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_T[propctr] = atof(propval[propctr]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "time", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == user->solparams.n_temperature);
-     user->solparams.temperature_t = malloc(user->solparams.n_temperature*sizeof(PetscReal));
-     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_t[propctr] = atof(propval[propctr]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == user->dim); 
      user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
@@ -954,7 +949,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 
     /* Set initial phase field values */
     ierr = VecGetArray(solution, &fdof);
-    PetscReal temperature = Interpolate(0.0,user->solparams.temperature_T,user->solparams.temperature_t,user->solparams.n_temperature);
+    PetscReal temperature = Interpolate(0.0,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
 

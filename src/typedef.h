@@ -122,14 +122,12 @@ typedef struct AMRPARAMS {
 
 /* solution solparams */
 typedef struct SOLUTIONPARAMS {
-    /* time parameters */
-    PetscReal starttime, finaltime, timestep, mintimestep, maxtimestep;
+    /* load case parameters */
+    PetscReal *time, *temperature, timestep, mintimestep, maxtimestep;
+    PetscInt  nloadcases, currentloadcase;
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
-    /* temperature */
-    PetscInt  n_temperature;
-    PetscReal *temperature_T, *temperature_t;
     /* interpolation */
     interpolation_t interpolation;
     /* tolerances */
