@@ -6,6 +6,7 @@ header:
   materials : matrix
   interfaces : grainboundary
   components : [al, cu, mg, zn]
+  outputs : [al_c, cu_c, mg_c, zn_c, al_chempot, cu_chempot, mg_chempot, phaseid] 
 
 solution_parameters:
   temperature : [393.0, 393.0]

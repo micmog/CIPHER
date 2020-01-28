@@ -8,6 +8,7 @@ header:
   nuclei : [precipitate]
   interfaces : [grainboundary, pptboundary]
   components : [al, cu, mg, zn]
+  outputs : [al_c, cu_c, mg_c, zn_c, 0_phi, 1_phi, phaseid, matid] 
 
 solution_parameters:
   time : [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0, 260.0, 310.0, 360.0, 410.0, 460.0, 510.0, 560.0, 610.0, 660.0, 661.0]

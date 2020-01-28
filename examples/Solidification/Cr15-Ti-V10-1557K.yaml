@@ -6,6 +6,7 @@ header:
   materials : [solid, liquid]
   interfaces : [solid-liquid]
   components : [cr, ti, v]
+  outputs : [cr_c, ti_c, v_c, matid] 
 
 solution_parameters:
   timestepmin : 1e-16

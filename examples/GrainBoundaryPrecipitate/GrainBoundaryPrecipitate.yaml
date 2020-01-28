@@ -6,6 +6,7 @@ header:
   materials : [matrix, precipitate]
   interfaces : [grainboundary, pptboundary]
   components : [al, cu, mg, zn]
+  outputs : [al_c, cu_c, mg_c, zn_c, phaseid] 
 
 solution_parameters:
   temperature : [393.0, 393.0]
