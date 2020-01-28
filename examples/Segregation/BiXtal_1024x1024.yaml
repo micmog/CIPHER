@@ -8,9 +8,8 @@ header:
   components : [al, cu, mg, zn]
 
 solution_parameters:
-  finaltime : 1.0e+6 
   temperature : [393.0, 393.0]
-  time : [0.0, 1.0]
+  time : [0.0, 1.0e+6]
   interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9

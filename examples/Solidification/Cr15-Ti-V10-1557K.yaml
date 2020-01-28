@@ -8,13 +8,10 @@ header:
   components : [cr, ti, v]
 
 solution_parameters:
-  finaltime : 100.0 
-  timestep0 : 1e-16
   timestepmin : 1e-16
   timestepmax : 1e-3
   temperature : [1557.0, 1557.0]
-  time : [0.0, 1.0]
-  statekineticcoeff : 1e+3
+  time : [0.0, 100.0]
   interfacewidth : 4
   initblocksize : [2, 256]
   initrefine : 1
