@@ -154,8 +154,6 @@ typedef struct AppCtx {
     PetscReal *size;
     /* time step */
     PetscInt step;
-    /* exception flag */
-    PetscErrorCode rejectstage;
     /* aux grids and vecs */
     DM da_solution, da_solforest;
     DM da_output;

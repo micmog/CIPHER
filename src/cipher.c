@@ -731,7 +731,6 @@ int main(int argc,char **args)
   ierr = SetUpConfig(&ctx); CHKERRQ(ierr);
   utility_init(&ctx);
   material_init(&ctx);
-  ctx.rejectstage = 0;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Create distributed mesh (DMPLEX) to manage 
