@@ -66,7 +66,10 @@ PetscErrorCode GetProperty(char **propval, PetscInt *propsize,
     }
 
     /* Parsing config file */
-    while (yaml_parser_parse(&parser, &event) && event.type != YAML_MAPPING_END_EVENT) {
+    PetscInt mappinglevel = 0;
+    while (yaml_parser_parse(&parser, &event) && !(event.type == YAML_MAPPING_END_EVENT && !mappinglevel)) {
+        if (event.type == YAML_MAPPING_START_EVENT) mappinglevel++;
+        if (event.type == YAML_MAPPING_END_EVENT) mappinglevel--;
         if (event.type == YAML_SCALAR_EVENT && !strcmp((char *) event.data.scalar.value, propname)) {
             yaml_parser_parse(&parser, &event);
             if (event.type == YAML_SEQUENCE_START_EVENT) {
