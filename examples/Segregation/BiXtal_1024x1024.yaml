@@ -267,7 +267,7 @@ material:
 
 interface :
   grainboundary :
-    potential : [0.170e+4, -0.180e+4, -0.235e+4]
+    potential : [1.7e+7, -1.8e+7, -2.3e+7]
     energy : 2.0e+8
     mobility : 
       m0: 1.0e+2
