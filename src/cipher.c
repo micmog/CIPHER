@@ -83,7 +83,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
                     if (currentinterface->potential) {
                         for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
@@ -199,7 +199,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
                     caplflux  [gk] -= currentinterface->energy*plapl[gj];
                     caplflux  [gj] -= currentinterface->energy*plapl[gk];
@@ -226,6 +226,23 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
 
             /* phase chemical driving force */ 
             Chemenergy(chemsource,composition,chempot,temperature,slist,user);
+            memset(work_vec_DP,0,DP_SIZE*sizeof(PetscReal));
+            for (c=0; c<user->ndp; c++) {
+                for (g=0; g<slist[0]; g++) {
+                    work_vec_DP[c] += interpolant[g]*composition[g*user->ncp+c];
+                }
+            }
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    if (currentinterface->potential) {
+                        rhsval = 0.0;
+                        for (c=0; c<user->ndp; c++) rhsval += currentinterface->potential[c]*work_vec_DP[c];
+                        chemsource[gk] += rhsval*interpolant[gj]; chemsource[gj] += rhsval*interpolant[gk];    
+                    }    
+                }
+            }   
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
@@ -233,7 +250,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
                     interface_mobility = currentinterface->mobility->m0
                                        * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
@@ -255,7 +272,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 if (active[gk]) {
                     for (gj=gk+1; gj<slist[0]; gj++) {
                         if (active[gj]) {
-                            interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                            interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
                             interface_mobility = currentinterface->mobility->m0
                                                * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
@@ -292,7 +309,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(work_vec_CP,0,CP_SIZE*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
                     if (currentinterface->potential) {
                         for (c=0; c<user->ndp; c++) {
@@ -416,7 +433,7 @@ PetscErrorCode PostStep(TS ts)
                         memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
                         for (gk=0; gk<slist[0]; gk++) {
                             for (gj=gk+1; gj<slist[0]; gj++) {
-                                interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                                interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                                 currentinterface = &user->interface[interfacekj];
                                 if (currentinterface->potential) {
                                     for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
@@ -668,7 +685,7 @@ PetscErrorCode PostStep(TS ts)
                    memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
                    for (gk=0; gk<slist[0]; gk++) {
                        for (gj=gk+1; gj<slist[0]; gj++) {
-                           interfacekj = user->interfacelist[slist[gk+1]*user->npf + slist[gj+1]];
+                           interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                            currentinterface = &user->interface[interfacekj];
                            if (currentinterface->potential) {
                                for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]

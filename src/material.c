@@ -116,8 +116,8 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
     for (PetscInt g=0; g<phaseID[0]; g++) {
         const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
         Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemenergy(&chemenergy[g],&composition[g*user->ncp],temperature,currentmaterial->energy,user->ncp);
-        for (PetscInt c=0; c<user->ndp; c++) chemenergy[g] -= chempot[c]*composition[g*user->ncp+c];
         chemenergy[g] /= currentmaterial->molarvolume;    
+        for (PetscInt c=0; c<user->ndp; c++) chemenergy[g] -= chempot[c]*composition[g*user->ncp+c];
     }
 }
 
@@ -201,7 +201,7 @@ void ChemicalpotentialExplicit(PetscReal *chempot, const PetscReal *composition,
     Matfunc[user->phasematerialmapping[phaseID]].ChemicalpotentialExplicit(chempotk,composition,temperature,currentmaterial->energy,user->ncp);
     memset(chempot,0,(user->ndp)*sizeof(PetscReal));
     for (PetscInt ck=0; ck<user->ndp; ck++) {  
-        chempot[ck] = (chempotk[ck] - chempotk[user->ndp]);
+        chempot[ck] = (chempotk[ck] - chempotk[user->ndp])/currentmaterial->molarvolume;
     }                              
 }
 
@@ -314,6 +314,7 @@ void ChemicalpotentialExplicitTangent(PetscReal *chempottangent, const PetscReal
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].ChemicalpotentialExplicitTangent(chempottangent,composition,temperature,currentmaterial->energy,user->ncp);
+    for (PetscInt c=0; c<user->ndp*user->ndp; c++) chempottangent[c] /= currentmaterial->molarvolume;
 }
 
 /*
@@ -359,7 +360,7 @@ void ChemicalpotentialImplicit(PetscReal *chempot, const PetscReal *composition,
     Matfunc[user->phasematerialmapping[phaseID]].ChemicalpotentialImplicit(chempotk,composition,temperature,currentmaterial->energy,user->ncp);
     memset(chempot,0,(user->ndp)*sizeof(PetscReal));
     for (PetscInt ck=0; ck<user->ndp; ck++) {  
-        chempot[ck] = (chempotk[ck] - chempotk[user->ndp]);
+        chempot[ck] = (chempotk[ck] - chempotk[user->ndp])/currentmaterial->molarvolume;
     }                              
 }
 
@@ -407,6 +408,7 @@ void ChemicalpotentialImplicitTangent(PetscReal *chempottangent, const PetscReal
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].ChemicalpotentialImplicitTangent(chempottangent,composition,temperature,currentmaterial->energy,user->ncp);
+    for (PetscInt c=0; c<user->ndp*user->ndp; c++) chempottangent[c] /= currentmaterial->molarvolume;
 }
 
 /*
@@ -489,7 +491,9 @@ static void Composition_none(PetscReal *composition, const PetscReal *chempot_im
 void Composition(PetscReal *composition, const PetscReal *chempot_im, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
-    Matfunc[user->phasematerialmapping[phaseID]].Composition(composition,chempot_im,temperature,currentmaterial->energy,user->ncp);
+    PetscReal chempot_im_scaled[user->ndp];
+    for (PetscInt c=0; c<user->ndp; c++) chempot_im_scaled[c] = currentmaterial->molarvolume*chempot_im[c];
+    Matfunc[user->phasematerialmapping[phaseID]].Composition(composition,chempot_im_scaled,temperature,currentmaterial->energy,user->ncp);
 }
 
 /*
@@ -535,6 +539,7 @@ void CompositionTangent(PetscReal *compositiontangent, const PetscReal *composit
     memset(compositiontangent,0,(user->ndp)*(user->ndp)*sizeof(PetscReal));
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].CompositionTangent(compositiontangent,composition,temperature,currentmaterial->energy,user->ncp);
+    for (PetscInt c=0; c<user->ndp*user->ndp; c++) compositiontangent[c] *= currentmaterial->molarvolume;
 }
 
 /*
@@ -614,6 +619,7 @@ void CompositionMobility(PetscReal *mobilityc, const PetscReal *composition, con
     memset(mobilityc,0,(user->ndp)*(user->ndp)*sizeof(PetscReal));
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].CompositionMobility(mobilityc,composition,temperature,currentmaterial->energy,user->ncp);
+    for (PetscInt c=0; c<user->ndp*user->ndp; c++) mobilityc[c] *= currentmaterial->molarvolume;
 }
 
 /*
