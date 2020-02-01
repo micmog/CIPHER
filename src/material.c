@@ -136,7 +136,7 @@ static void Chemenergy_calphad2sl(PetscReal *chemenergy, const PetscReal *compos
 /*
  Chemenergy - CALPHADDIS model for chemical energy
  */
-static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void Chemenergy_calphaddis(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     const RK *currentbinary = &currentcalphaddis->binary[0];
@@ -198,7 +198,7 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
 /*
  Chemicalpotential - CALPHADDIS model for chemical potential
  */
-static void ChemicalpotentialExplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void ChemicalpotentialExplicit_calphaddis(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(chempot,0,numcomps*sizeof(PetscReal));
     PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
@@ -282,7 +282,7 @@ void ChemicalpotentialExplicit(PetscReal *chempot, const PetscReal *composition,
 /*
  Chemicalpotential - CALPHADDIS model for chemical potential
  */
-static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void ChemicalpotentialExplicitTangent_calphaddis(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     PetscReal chempottangent_f[numcomps*numcomps];
     PetscReal val;
@@ -394,7 +394,7 @@ void ChemicalpotentialExplicitTangent(PetscReal *chempottangent, const PetscReal
 /*
  Chemicalpotential - CALPHADDIS model for chemical potential
  */
-static void ChemicalpotentialImplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void ChemicalpotentialImplicit_calphaddis(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(chempot,0,numcomps*sizeof(PetscReal));
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
@@ -441,7 +441,7 @@ void ChemicalpotentialImplicit(PetscReal *chempot, const PetscReal *composition,
 /*
  Chemicalpotential - CALPHADDIS model for chemical potential
  */
-static void ChemicalpotentialImplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void ChemicalpotentialImplicitTangent_calphaddis(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(chempottangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     for (PetscInt ck=0; ck<numcomps-1; ck++) {  
@@ -514,7 +514,7 @@ void ChemicalpotentialTangent(PetscReal *chempottangent, const PetscReal *compos
 /*
  Composition - Semi-implicit concentration per phase
  */
-static void Composition_calphad(PetscReal *composition, const PetscReal *chempot_im, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void Composition_calphaddis(PetscReal *composition, const PetscReal *chempot_im, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     
@@ -573,7 +573,7 @@ void Composition(PetscReal *composition, const PetscReal *chempot_im, const Pets
 /*
  Composition tangent wrt chemical potential
  */
-static void CompositionTangent_calphad(PetscReal *compositiontangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionTangent_calphaddis(PetscReal *compositiontangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     PetscReal RT = R_GAS_CONST*temperature;
     memset(compositiontangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
@@ -619,7 +619,7 @@ void CompositionTangent(PetscReal *compositiontangent, const PetscReal *composit
 /*
  Composition mobility
  */
-static void CompositionMobility_calphad(PetscReal *mobilityc, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     PetscReal migration[numcomps], mobility0[numcomps];
@@ -714,14 +714,14 @@ void material_init(const AppCtx *user)
             Matfunc[mat].CompositionTangent = &CompositionTangent_quad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_quad;
         } else if (currentmaterial->model == CALPHADDIS_CHEMENERGY  ) {
-            Matfunc[mat].Chemenergy = &Chemenergy_calphad;
-            Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_calphad;
-            Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_calphad;
-            Matfunc[mat].ChemicalpotentialImplicit = &ChemicalpotentialImplicit_calphad;
-            Matfunc[mat].ChemicalpotentialImplicitTangent = &ChemicalpotentialImplicitTangent_calphad;
-            Matfunc[mat].Composition = &Composition_calphad;
-            Matfunc[mat].CompositionTangent = &CompositionTangent_calphad;
-            Matfunc[mat].CompositionMobility = &CompositionMobility_calphad;
+            Matfunc[mat].Chemenergy = &Chemenergy_calphaddis;
+            Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_calphaddis;
+            Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_calphaddis;
+            Matfunc[mat].ChemicalpotentialImplicit = &ChemicalpotentialImplicit_calphaddis;
+            Matfunc[mat].ChemicalpotentialImplicitTangent = &ChemicalpotentialImplicitTangent_calphaddis;
+            Matfunc[mat].Composition = &Composition_calphaddis;
+            Matfunc[mat].CompositionTangent = &CompositionTangent_calphaddis;
+            Matfunc[mat].CompositionMobility = &CompositionMobility_calphaddis;
         } else if (currentmaterial->model == NONE_CHEMENERGY     ) {
             Matfunc[mat].Chemenergy = &Chemenergy_none;
             Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_none;
