@@ -38,7 +38,8 @@ PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
 /* model type */
 typedef enum {
    QUADRATIC_CHEMENERGY,
-   CALPHAD_CHEMENERGY,
+   CALPHADDIS_CHEMENERGY,
+   CALPHAD2SL_CHEMENERGY,
    NONE_CHEMENERGY
 } model_t;
 
@@ -78,13 +79,22 @@ typedef struct MOBILITY {
     RK *binary;
 } MOBILITY;
 
-/* CALPHAD energy parameters container */
-typedef struct CALPHAD {
+/* CALPHAD2SL energy parameters container */
+typedef struct CALPHAD2SL {
+    PetscReal p, q;
+    TSeries *unary;
+    RK *binaryp, *binaryq;
+    RK *ternaryp, *ternaryq;
+    PetscReal *mobilityc;
+} CALPHAD2SL;
+
+/* CALPHADDIS energy parameters container */
+typedef struct CALPHADDIS {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
     MOBILITY *mobilityc;
-} CALPHAD;
+} CALPHADDIS;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
@@ -97,7 +107,8 @@ typedef struct QUAD {
 /* Energy container */
 typedef union CHEMFE {
     QUAD    quad;
-    CALPHAD calphad;
+    CALPHADDIS calphaddis;
+    CALPHAD2SL calphad2sl;
 } CHEMFE;
 
 /* Phase container */

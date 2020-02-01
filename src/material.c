@@ -60,16 +60,16 @@ char Nucleation(const PetscReal current_time, const PetscReal current_timestep,
 }
 
 /*
- Chemenergy - CALPHAD model for chemical energy
+ Chemenergy - CALPHADDIS model for chemical energy
  */
 static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    const CALPHAD *currentcalphad = &energy.calphad;
-    const RK *currentbinary = &currentcalphad->binary[0];
-    const RK *currentternary = &currentcalphad->ternary[0];
-    *chemenergy = SumTSeries(temperature,currentcalphad->ref);
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
+    const RK *currentbinary = &currentcalphaddis->binary[0];
+    const RK *currentternary = &currentcalphaddis->ternary[0];
+    *chemenergy = SumTSeries(temperature,currentcalphaddis->ref);
     for (PetscInt ck=0; ck<numcomps; ck++) {
-        *chemenergy += SumTSeries(temperature,currentcalphad->unary[ck])*composition[ck] + R_GAS_CONST*temperature*composition[ck]*log(composition[ck]);
+        *chemenergy += SumTSeries(temperature,currentcalphaddis->unary[ck])*composition[ck] + R_GAS_CONST*temperature*composition[ck]*log(composition[ck]);
         for (PetscInt cj=ck+1; cj<numcomps; cj++,currentbinary++) {
             for (PetscInt rko=0; rko<currentbinary->n; rko++){
                 *chemenergy += SumTSeries(temperature,currentbinary->enthalpy[rko])*composition[ck]*composition[cj]*FastPow(composition[ck]-composition[cj],rko);
@@ -109,7 +109,7 @@ static void Chemenergy_none(PetscReal *chemenergy, const PetscReal *composition,
 }
 
 /*
- Chemenergy - CALPHAD model for chemical energy
+ Chemenergy - CALPHADDIS model for chemical energy
  */
 void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const PetscReal *chempot, const PetscReal temperature, const uint16_t *phaseID, const AppCtx *user)
 {
@@ -122,16 +122,16 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHADDIS model for chemical potential
  */
 static void ChemicalpotentialExplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(chempot,0,numcomps*sizeof(PetscReal));
     PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
     PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
-    const CALPHAD *currentcalphad = &energy.calphad;
-    const RK *currentbinary = &currentcalphad->binary[0];
-    const RK *currentternary = &currentcalphad->ternary[0];
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
+    const RK *currentbinary = &currentcalphaddis->binary[0];
+    const RK *currentternary = &currentcalphaddis->ternary[0];
     for (PetscInt ck=0; ck<numcomps; ck++) {  
         for (PetscInt cj=ck+1; cj<numcomps; cj++,currentbinary++) {
             binaryfactora[ck][cj] = 0.0;
@@ -157,7 +157,7 @@ static void ChemicalpotentialExplicit_calphad(PetscReal *chempot, const PetscRea
             }
         }
     }        
-    currentternary = &currentcalphad->ternary[0];
+    currentternary = &currentcalphaddis->ternary[0];
     for (PetscInt ck=0; ck<numcomps; ck++) {  
         for (PetscInt cj=ck+1; cj<numcomps; cj++) {
             chempot[ck] += composition[cj]*(binaryfactora[ck][cj] + composition[ck]*binaryfactorb[ck][cj]);
@@ -206,7 +206,7 @@ void ChemicalpotentialExplicit(PetscReal *chempot, const PetscReal *composition,
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHADDIS model for chemical potential
  */
 static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -214,9 +214,9 @@ static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, 
     PetscReal val;
     PetscReal binaryfactora[numcomps][numcomps],  binaryfactorb[numcomps][numcomps],  binaryfactorc[numcomps][numcomps];
     PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
-    const CALPHAD *currentcalphad = &energy.calphad;
-    const RK *currentbinary = &currentcalphad->binary[0];
-    const RK *currentternary = &currentcalphad->ternary[0];
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
+    const RK *currentbinary = &currentcalphaddis->binary[0];
+    const RK *currentternary = &currentcalphaddis->ternary[0];
     for (PetscInt ck=0; ck<numcomps; ck++) {  
         for (PetscInt cj=ck+1; cj<numcomps; cj++,currentbinary++) {
             binaryfactora[ck][cj] = 0.0;
@@ -250,7 +250,7 @@ static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, 
         }
     }        
     memset(chempottangent_f,0,numcomps*numcomps*sizeof(PetscReal));
-    currentternary = &currentcalphad->ternary[0];
+    currentternary = &currentcalphaddis->ternary[0];
     for (PetscInt ck=0; ck<numcomps; ck++) {  
         for (PetscInt cj=ck+1; cj<numcomps; cj++) {
             val = binaryfactora[ck][cj] + (composition[ck] - composition[cj])*binaryfactorb[ck][cj] - composition[ck]*composition[cj]*binaryfactorc[ck][cj];
@@ -318,14 +318,14 @@ void ChemicalpotentialExplicitTangent(PetscReal *chempottangent, const PetscReal
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHADDIS model for chemical potential
  */
 static void ChemicalpotentialImplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     memset(chempot,0,numcomps*sizeof(PetscReal));
-    const CALPHAD *currentcalphad = &energy.calphad;
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     for (PetscInt ck=0; ck<numcomps; ck++) {  
-        chempot[ck] = SumTSeries(temperature,currentcalphad->unary[ck]) + R_GAS_CONST*temperature*log(composition[ck]);
+        chempot[ck] = SumTSeries(temperature,currentcalphaddis->unary[ck]) + R_GAS_CONST*temperature*log(composition[ck]);
     }
 }
 
@@ -365,7 +365,7 @@ void ChemicalpotentialImplicit(PetscReal *chempot, const PetscReal *composition,
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHADDIS model for chemical potential
  */
 static void ChemicalpotentialImplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -442,15 +442,15 @@ void ChemicalpotentialTangent(PetscReal *chempottangent, const PetscReal *compos
  */
 static void Composition_calphad(PetscReal *composition, const PetscReal *chempot_im, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    const CALPHAD *currentcalphad = &energy.calphad;
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     
     PetscReal RT = R_GAS_CONST*temperature;
     
     PetscReal sum_const = 0.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
         composition[c] = exp(  (   chempot_im[c] 
-                                 - SumTSeries(temperature,currentcalphad->unary[c         ]) 
-                                 + SumTSeries(temperature,currentcalphad->unary[numcomps-1]))/RT);
+                                 - SumTSeries(temperature,currentcalphaddis->unary[c         ]) 
+                                 + SumTSeries(temperature,currentcalphaddis->unary[numcomps-1]))/RT);
         sum_const += composition[c];
     }
 
@@ -549,8 +549,8 @@ static void CompositionMobility_calphad(PetscReal *mobilityc, const PetscReal *c
 {
     memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     PetscReal migration[numcomps], mobility0[numcomps];
-    const CALPHAD *currentcalphad = &energy.calphad;
-    MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
+    const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
+    MOBILITY *currentmobility = &currentcalphaddis->mobilityc[0];
     for (PetscInt ck=0; ck<numcomps; ck++,currentmobility++) {
         RK *currentbinary = &currentmobility->binary[0];
         migration[ck] = 0.0;
@@ -639,7 +639,7 @@ void material_init(const AppCtx *user)
             Matfunc[mat].Composition = &Composition_quad;
             Matfunc[mat].CompositionTangent = &CompositionTangent_quad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_quad;
-        } else if (currentmaterial->model == CALPHAD_CHEMENERGY  ) {
+        } else if (currentmaterial->model == CALPHADDIS_CHEMENERGY  ) {
             Matfunc[mat].Chemenergy = &Chemenergy_calphad;
             Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_calphad;
             Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_calphad;
