@@ -60,6 +60,80 @@ char Nucleation(const PetscReal current_time, const PetscReal current_timestep,
 }
 
 /*
+ Chemenergy - CALPHAD 2SL model for chemical energy
+ */
+static void Chemenergy_calphad2sl(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+{
+    const CALPHAD2SL *currentcalphad2sl = &energy.calphad2sl;
+    const RK *currentbinary, *currentternary;
+    const PetscReal *compositionp = &composition[0], *compositionq = &composition[numcomps];
+    
+    *chemenergy = 0.0;
+    for (PetscInt c=0; c<numcomps; c++) {
+        *chemenergy +=  R_GAS_CONST*temperature*(  currentcalphad2sl->p*compositionp[c]*log(compositionp[c]) 
+                                                 + currentcalphad2sl->q*compositionq[c]*log(compositionq[c]));
+    }
+
+    for (PetscInt cp=0; cp<numcomps; cp++) {
+        for (PetscInt cq=0; cq<numcomps; cq++) {
+            *chemenergy += SumTSeries(temperature,currentcalphad2sl->unary[cp*numcomps+cq])*compositionp[cp]*compositionq[cq];
+        }
+    }    
+
+    currentbinary = &currentcalphad2sl->binaryp[0];
+    for (PetscInt cp_i=0; cp_i<numcomps; cp_i++) {
+        for (PetscInt cp_j=cp_i+1; cp_j<numcomps; cp_j++) {
+            for (PetscInt cq=0; cq<numcomps; cq++, currentbinary++) {
+                for (PetscInt rko=0; rko < currentbinary->n; rko++) {
+                    *chemenergy += SumTSeries(temperature,currentbinary->enthalpy[rko])
+                                 * compositionp[cp_i]*compositionp[cp_j]*compositionq[cq]
+                                 * FastPow(compositionp[cp_i] - compositionp[cp_j],rko);
+                }
+            }
+        }
+    }            
+    currentbinary = &currentcalphad2sl->binaryq[0];
+    for (PetscInt cp=0; cp<numcomps; cp++) {
+        for (PetscInt cq_i=0; cq_i<numcomps; cq_i++) {
+            for (PetscInt cq_j=cq_i+1; cq_j<numcomps; cq_j++, currentbinary++) {
+                for (PetscInt rko=0; rko < currentbinary->n; rko++) {
+                    *chemenergy += SumTSeries(temperature,currentbinary->enthalpy[rko])
+                                 * compositionp[cp]*compositionp[cq_i]*compositionq[cq_j]
+                                 * FastPow(compositionp[cq_i] - compositionp[cq_j],rko);
+                }
+            }
+        }
+    }            
+
+    currentternary = &currentcalphad2sl->ternaryp[0];
+    for (PetscInt cp_i=0; cp_i<numcomps; cp_i++) {
+        for (PetscInt cp_j=cp_i+1; cp_j<numcomps; cp_j++) {
+            for (PetscInt cp_k=cp_j+1; cp_k<numcomps; cp_k++) {
+                for (PetscInt cq=0; cq<numcomps; cq++, currentternary++) {
+                    for (PetscInt rko=0; rko < currentternary->n; rko++) {
+                        *chemenergy += SumTSeries(temperature,currentternary->enthalpy[rko])
+                                     * compositionp[cp_i]*compositionp[cp_j]*compositionq[cp_k]*compositionq[cq];
+                    }
+                }
+            }
+        }
+    }        
+    currentternary = &currentcalphad2sl->ternaryq[0];
+    for (PetscInt cp=0; cp<numcomps; cp++) {
+        for (PetscInt cq_i=0; cq_i<numcomps; cq_i++) {
+            for (PetscInt cq_j=cq_i+1; cq_j<numcomps; cq_j++) {
+                for (PetscInt cq_k=cq_j+1; cq_k<numcomps; cq_k++, currentternary++) {
+                    for (PetscInt rko=0; rko < currentternary->n; rko++) {
+                        *chemenergy += SumTSeries(temperature,currentternary->enthalpy[rko])
+                                     * compositionp[cq_i]*compositionp[cq_j]*compositionq[cq_k]*compositionq[cp];
+                    }
+                }
+            }
+        }
+    }        
+}
+
+/*
  Chemenergy - CALPHADDIS model for chemical energy
  */
 static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
