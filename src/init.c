@@ -247,17 +247,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
     } 
     
-    /* field offsets */
-    AS_OFFSET = 0;
-    AS_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf) + 1;
-    PF_OFFSET = AS_OFFSET+AS_SIZE;
-    PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
-    DP_OFFSET = PF_OFFSET+PF_SIZE;
-    DP_SIZE   = user->ndp;
-    CP_OFFSET = DP_OFFSET+DP_SIZE;
-    CP_SIZE   = PF_SIZE*user->ndp;
-
     /* Parsing config file material */
+    MAXSITES = 0;
     {
      MATERIAL *currentmaterial = &user->material[0];
      for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -267,11 +258,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          ierr = GetProperty(propval, &propsize, materialmapping, "molarvolume", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
          currentmaterial->molarvolume = atof(propval[0]);
-         /* initial composition */
-         ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
-         assert(propsize == user->ncp);
-         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
-         for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
          /* chempot explicit kinetic coefficient */
          ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
          if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
@@ -281,7 +267,15 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           assert(propsize == 1);
           if        (!strcmp(propval[0], "quadratic" )) {
               currentmaterial->model = QUADRATIC_CHEMENERGY;
+              currentmaterial->nsites = 1;
               QUAD *currentquad = &currentmaterial->energy.quad;
+              /* initial composition */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == currentmaterial->nsites*user->ncp);
+               currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+              }
               /* solute mobility */
               {
                currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
@@ -349,9 +343,19 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                    currentbinary->logCoeff = 0.0;
                }
               } 
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = 1.0;
           } else if (!strcmp(propval[0], "calphaddis")) {
               currentmaterial->model = CALPHADDIS_CHEMENERGY;
+              currentmaterial->nsites = 1;
               CALPHADDIS *currentcalphaddis = &currentmaterial->energy.calphaddis;
+              /* initial composition */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == currentmaterial->nsites*user->ncp);
+               currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+              }
               /* mobility */
               {
                char mobmapping[PETSC_MAX_PATH_LEN];
@@ -480,15 +484,28 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                    }
                }        
               }  
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = 1.0;
           } else if (!strcmp(propval[0], "calphad2sl")) {
               currentmaterial->model = CALPHAD2SL_CHEMENERGY;
+              currentmaterial->nsites = 2;
               CALPHAD2SL *currentcalphad2sl = &currentmaterial->energy.calphad2sl;
+              /* initial composition */
+              {
+               currentmaterial->c0 = malloc(currentmaterial->nsites*user->ncp*sizeof(PetscReal));
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0_p", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0_q", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[user->ncp+propctr] = atof(propval[propctr]);
+              }
               /* stochiometry */
               {
                ierr = GetProperty(propval, &propsize, materialmapping, "stochiometry", buffer, filesize); CHKERRQ(ierr);
                assert(propsize == 2);
                currentcalphad2sl->p = atof(propval[0]); currentcalphad2sl->q = atof(propval[1]);
-               assert(currentcalphad2sl->p + currentcalphad2sl->q == 1.0);
+               assert(fabs(currentcalphad2sl->p + currentcalphad2sl->q - 1.0) < TOL);
               } 
               /* solute mobility */
               {
@@ -630,13 +647,32 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                    }
                }        
               }  
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = currentcalphad2sl->p;
+              currentmaterial->stochiometry[1] = currentcalphad2sl->q;
           } else {
               currentmaterial->model = NONE_CHEMENERGY;
+              currentmaterial->nsites = 0;
           }
          }
+         MAXSITES = MAXSITES > currentmaterial->nsites
+                  ? MAXSITES : currentmaterial->nsites;
      }
     }
 
+    /* field offsets */
+    SF_SIZE = MAXSITES*user->ncp;
+    SP_SIZE = MAXSITES*user->ndp;
+
+    AS_OFFSET = 0;
+    AS_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf) + 1;
+    PF_OFFSET = AS_OFFSET+AS_SIZE;
+    PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
+    DP_OFFSET = PF_OFFSET+PF_SIZE;
+    DP_SIZE   = user->ndp;
+    EX_OFFSET = DP_OFFSET+DP_SIZE;
+    EX_SIZE   = PF_SIZE*SP_SIZE;
+    
     /* Parsing config file nucleation */
     {
      NUCLEUS *currentnucleus = &user->nucleus[0];
@@ -1050,7 +1086,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscErrorCode    ierr;
     Vec               solutionl;
     PetscScalar       *fdof, *fdofl, *offset, *offsetg;
-    PetscInt          localcell, cell, face, phase, g;
+    PetscInt          localcell, cell, face, phase, g, c, s;
     PetscInt          conesize, supp, nsupp;
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
@@ -1058,6 +1094,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscScalar       *pcell, *dcell, *ccell;
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
+    PetscReal         sitepot[SP_SIZE];
 
     PetscFunctionBeginUser;  
     ierr = DMGetLabel(user->da_solution, "phase", &plabel);
@@ -1123,17 +1160,23 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         F2IFUNC(gslist,&offset[AS_OFFSET]);
         pcell  = &offset[PF_OFFSET];
         dcell  = &offset[DP_OFFSET];
-        ccell  = &offset[CP_OFFSET];
+        ccell  = &offset[EX_OFFSET];
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            ChemicalpotentialExplicit(&ccell[g*user->ndp],currentmaterial->c0,temperature,gslist[g+1],user);
+            SitepotentialExplicit(&ccell[g*SP_SIZE],currentmaterial->c0,temperature,gslist[g+1],user);
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
-                Chemicalpotential(dcell,currentmaterial->c0,temperature,gslist[g+1],user);
+                Sitepotential(sitepot,currentmaterial->c0,temperature,gslist[g+1],user);
+                memset(dcell,0,user->ndp*sizeof(PetscReal));
+                for (s=0; s<currentmaterial->nsites; s++) {
+                    for (c=0; c<user->ndp; c++) {
+                        dcell[c] += sitepot[s*user->ndp+c];
+                    }
+                }
             } else {
                 pcell[g] = 0.0;
             }

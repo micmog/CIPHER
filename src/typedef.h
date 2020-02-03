@@ -30,8 +30,9 @@
 #define R_GAS_CONST 8.314462
 
 /* field offsets */
-PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
-PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
+PetscInt MAXSITES, SP_SIZE, SF_SIZE;
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET;
 
 /* Types declarations */
 
@@ -114,8 +115,9 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     model_t model;
+    PetscInt nsites;
     PetscReal molarvolume, chempot_ex_kineticcoeff;
-    PetscReal *c0;
+    PetscReal *c0, *stochiometry;
     CHEMFE energy;
 } MATERIAL;
 
