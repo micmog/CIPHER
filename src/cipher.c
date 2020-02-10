@@ -1256,7 +1256,6 @@ int main(int argc,char **args)
                   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
               }
               ierr = DMLabelDestroy(&adaptlabel);CHKERRQ(ierr);
-              PetscPrintf(PETSC_COMM_WORLD,"...remeshing done...\n");
           }    
       }
   }
