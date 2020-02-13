@@ -748,7 +748,7 @@ PetscErrorCode PostStep(TS ts)
                        }
                        Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
                        for (s=0; s<currentmaterial->nsites; s++) {
-                           for (c=0; c<user->ndp; c++) {
+                           for (c=0; c<user->ncp; c++) {
                                avgcomp[c] += interpolant[g]
                                            * currentmaterial->stochiometry[s]
                                            * sitefrac[g*SF_SIZE+s*user->ncp+c];
