@@ -520,7 +520,6 @@ PetscErrorCode PostStep(TS ts)
             }    
         }        
         ierr = VecRestoreArray(solution,&fdof);
-        ierr = DMLabelDestroy(&slabel);
         MPI_Allreduce(MPI_IN_PLACE,&reset,1,MPI_CHAR,MPI_LOR,PETSC_COMM_WORLD);
         if (reset) ierr = TSSetTimeStep(ts,user->solparams.mintimestep);
         PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
@@ -872,6 +871,7 @@ int main(int argc,char **args)
     ierr = VecGetDM(cellgeom,&celldm);
     ierr = VecGetArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     ierr = DMCreateLabel(ctx.da_solution, "phase");CHKERRQ(ierr);
+    ierr = DMCreateLabel(ctx.da_solution, "site");CHKERRQ(ierr);
     for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
         cell = ctx.localcells[localcell];
         ierr = DMPlexPointLocalRead(celldm,cell,cgeom,&cg);
@@ -905,7 +905,6 @@ int main(int argc,char **args)
           DMLabelGetStratumIS(slabel, site+1, &siteIS);
           if (siteIS) {rootctr++; sitepresent[site] = 1;}
       }
-      ierr = DMLabelDestroy(&slabel);
       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
       sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
@@ -981,7 +980,6 @@ int main(int argc,char **args)
                 }
             }
         }
-        ierr = DMLabelDestroy(&slabel);
       } 
 
       postsolforest = NULL;
@@ -1052,7 +1050,6 @@ int main(int argc,char **args)
                       if (siteIS) {rootctr++; sitepresent[site] = 1;}
                   }
               }
-              ierr = DMLabelDestroy(&slabel);
               ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
               ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
               sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
@@ -1083,7 +1080,6 @@ int main(int argc,char **args)
             ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
           }
       }
-      ierr = DMLabelDestroy(&adaptlabel);CHKERRQ(ierr);
   }    
   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
 
@@ -1151,7 +1147,6 @@ int main(int argc,char **args)
                         }
                     }
                 }
-                ierr = DMLabelDestroy(&slabel);
               } 
 
               postsolforest = NULL;
@@ -1222,7 +1217,6 @@ int main(int argc,char **args)
                               if (siteIS) {rootctr++; sitepresent[site] = 1;}
                           }
                       }
-                      ierr = DMLabelDestroy(&slabel);
                       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
                       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
                       sitesperproc = (1 + ((ctx.nsites - 1)/ctx.worldsize));
@@ -1255,7 +1249,6 @@ int main(int argc,char **args)
                   ierr = TSDestroy(&ts);CHKERRQ(ierr);
                   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
               }
-              ierr = DMLabelDestroy(&adaptlabel);CHKERRQ(ierr);
           }    
       }
   }
