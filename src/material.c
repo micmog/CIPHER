@@ -223,11 +223,9 @@ static void SitepotentialExplicit_calphad2sl(PetscReal *sitepot, const PetscReal
                     workval_a = SumTSeries(temperature,currentbinary->enthalpy[rko]);
                     workval_b = FastPow(sitefrac_p[cp_i] - sitefrac_p[cp_j],rko);
                     workval_c = (rko == 0) ? 0.0 : ((PetscReal) rko)*FastPow(sitefrac_p[cp_i] - sitefrac_p[cp_j],rko-1);
-                    sitepot_p[cp_i] += workval_a*workval_b*sitefrac_p[cp_j]*sitefrac_q[cq]
-                                     + workval_a*workval_c*sitefrac_p[cp_i]*sitefrac_p[cp_j]*sitefrac_q[cq];
-                    sitepot_p[cp_j] += workval_a*workval_b*sitefrac_p[cp_i]*sitefrac_q[cq]
-                                     - workval_a*workval_c*sitefrac_p[cp_i]*sitefrac_p[cp_j]*sitefrac_q[cq];
-                    sitepot_q[cq  ] += workval_a*workval_b*sitefrac_p[cp_i]*sitefrac_p[cp_j];
+                    sitepot_p[cp_i] += workval_a*sitefrac_p[cp_j]*sitefrac_q[cq]*(workval_b + workval_c*sitefrac_p[cp_i]);
+                    sitepot_p[cp_j] += workval_a*sitefrac_p[cp_i]*sitefrac_q[cq]*(workval_b - workval_c*sitefrac_p[cp_j]);
+                    sitepot_q[cq  ] += workval_a*sitefrac_p[cp_i]               * workval_b            *sitefrac_p[cp_j] ;
                 }
             }
         }
@@ -240,11 +238,9 @@ static void SitepotentialExplicit_calphad2sl(PetscReal *sitepot, const PetscReal
                     workval_a = SumTSeries(temperature,currentbinary->enthalpy[rko]);
                     workval_b = FastPow(sitefrac_q[cq_i] - sitefrac_q[cq_j],rko);
                     workval_c = (rko == 0) ? 0.0 : ((PetscReal) rko)*FastPow(sitefrac_q[cq_i] - sitefrac_q[cq_j],rko-1);
-                    sitepot_q[cq_i] += workval_a*workval_b*sitefrac_p[cp]*sitefrac_q[cq_j]
-                                     + workval_a*workval_c*sitefrac_p[cp]*sitefrac_q[cq_i]*sitefrac_q[cq_j];
-                    sitepot_q[cq_j] += workval_a*workval_b*sitefrac_p[cp]*sitefrac_q[cq_i]
-                                     - workval_a*workval_c*sitefrac_p[cp]*sitefrac_q[cq_i]*sitefrac_q[cq_j];
-                    sitepot_p[cp  ] += workval_a*workval_b*sitefrac_q[cq_i]*sitefrac_q[cq_j];
+                    sitepot_q[cq_i] += workval_a*sitefrac_q[cq_j]*sitefrac_p[cp]*(workval_b + workval_c*sitefrac_q[cq_i]);
+                    sitepot_q[cq_j] += workval_a*sitefrac_q[cq_i]*sitefrac_p[cp]*(workval_b - workval_c*sitefrac_q[cq_j]);
+                    sitepot_p[cp  ] += workval_a*sitefrac_q[cq_i]               * workval_b            *sitefrac_q[cq_j] ;
                 }
             }
         }
@@ -257,9 +253,9 @@ static void SitepotentialExplicit_calphad2sl(PetscReal *sitepot, const PetscReal
                 for (PetscInt cq=0; cq<numcomps; cq++, currentternary++) {
                     for (PetscInt rko=0; rko < currentternary->n; rko++) {
                         workval_a = SumTSeries(temperature,currentternary->enthalpy[rko]);
-                        sitepot_p[cp_i] += workval_a*sitefrac_p[cp_j]*sitefrac_p[cp_k]*sitefrac_q[cq];
-                        sitepot_p[cp_j] += workval_a*sitefrac_p[cp_k]*sitefrac_p[cp_i]*sitefrac_q[cq];
-                        sitepot_p[cp_k] += workval_a*sitefrac_p[cp_i]*sitefrac_p[cp_j]*sitefrac_q[cq];
+                        sitepot_p[cp_i] += workval_a*sitefrac_p[cp_j]*sitefrac_p[cp_k]*sitefrac_q[cq  ];
+                        sitepot_p[cp_j] += workval_a*sitefrac_p[cp_k]*sitefrac_p[cp_i]*sitefrac_q[cq  ];
+                        sitepot_p[cp_k] += workval_a*sitefrac_p[cp_i]*sitefrac_p[cp_j]*sitefrac_q[cq  ];
                         sitepot_q[cq  ] += workval_a*sitefrac_p[cp_i]*sitefrac_p[cp_j]*sitefrac_p[cp_k];
                     }
                 }
@@ -273,9 +269,9 @@ static void SitepotentialExplicit_calphad2sl(PetscReal *sitepot, const PetscReal
                 for (PetscInt cq_k=cq_j+1; cq_k<numcomps; cq_k++, currentternary++) {
                     for (PetscInt rko=0; rko < currentternary->n; rko++) {
                         workval_a = SumTSeries(temperature,currentternary->enthalpy[rko]);
-                        sitepot_q[cq_i] += workval_a*sitefrac_q[cq_j]*sitefrac_q[cq_k]*sitefrac_p[cp];
-                        sitepot_q[cq_j] += workval_a*sitefrac_q[cq_k]*sitefrac_q[cq_i]*sitefrac_p[cp];
-                        sitepot_q[cq_k] += workval_a*sitefrac_q[cq_i]*sitefrac_q[cq_j]*sitefrac_p[cp];
+                        sitepot_q[cq_i] += workval_a*sitefrac_q[cq_j]*sitefrac_q[cq_k]*sitefrac_p[cp  ];
+                        sitepot_q[cq_j] += workval_a*sitefrac_q[cq_k]*sitefrac_q[cq_i]*sitefrac_p[cp  ];
+                        sitepot_q[cq_k] += workval_a*sitefrac_q[cq_i]*sitefrac_q[cq_j]*sitefrac_p[cp  ];
                         sitepot_p[cp  ] += workval_a*sitefrac_q[cq_i]*sitefrac_q[cq_j]*sitefrac_q[cq_k];
                     }
                 }
