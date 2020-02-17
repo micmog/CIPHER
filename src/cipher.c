@@ -1019,26 +1019,26 @@ int main(int argc,char **args)
       ierr = DMRestoreLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
     
       if (ctx.nsites) { 
-        PetscInt site, nsitecells;
-        const PetscInt *sitecells;
-        IS siteIS;
-        DMLabel slabel;
+          PetscInt site, nsitecells;
+          const PetscInt *sitecells;
+          IS siteIS;
+          DMLabel slabel;
        
-        ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-        for (site = 0; site<ctx.nsites; site++) {
-            if (ctx.siteactivity_global[site]) {
-                DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                if (siteIS) {
-                    ISGetLocalSize(siteIS, &nsitecells);
-                    ISGetIndices(siteIS, &sitecells);
-                    for (cell = 0; cell < nsitecells; ++cell) {
-                        ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
-                    }
-                    ISRestoreIndices(siteIS, &sitecells);
-                    ISDestroy(&siteIS);
-                }
-            }
-        }
+          ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+          for (site = 0; site<ctx.nsites; site++) {
+              if (ctx.siteactivity_global[site]) {
+                  DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                  if (siteIS) {
+                      ISGetLocalSize(siteIS, &nsitecells);
+                      ISGetIndices(siteIS, &sitecells);
+                      for (cell = 0; cell < nsitecells; ++cell) {
+                          ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                      }
+                      ISRestoreIndices(siteIS, &sitecells);
+                      ISDestroy(&siteIS);
+                  }
+              }
+          }
       } 
 
       postsolforest = NULL;
@@ -1092,6 +1092,7 @@ int main(int argc,char **args)
             }
           }
           
+          /* Set up star forest */
           if (ctx.nsites) {
               PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
               PetscSFNode *leaves;
@@ -1104,10 +1105,8 @@ int main(int argc,char **args)
               ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
               memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
               for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                  if (ctx.siteactivity_global[site]) {
-                      DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                      if (siteIS) {rootctr++; sitepresent[site] = 1;}
-                  }
+                  DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                  if (siteIS) {rootctr++; sitepresent[site] = 1;}
               }
               ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
               ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
@@ -1186,26 +1185,26 @@ int main(int argc,char **args)
               ierr = DMRestoreLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
 
               if (ctx.nsites) { 
-                PetscInt site, nsitecells;
-                const PetscInt *sitecells;
-                IS siteIS;
-                DMLabel slabel;
+                  PetscInt site, nsitecells;
+                  const PetscInt *sitecells;
+                  IS siteIS;
+                  DMLabel slabel;
        
-                ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
-                for (site = 0; site<ctx.nsites; site++) {
-                    if (ctx.siteactivity_global[site]) {
-                        DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                        if (siteIS) {
-                            ISGetLocalSize(siteIS, &nsitecells);
-                            ISGetIndices(siteIS, &sitecells);
-                            for (cell = 0; cell < nsitecells; ++cell) {
-                                ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
-                            }
-                            ISRestoreIndices(siteIS, &sitecells);
-                            ISDestroy(&siteIS);
-                        }
-                    }
-                }
+                  ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+                  for (site = 0; site<ctx.nsites; site++) {
+                      if (ctx.siteactivity_global[site]) {
+                          DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                          if (siteIS) {
+                              ISGetLocalSize(siteIS, &nsitecells);
+                              ISGetIndices(siteIS, &sitecells);
+                              for (cell = 0; cell < nsitecells; ++cell) {
+                                  ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                              }
+                              ISRestoreIndices(siteIS, &sitecells);
+                              ISDestroy(&siteIS);
+                          }
+                      }
+                  }
               } 
 
               postsolforest = NULL;
@@ -1259,6 +1258,7 @@ int main(int argc,char **args)
                     }
                   }
           
+                  /* Set up star forest */
                   if (ctx.nsites){
                       PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
                       PetscSFNode *leaves;
@@ -1271,10 +1271,8 @@ int main(int argc,char **args)
                       ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
                       memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
                       for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-                          if (ctx.siteactivity_global[site]) {
-                              DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                              if (siteIS) {rootctr++; sitepresent[site] = 1;}
-                          }
+                          DMLabelGetStratumIS(slabel, site+1, &siteIS);
+                          if (siteIS) {rootctr++; sitepresent[site] = 1;}
                       }
                       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
                       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
