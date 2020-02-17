@@ -67,8 +67,8 @@ static void Chemenergy_calphad2sl(PetscReal *chemenergy, const PetscReal *sitefr
     
     *chemenergy = 0.0;
     for (PetscInt c=0; c<numcomps; c++) {
-        *chemenergy +=  R_GAS_CONST*temperature*(  currentcalphad2sl->p*sitefrac_p[c]*log1p(sitefrac_p[c]-1.0+TOL) 
-                                                 + currentcalphad2sl->q*sitefrac_q[c]*log1p(sitefrac_q[c]-1.0+TOL));
+        *chemenergy +=  R_GAS_CONST*temperature*(  currentcalphad2sl->p*sitefrac_p[c]*log(sitefrac_p[c]) 
+                                                 + currentcalphad2sl->q*sitefrac_q[c]*log(sitefrac_q[c]));
     }
 
     for (PetscInt cp=0; cp<numcomps; cp++) {
@@ -285,53 +285,39 @@ static void SitepotentialExplicit_calphad2sl(PetscReal *sitepot, const PetscReal
  */
 static void SitepotentialExplicit_calphaddis(PetscReal *sitepot, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(sitepot,0,numcomps*sizeof(PetscReal));
-    PetscReal  binaryfactora[numcomps][numcomps]          ,  binaryfactorb[numcomps][numcomps];
-    PetscReal ternaryfactora[numcomps][numcomps][numcomps], ternaryfactorb[numcomps][numcomps][numcomps];
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
-    const RK *currentbinary = &currentcalphaddis->binary[0];
-    const RK *currentternary = &currentcalphaddis->ternary[0];
-    for (PetscInt ck=0; ck<numcomps; ck++) {  
-        for (PetscInt cj=ck+1; cj<numcomps; cj++,currentbinary++) {
-            binaryfactora[ck][cj] = 0.0;
-            for (PetscInt rko=0; rko<currentbinary->n; rko++) {
-                binaryfactora[ck][cj] += SumTSeries(temperature,currentbinary->enthalpy[rko])
-                                       * FastPow(sitefrac[ck] - sitefrac[cj],rko);
+    const RK *currentbinary, *currentternary;
+    PetscReal workval_a, workval_b, workval_c;
+    
+    memset(sitepot,0,numcomps*sizeof(PetscReal));
+    currentbinary = &currentcalphaddis->binary[0];
+    for (PetscInt ci=0; ci<numcomps; ci++) {
+        for (PetscInt cj=ci+1; cj<numcomps; cj++, currentbinary++) {
+            for (PetscInt rko=0; rko < currentbinary->n; rko++) {
+                workval_a = SumTSeries(temperature,currentbinary->enthalpy[rko]);
+                workval_b = FastPow(sitefrac[ci] - sitefrac[cj],rko);
+                workval_c = (rko == 0) ? 0.0 : ((PetscReal) rko)*FastPow(sitefrac[ci] - sitefrac[cj],rko-1);
+                sitepot[ci] += workval_a*sitefrac[cj]*(workval_b + workval_c*sitefrac[ci]);
+                sitepot[cj] += workval_a*sitefrac[ci]*(workval_b - workval_c*sitefrac[cj]);
             }
-            binaryfactorb[ck][cj] = 0.0;
-            for (PetscInt rko=1; rko<currentbinary->n; rko++) {
-                binaryfactorb[ck][cj] += ((PetscReal) (rko))
-                                       * SumTSeries(temperature,currentbinary->enthalpy[rko])
-                                       * ((PetscReal) rko)
-                                       * FastPow(sitefrac[ck] - sitefrac[cj],rko-1);
-            }
-            for (PetscInt ci=cj+1; ci<numcomps; ci++,currentternary++) {
-                ternaryfactora[ck][cj][ci] = 0.0; ternaryfactorb[ck][cj][ci] = 0.0;
-                for (PetscInt rko=0; rko<currentternary->n; rko++) {
-                    ternaryfactora[ck][cj][ci] += SumTSeries(temperature,currentternary->enthalpy[rko])
-                                                * (  sitefrac[currentternary->i[rko]] 
-                                                   + (1.0 - sitefrac[ck] - sitefrac[cj] - sitefrac[ci])/3.0);
-                    ternaryfactorb[ck][cj][ci] += SumTSeries(temperature,currentternary->enthalpy[rko]);
+        }
+    }            
+    
+    currentternary = &currentcalphaddis->ternary[0];
+    for (PetscInt ci=0; ci<numcomps; ci++) {
+        for (PetscInt cj=ci+1; cj<numcomps; cj++) {
+            for (PetscInt ck=cj+1; ck<numcomps; ck++, currentternary++) {
+                for (PetscInt rko=0; rko < currentternary->n; rko++) {
+                    workval_a = SumTSeries(temperature,currentternary->enthalpy[rko]);
+                    workval_b = sitefrac[currentternary->i[rko]] + (1.0-sitefrac[ck]-sitefrac[cj]-sitefrac[ci])/3.0;
+                    sitepot[ci] += workval_a*sitefrac[cj]*sitefrac[ck]*(workval_b - sitefrac[ci]/3.0);
+                    sitepot[cj] += workval_a*sitefrac[ck]*sitefrac[ci]*(workval_b - sitefrac[cj]/3.0);
+                    sitepot[ck] += workval_a*sitefrac[ci]*sitefrac[cj]*(workval_b - sitefrac[ck]/3.0);
+                    sitepot[currentternary->i[rko]] += workval_a*sitefrac[ci]*sitefrac[cj]*sitefrac[ck];
                 }
             }
         }
     }        
-    currentternary = &currentcalphaddis->ternary[0];
-    for (PetscInt ck=0; ck<numcomps; ck++) {  
-        for (PetscInt cj=ck+1; cj<numcomps; cj++) {
-            sitepot[ck] += sitefrac[cj]*(binaryfactora[ck][cj] + sitefrac[ck]*binaryfactorb[ck][cj]);
-            sitepot[cj] += sitefrac[ck]*(binaryfactora[ck][cj] - sitefrac[cj]*binaryfactorb[ck][cj]);
-            for (PetscInt ci=cj+1; ci<numcomps; ci++,currentternary++) {
-                sitepot[ck] += sitefrac[cj]*sitefrac[ci]*(ternaryfactora[ck][cj][ci] - sitefrac[ck]*ternaryfactorb[ck][cj][ci]/3.0);
-                sitepot[cj] += sitefrac[ci]*sitefrac[ck]*(ternaryfactora[ck][cj][ci] - sitefrac[cj]*ternaryfactorb[ck][cj][ci]/3.0);
-                sitepot[ci] += sitefrac[ck]*sitefrac[cj]*(ternaryfactora[ck][cj][ci] - sitefrac[ci]*ternaryfactorb[ck][cj][ci]/3.0);
-                for (PetscInt rko=0; rko<currentternary->n; rko++) {
-                    sitepot[currentternary->i[rko]] += sitefrac[ck]*sitefrac[cj]*sitefrac[ci]
-                                                     * SumTSeries(temperature,currentternary->enthalpy[rko]);
-                }
-            }
-        }
-    }
 }
 
 /*
@@ -597,10 +583,10 @@ void SitefracTangent(PetscReal *sitefractangent, const PetscReal *sitefrac, cons
  */
 static void CompositionMobility_calphad2sl(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
     const CALPHAD2SL *currentcalphad2sl = &energy.calphad2sl;
-    for (PetscInt ck=0; ck<numcomps-1; ck++) {
-        mobilityc[ck*(numcomps-1)+ck] = currentcalphad2sl->mobilityc[ck];
+    for (PetscInt ck=0; ck<numcomps; ck++) {
+        mobilityc[ck] = currentcalphad2sl->mobilityc[ck];
     }        
 }
 
@@ -609,10 +595,10 @@ static void CompositionMobility_calphad2sl(PetscReal *mobilityc, const PetscReal
  */
 static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
-    PetscReal migration[numcomps], mobility0[numcomps];
+    PetscReal migration[numcomps];
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     MOBILITY *currentmobility = &currentcalphaddis->mobilityc[0];
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
     for (PetscInt ck=0; ck<numcomps; ck++,currentmobility++) {
         RK *currentbinary = &currentmobility->binary[0];
         migration[ck] = 0.0;
@@ -626,21 +612,9 @@ static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal
                 }
             }
         }
-        mobility0[ck] = currentmobility->m0/R_GAS_CONST/temperature
+        mobilityc[ck] = sitefrac[ck]
+                      * currentmobility->m0/R_GAS_CONST/temperature
                       * exp(migration[ck]/R_GAS_CONST/temperature);
-    }        
-    
-    PetscScalar summobility = 0.0, val;
-    for (PetscInt ck=0; ck<numcomps; ck++) {
-        summobility += sitefrac[ck]*mobility0[ck];
-    }        
-    for (PetscInt ck=0; ck<numcomps-1; ck++) {
-        mobilityc[ck*(numcomps-1)+ck] = sitefrac[ck]*(mobility0[ck] + sitefrac[ck]*(summobility - 2.0*mobility0[ck]));
-        for (PetscInt cj=ck+1; cj<numcomps-1; cj++) {
-            val = sitefrac[ck]*sitefrac[cj]*(summobility - mobility0[cj] - mobility0[ck]);
-            mobilityc[ck*(numcomps-1)+cj] = val; 
-            mobilityc[cj*(numcomps-1)+ck] = val; 
-        }        
     }        
 }
 
@@ -649,19 +623,10 @@ static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal
  */
 static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
-    PetscScalar summobility = 0.0, val;
     for (PetscInt ck=0; ck<numcomps; ck++) {
-        summobility += sitefrac[ck]*currentquad->mobilityc[ck];
-    }        
-    for (PetscInt ck=0; ck<numcomps-1; ck++) {
-        mobilityc[ck*(numcomps-1)+ck] = sitefrac[ck]*(currentquad->mobilityc[ck] + sitefrac[ck]*(summobility - 2.0*currentquad->mobilityc[ck]));
-        for (PetscInt cj=ck+1; cj<numcomps-1; cj++) {
-            val = sitefrac[ck]*sitefrac[cj]*(summobility - currentquad->mobilityc[cj] - currentquad->mobilityc[ck]);
-            mobilityc[ck*(numcomps-1)+cj] = val; 
-            mobilityc[cj*(numcomps-1)+ck] = val; 
-        }        
+        mobilityc[ck] = currentquad->mobilityc[ck];
     }        
 }
 
@@ -670,18 +635,31 @@ static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *site
  */
 static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
 }
 
 /*
  Composition mobility
  */
-void CompositionMobility(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
+void CompositionMobilityLatticeRef(PetscReal *mobilityc_latticeref, const PetscReal *sitefrac, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
 {
-    memset(mobilityc,0,user->ndp*user->ndp*sizeof(PetscReal));
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
-    Matfunc[user->phasematerialmapping[phaseID]].CompositionMobility(mobilityc,sitefrac,temperature,currentmaterial->energy,user->ncp);
-    for (PetscInt c=0; c<user->ndp*user->ndp; c++) mobilityc[c] *= currentmaterial->molarvolume;
+    Matfunc[user->phasematerialmapping[phaseID]].CompositionMobility(mobilityc_latticeref,sitefrac,temperature,currentmaterial->energy,user->ncp);
+    for (PetscInt c=0; c<user->ncp; c++) mobilityc_latticeref[c] *= currentmaterial->molarvolume;
+}
+
+/*
+ Composition mobility
+ */
+void CompositionMobilityVolumeRef(PetscReal *mobilityc_volumeref, const PetscReal *mobilityc_latticeref, const AppCtx *user)
+{
+    memset(mobilityc_volumeref,0,user->ndp*user->ndp*sizeof(PetscReal));
+    for (PetscInt ck=0; ck<user->ndp; ck++) {
+        mobilityc_volumeref[ck*user->ndp+ck] += mobilityc_latticeref[ck];
+//         for (PetscInt cj=0; cj<user->ndp; cj++) {
+//             mobilityc_volumeref[ck*user->ndp+cj] -= mobilityc_latticeref[cj]/user->ncp; 
+//         }        
+    }        
 }
 
 /*
