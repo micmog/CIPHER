@@ -693,8 +693,7 @@ PetscErrorCode PostStep(TS ts)
        PetscInt          o;
        
        ierr = DMGetGlobalVector(user->da_output,&Xout); CHKERRQ(ierr);
-       sprintf(name, "step %d",user->solparams.step);
-       ierr = PetscObjectSetName((PetscObject) Xout, name);CHKERRQ(ierr);
+       ierr = PetscObjectSetName((PetscObject) Xout, user->solparams.outfile);CHKERRQ(ierr);
        ierr = VecZeroEntries(Xout);
        ierr = VecGetArray(solution,&fdof); CHKERRQ(ierr);
        ierr = VecGetArray(Xout,&xout); CHKERRQ(ierr);
