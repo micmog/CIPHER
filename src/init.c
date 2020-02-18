@@ -266,7 +266,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
           assert(propsize == 1);
           if        (!strcmp(propval[0], "quadratic" )) {
-              currentmaterial->model = QUADRATIC_CHEMENERGY;
+              currentmaterial->chemfe_model = QUADRATIC_CHEMENERGY;
               currentmaterial->nsites = 1;
               QUAD *currentquad = &currentmaterial->energy.quad;
               /* initial composition */
@@ -346,7 +346,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
               currentmaterial->stochiometry[0] = 1.0;
           } else if (!strcmp(propval[0], "calphaddis")) {
-              currentmaterial->model = CALPHADDIS_CHEMENERGY;
+              currentmaterial->chemfe_model = CALPHADDIS_CHEMENERGY;
               currentmaterial->nsites = 1;
               CALPHADDIS *currentcalphaddis = &currentmaterial->energy.calphaddis;
               /* initial composition */
@@ -487,7 +487,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
               currentmaterial->stochiometry[0] = 1.0;
           } else if (!strcmp(propval[0], "calphad2sl")) {
-              currentmaterial->model = CALPHAD2SL_CHEMENERGY;
+              currentmaterial->chemfe_model = CALPHAD2SL_CHEMENERGY;
               currentmaterial->nsites = 2;
               CALPHAD2SL *currentcalphad2sl = &currentmaterial->energy.calphad2sl;
               /* initial composition */
@@ -651,7 +651,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               currentmaterial->stochiometry[0] = currentcalphad2sl->p;
               currentmaterial->stochiometry[1] = currentcalphad2sl->q;
           } else {
-              currentmaterial->model = NONE_CHEMENERGY;
+              currentmaterial->chemfe_model = NONE_CHEMENERGY;
               currentmaterial->nsites = 0;
           }
          }
@@ -683,29 +683,43 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          ierr = GetProperty(propval, &propsize, nucleusmapping, "matrix", buffer, filesize);
          assert(propsize > 0); currentnucleus->matrixlist[0] = propsize;
          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentnucleus->matrixlist[propctr+1] = atoi(propval[propctr]);
-         /* surface energy */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "gamma", buffer, filesize);
-         assert(propsize == 1); currentnucleus->gamma = atof(propval[0]);
-         /* heterogeneous nucleation shape factor */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
-         if (propsize) {assert(propsize == 1); currentnucleus->shapefactor = atof(propval[0]);} 
-         else {currentnucleus->shapefactor = 1.0;}
-         /* normalized diffusion coefficient */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
-         assert(propsize == 1); currentnucleus->D0 = atof(propval[0]);
-         /* normalized migration energy */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
-         assert(propsize == 1); currentnucleus->migration = atof(propval[0]);
-         /* lattice parameter */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
-         if (propsize) {assert(propsize == 1); currentnucleus->minsize = atof(propval[0]);} 
-         else {currentnucleus->minsize = 0.0;}
-         /* atomic volume */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "atomic_volume", buffer, filesize);
-         assert(propsize == 1); currentnucleus->atomicvolume = atof(propval[0]);
-         /* normalization length scale */
-         ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
-         assert(propsize == 1); currentnucleus->lengthscale = atof(propval[0]);
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "nucleation_model", buffer, filesize);
+         assert(propsize == 1);
+         if (!strcmp(propval[0], "cnt" )) {
+             currentnucleus->nuc_model = CNT_NUCLEATION;
+             CNT_NUC *currentcntnuc = &currentnucleus->nucleation.cnt;
+             /* surface energy */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "gamma", buffer, filesize);
+             assert(propsize == 1); currentcntnuc->gamma = atof(propval[0]);
+             /* heterogeneous nucleation shape factor */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentcntnuc->shapefactor = atof(propval[0]);} 
+             else {currentcntnuc->shapefactor = 1.0;}
+             /* normalized diffusion coefficient */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
+             assert(propsize == 1); currentcntnuc->D0 = atof(propval[0]);
+             /* normalized migration energy */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
+             assert(propsize == 1); currentcntnuc->migration = atof(propval[0]);
+             /* lattice parameter */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentcntnuc->minsize = atof(propval[0]);} 
+             else {currentcntnuc->minsize = 0.0;}
+             /* atomic volume */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "atomic_volume", buffer, filesize);
+             assert(propsize == 1); currentcntnuc->atomicvolume = atof(propval[0]);
+             /* normalization length scale */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
+             assert(propsize == 1); currentcntnuc->lengthscale = atof(propval[0]);
+         } else if (!strcmp(propval[0], "constant" )) {
+             currentnucleus->nuc_model = CONST_NUCLEATION;
+             CONST_NUC *currentconstnuc = &currentnucleus->nucleation.constant;
+             /* nucleation rate */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "nucleation_rate", buffer, filesize);
+             assert(propsize == 1); currentconstnuc->nucleation_rate = atof(propval[0]);
+         } else {
+             currentnucleus->nuc_model = NONE_NUCLEATION;
+         }
      }
     }
 
