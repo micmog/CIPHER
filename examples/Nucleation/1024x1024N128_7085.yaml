@@ -305,6 +305,7 @@ material:
 nucleus:
   precipitate :
     matrix : [0, 1]
+    nucleation_model: cnt
     length_scale : 10.0
     minsize : 1.0
     atomic_volume : 16.0
