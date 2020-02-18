@@ -35,12 +35,19 @@ PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
 
 /* Types declarations */
 
-/* model type */
+/* nucleation model type */
+typedef enum {
+   CNT_NUCLEATION,
+   CONST_NUCLEATION,
+   NONE_NUCLEATION
+} nucleation_model_t;
+
+/* chemical FE model type */
 typedef enum {
    QUADRATIC_CHEMENERGY,
    CALPHAD_CHEMENERGY,
    NONE_CHEMENERGY
-} model_t;
+} chemfe_model_t;
 
 /* interpolation type */
 typedef enum {
@@ -50,11 +57,28 @@ typedef enum {
    NONE_INTERPOLATION
 } interpolation_t;
 
-/* Nucleus parameters */
-typedef struct NUCLEUS {
-    uint16_t matrixlist[MAXAP+1];
+/* CNT nucleation model container */
+typedef struct CNT_NUC {
     PetscReal D0, migration, gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
+} CNT_NUC;
+
+/* constant nucleation model container */
+typedef struct CONST_NUC {
+    PetscReal nucleation_rate;
+} CONST_NUC;
+
+/* nucleation model */
+typedef union NUC {
+    CNT_NUC    cnt;
+    CONST_NUC  constant;
+} NUC;
+
+/* Nucleus parameters */
+typedef struct NUCLEUS {
+    nucleation_model_t nuc_model;
+    uint16_t matrixlist[MAXAP+1];
+    NUC nucleation; 
 } NUCLEUS;
 
 /* Temperature series */
@@ -102,7 +126,7 @@ typedef union CHEMFE {
 
 /* Phase container */
 typedef struct MATERIAL {
-    model_t model;
+    chemfe_model_t chemfe_model;
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0;
     CHEMFE energy;

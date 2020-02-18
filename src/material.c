@@ -14,6 +14,11 @@
 #define ANGSTROM 1.0e-10
 #define KBANGST2 1.38064852E-3
 
+/* nucleation functions */
+typedef struct NUCFUNC {
+    char (*Nucleation) (const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+} NUCFUNC;
+
 /* constitutive functions */
 typedef struct MATFUNC {
     void (*Chemenergy) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
@@ -28,28 +33,29 @@ typedef struct MATFUNC {
 } MATFUNC;
 
 static MATFUNC *Matfunc;
+static NUCFUNC *Nucfunc;
 
 /*
- Nucleation model for new phases
+ Classical nucleation theory model for new phases
  */
-char Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
-                const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                const PetscInt siteID, const AppCtx *user)
+char Nucleation_cnt(const PetscReal current_time, const PetscReal current_timestep, 
+                    const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                    const PetscInt siteID, const AppCtx *user)
 {
-    NUCLEUS *currentnucleus = &user->nucleus[user->sitenucleusmapping[siteID]];
+    CNT_NUC *currentcntnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.cnt;
     PetscReal KbT = KBANGST2*temperature;
-    PetscReal radius_c = 2.0*currentnucleus->gamma*volume/gv/ANGSTROM;
-    if (   radius_c < currentnucleus->lengthscale*pow(volume,1.0/user->dim)
-        && radius_c > currentnucleus->minsize) {
-        PetscReal zeldovich = currentnucleus->atomicvolume
-                            * sqrt(currentnucleus->gamma/KbT)
+    PetscReal radius_c = 2.0*currentcntnuc->gamma*volume/gv/ANGSTROM;
+    if (   radius_c < currentcntnuc->lengthscale*pow(volume,1.0/user->dim)
+        && radius_c > currentcntnuc->minsize) {
+        PetscReal zeldovich = currentcntnuc->atomicvolume
+                            * sqrt(currentcntnuc->gamma/KbT)
                             / (2.0*PETSC_PI*radius_c*radius_c);
         PetscReal beta = 4.0*PETSC_PI
-                       * currentnucleus->D0*exp(-currentnucleus->migration/temperature)
-                       * radius_c/currentnucleus->atomicvolume;
+                       * currentcntnuc->D0*exp(-currentcntnuc->migration/temperature)
+                       * radius_c/currentcntnuc->atomicvolume;
         PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta);
-        PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentnucleus->gamma*radius_c*radius_c)
-                                               * currentnucleus->shapefactor
+        PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentcntnuc->gamma*radius_c*radius_c)
+                                               * currentcntnuc->shapefactor
                                                / (3.0*KbT));
         PetscReal site_probability = current_timestep * zeldovich * beta
                                    * nucleation_probability * exp(-incubation_time/current_time);
@@ -60,7 +66,39 @@ char Nucleation(const PetscReal current_time, const PetscReal current_timestep,
 }
 
 /*
- Chemenergy - CALPHAD model for chemical energy
+ Constant nucleation rate model for new phases
+ */
+char Nucleation_constant(const PetscReal current_time, const PetscReal current_timestep, 
+                         const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                         const PetscInt siteID, const AppCtx *user)
+{
+    CONST_NUC *currentconstnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.constant;
+    PetscReal random_number = (rand()/(double)RAND_MAX);
+    if (random_number < current_timestep*currentconstnuc->nucleation_rate) {return 1;} else {return 0;}
+}
+
+/*
+ None nucleation model for new phases
+ */
+char Nucleation_none(const PetscReal current_time, const PetscReal current_timestep, 
+                     const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                     const PetscInt siteID, const AppCtx *user)
+{
+    return 0;
+}
+
+/*
+ None nucleation model for new phases
+ */
+char Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
+                const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                const PetscInt siteID, const AppCtx *user)
+{
+    return Nucfunc[user->sitenucleusmapping[siteID]].Nucleation(current_time,current_timestep,temperature,volume,gv,siteID,user);
+}
+
+/*
+ Chemenergy - CALPHAD chemfe_model for chemical energy
  */
 static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -86,7 +124,7 @@ static void Chemenergy_calphad(PetscReal *chemenergy, const PetscReal *compositi
 }
 
 /*
- Chemenergy - quadratic model for chemical energy
+ Chemenergy - quadratic chemfe_model for chemical energy
  */
 static void Chemenergy_quad(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -101,7 +139,7 @@ static void Chemenergy_quad(PetscReal *chemenergy, const PetscReal *composition,
 }
 
 /*
- Chemenergy - none model for chemical energy
+ Chemenergy - none chemfe_model for chemical energy
  */
 static void Chemenergy_none(PetscReal *chemenergy, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -109,7 +147,7 @@ static void Chemenergy_none(PetscReal *chemenergy, const PetscReal *composition,
 }
 
 /*
- Chemenergy - CALPHAD model for chemical energy
+ Chemenergy - CALPHAD chemfe_model for chemical energy
  */
 void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const PetscReal *chempot, const PetscReal temperature, const uint16_t *phaseID, const AppCtx *user)
 {
@@ -122,7 +160,7 @@ void Chemenergy(PetscReal *chemenergy, const PetscReal *composition, const Petsc
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHAD chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -176,7 +214,7 @@ static void ChemicalpotentialExplicit_calphad(PetscReal *chempot, const PetscRea
 }
 
 /*
- Chemicalpotential - Quadratic model for chemical potential
+ Chemicalpotential - Quadratic chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicit_quad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -184,7 +222,7 @@ static void ChemicalpotentialExplicit_quad(PetscReal *chempot, const PetscReal *
 }
 
 /*
- Chemicalpotential - None model for chemical potential
+ Chemicalpotential - None chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicit_none(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -206,7 +244,7 @@ void ChemicalpotentialExplicit(PetscReal *chempot, const PetscReal *composition,
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHAD chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -292,7 +330,7 @@ static void ChemicalpotentialExplicitTangent_calphad(PetscReal *chempottangent, 
 }
 
 /*
- Chemicalpotential - Quadratic model for chemical potential
+ Chemicalpotential - Quadratic chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicitTangent_quad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -300,7 +338,7 @@ static void ChemicalpotentialExplicitTangent_quad(PetscReal *chempottangent, con
 }
 
 /*
- Chemicalpotential - None model for chemical potential
+ Chemicalpotential - None chemfe_model for chemical potential
  */
 static void ChemicalpotentialExplicitTangent_none(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -318,7 +356,7 @@ void ChemicalpotentialExplicitTangent(PetscReal *chempottangent, const PetscReal
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHAD chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicit_calphad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -330,7 +368,7 @@ static void ChemicalpotentialImplicit_calphad(PetscReal *chempot, const PetscRea
 }
 
 /*
- Chemicalpotential - Quadratic model for chemical potential
+ Chemicalpotential - Quadratic chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicit_quad(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -343,7 +381,7 @@ static void ChemicalpotentialImplicit_quad(PetscReal *chempot, const PetscReal *
 }
 
 /*
- Chemicalpotential - None model for chemical potential
+ Chemicalpotential - None chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicit_none(PetscReal *chempot, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -365,7 +403,7 @@ void ChemicalpotentialImplicit(PetscReal *chempot, const PetscReal *composition,
 }
 
 /*
- Chemicalpotential - CALPHAD model for chemical potential
+ Chemicalpotential - CALPHAD chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicitTangent_calphad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -379,7 +417,7 @@ static void ChemicalpotentialImplicitTangent_calphad(PetscReal *chempottangent, 
 }
 
 /*
- Chemicalpotential - Quadratic model for chemical potential
+ Chemicalpotential - Quadratic chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicitTangent_quad(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -394,7 +432,7 @@ static void ChemicalpotentialImplicitTangent_quad(PetscReal *chempottangent, con
 }
 
 /*
- Chemicalpotential - None model for chemical potential
+ Chemicalpotential - None chemfe_model for chemical potential
  */
 static void ChemicalpotentialImplicitTangent_none(PetscReal *chempottangent, const PetscReal *composition, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
@@ -630,7 +668,7 @@ void material_init(const AppCtx *user)
     Matfunc = (MATFUNC *) malloc(user->nmat*sizeof(struct MATFUNC));
     MATERIAL *currentmaterial = &user->material[0];
     for (PetscInt mat=0; mat<user->nmat; mat++, currentmaterial++) {
-        if        (currentmaterial->model == QUADRATIC_CHEMENERGY) {
+        if        (currentmaterial->chemfe_model == QUADRATIC_CHEMENERGY) {
             Matfunc[mat].Chemenergy = &Chemenergy_quad;
             Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_quad;
             Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_quad;
@@ -639,7 +677,7 @@ void material_init(const AppCtx *user)
             Matfunc[mat].Composition = &Composition_quad;
             Matfunc[mat].CompositionTangent = &CompositionTangent_quad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_quad;
-        } else if (currentmaterial->model == CALPHAD_CHEMENERGY  ) {
+        } else if (currentmaterial->chemfe_model == CALPHAD_CHEMENERGY  ) {
             Matfunc[mat].Chemenergy = &Chemenergy_calphad;
             Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_calphad;
             Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_calphad;
@@ -648,7 +686,7 @@ void material_init(const AppCtx *user)
             Matfunc[mat].Composition = &Composition_calphad;
             Matfunc[mat].CompositionTangent = &CompositionTangent_calphad;
             Matfunc[mat].CompositionMobility = &CompositionMobility_calphad;
-        } else if (currentmaterial->model == NONE_CHEMENERGY     ) {
+        } else if (currentmaterial->chemfe_model == NONE_CHEMENERGY     ) {
             Matfunc[mat].Chemenergy = &Chemenergy_none;
             Matfunc[mat].ChemicalpotentialExplicit = &ChemicalpotentialExplicit_none;
             Matfunc[mat].ChemicalpotentialExplicitTangent = &ChemicalpotentialExplicitTangent_none;
@@ -659,4 +697,16 @@ void material_init(const AppCtx *user)
             Matfunc[mat].CompositionMobility = &CompositionMobility_none;
         }
     }    
+    
+    Nucfunc = (NUCFUNC *) malloc(user->nnuclei*sizeof(struct NUCFUNC));
+    NUCLEUS *currentnucleus = &user->nucleus[0];
+    for (PetscInt nuc=0; nuc<user->nnuclei; nuc++,currentnucleus++) {
+        if (currentnucleus->nuc_model == CNT_NUCLEATION) {
+            Nucfunc[nuc].Nucleation = &Nucleation_cnt;
+        } else if (currentnucleus->nuc_model == CONST_NUCLEATION) {
+            Nucfunc[nuc].Nucleation = &Nucleation_constant;
+        } else if (currentnucleus->nuc_model == NONE_NUCLEATION) {
+            Nucfunc[nuc].Nucleation = &Nucleation_none;
+        }
+    }
 }
