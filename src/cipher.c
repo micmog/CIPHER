@@ -794,6 +794,7 @@ int main(int argc,char **args)
   ierr = DMForestSetTopology(ctx.da_solforest,"brick");CHKERRQ(ierr);
   ierr = DMForestSetInitialRefinement(ctx.da_solforest,ctx.amrparams.initrefine);CHKERRQ(ierr);
   ierr = DMForestSetMaximumRefinement(ctx.da_solforest,ctx.amrparams.maxnrefine);CHKERRQ(ierr);
+  ierr = DMForestSetMinimumRefinement(ctx.da_solforest,ctx.amrparams.minnrefine);CHKERRQ(ierr);
   ierr = DMForestSetPartitionOverlap(ctx.da_solforest,1);CHKERRQ(ierr);
   ierr = DMSetFromOptions(ctx.da_solforest);CHKERRQ(ierr);
   ierr = DMSetUp(ctx.da_solforest);CHKERRQ(ierr);
