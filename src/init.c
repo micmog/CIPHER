@@ -717,6 +717,38 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              /* nucleation rate */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "nucleation_rate", buffer, filesize);
              assert(propsize == 1); currentconstnuc->nucleation_rate = atof(propval[0]);
+         } else if (!strcmp(propval[0], "thermal" )) {
+             currentnucleus->nuc_model = THERMAL_NUCLEATION;
+             THERMAL_NUC *currentthermalnuc = &currentnucleus->nucleation.thermal;
+             /* solvus temperature */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "solvus_temperature", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->solvus_temperature = atof(propval[0]);
+             /* enthalpy of fusion */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->enthalpy_fusion = atof(propval[0]);
+             /* surface energy */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "gamma", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->gamma = atof(propval[0]);
+             /* heterogeneous nucleation shape factor */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentthermalnuc->shapefactor = atof(propval[0]);} 
+             else {currentthermalnuc->shapefactor = 1.0;}
+             /* normalized diffusion coefficient */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->D0 = atof(propval[0]);
+             /* normalized migration energy */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->migration = atof(propval[0]);
+             /* lattice parameter */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentthermalnuc->minsize = atof(propval[0]);} 
+             else {currentthermalnuc->minsize = 0.0;}
+             /* atomic volume */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "atomic_volume", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->atomicvolume = atof(propval[0]);
+             /* normalization length scale */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->lengthscale = atof(propval[0]);
          } else {
              currentnucleus->nuc_model = NONE_NUCLEATION;
          }
