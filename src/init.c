@@ -247,17 +247,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
     } 
     
-    /* field offsets */
-    AS_OFFSET = 0;
-    AS_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf) + 1;
-    PF_OFFSET = AS_OFFSET+AS_SIZE;
-    PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
-    DP_OFFSET = PF_OFFSET+PF_SIZE;
-    DP_SIZE   = user->ndp;
-    CP_OFFSET = DP_OFFSET+DP_SIZE;
-    CP_SIZE   = PF_SIZE*user->ndp;
-
     /* Parsing config file material */
+    MAXSITES = 0;
     {
      MATERIAL *currentmaterial = &user->material[0];
      for (PetscInt m=0; m<user->nmat; m++,currentmaterial++) {
@@ -267,11 +258,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          ierr = GetProperty(propval, &propsize, materialmapping, "molarvolume", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
          currentmaterial->molarvolume = atof(propval[0]);
-         /* initial composition */
-         ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
-         assert(propsize == user->ncp);
-         currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
-         for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
          /* chempot explicit kinetic coefficient */
          ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
          if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
@@ -281,7 +267,15 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           assert(propsize == 1);
           if        (!strcmp(propval[0], "quadratic" )) {
               currentmaterial->chemfe_model = QUADRATIC_CHEMENERGY;
+              currentmaterial->nsites = 1;
               QUAD *currentquad = &currentmaterial->energy.quad;
+              /* initial composition */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == currentmaterial->nsites*user->ncp);
+               currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+              }
               /* solute mobility */
               {
                currentquad->mobilityc = malloc(user->ncp*sizeof(PetscReal));
@@ -349,14 +343,24 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                    currentbinary->logCoeff = 0.0;
                }
               } 
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = 1.0;
           } else if (!strcmp(propval[0], "calphaddis")) {
-              currentmaterial->chemfe_model = CALPHAD_CHEMENERGY;
-              CALPHAD *currentcalphad = &currentmaterial->energy.calphad;
+              currentmaterial->chemfe_model = CALPHADDIS_CHEMENERGY;
+              currentmaterial->nsites = 1;
+              CALPHADDIS *currentcalphaddis = &currentmaterial->energy.calphaddis;
+              /* initial composition */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == currentmaterial->nsites*user->ncp);
+               currentmaterial->c0 = malloc(user->ncp*sizeof(PetscReal));
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+              }
               /* mobility */
               {
                char mobmapping[PETSC_MAX_PATH_LEN];
-               currentcalphad->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
-               MOBILITY *currentmobility = &currentcalphad->mobilityc[0];
+               currentcalphaddis->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
+               MOBILITY *currentmobility = &currentcalphaddis->mobilityc[0];
                for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
                    sprintf(mobmapping, "%s/mobilityc/%s",materialmapping,user->componentname[c]);
                    ierr = GetProperty(propval, &propsize, mobmapping, "mobility0", buffer, filesize);
@@ -400,18 +404,18 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                char refmapping[PETSC_MAX_PATH_LEN];
                sprintf(refmapping, "%s/ref_enthalpy",materialmapping);
                ierr = GetProperty(propval, &propsize, refmapping, "t_coefficient", buffer, filesize);
-               currentcalphad->ref.nTser = propsize;
-               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphad->ref.coeff[propctr] = atof(propval[propctr]);
+               currentcalphaddis->ref.nTser = propsize;
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphaddis->ref.coeff[propctr] = atof(propval[propctr]);
                ierr = GetProperty(propval, &propsize, refmapping, "t_exponent", buffer, filesize);
-               assert(currentcalphad->ref.nTser == propsize);
-               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphad->ref.exp[propctr] = atoi(propval[propctr]);
-               currentcalphad->ref.logCoeff = 0.0;
+               assert(currentcalphaddis->ref.nTser == propsize);
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentcalphaddis->ref.exp[propctr] = atoi(propval[propctr]);
+               currentcalphaddis->ref.logCoeff = 0.0;
               }
               /* unary enthalpy */
               {
                char unarymapping[PETSC_MAX_PATH_LEN];
-               currentcalphad->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
-               TSeries *currentunary = &currentcalphad->unary[0];
+               currentcalphaddis->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+               TSeries *currentunary = &currentcalphaddis->unary[0];
                for (PetscInt c=0; c<user->ncp; c++, currentunary++) {
                    sprintf(unarymapping, "%s/unary_enthalpy/%s",materialmapping,user->componentname[c]);
                    ierr = GetProperty(propval, &propsize, unarymapping, "t_coefficient", buffer, filesize);
@@ -427,8 +431,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               /* binary enthalpy */
               {
                char binarymapping[PETSC_MAX_PATH_LEN];
-               currentcalphad->binary = (RK *) malloc(user->ncp*(user->ncp-1)*sizeof(struct RK)/2);
-               RK *currentbinary = &currentcalphad->binary[0];
+               currentcalphaddis->binary = (RK *) malloc(user->ncp*(user->ncp-1)*sizeof(struct RK)/2);
+               RK *currentbinary = &currentcalphaddis->binary[0];
                for (PetscInt ck=0; ck<user->ncp; ck++) {
                    for (PetscInt cj=ck+1; cj<user->ncp; cj++,currentbinary++) {
                        sprintf(binarymapping, "%s/binary_enthalpy/%s/%s",materialmapping,user->componentname[ck],user->componentname[cj]);
@@ -452,8 +456,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               /* ternary enthalpy */
               {
                char ternarymapping[PETSC_MAX_PATH_LEN];
-               currentcalphad->ternary = (RK *) malloc(user->ncp*(user->ncp-1)*(user->ncp-2)*sizeof(struct RK)/6);
-               RK *currentternary = &currentcalphad->ternary[0];
+               currentcalphaddis->ternary = (RK *) malloc(user->ncp*(user->ncp-1)*(user->ncp-2)*sizeof(struct RK)/6);
+               RK *currentternary = &currentcalphaddis->ternary[0];
                for (PetscInt ck=0;ck<user->ncp;ck++) {
                    for (PetscInt cj=ck+1;cj<user->ncp;cj++) {
                        for (PetscInt ci=cj+1;ci<user->ncp;ci++, currentternary++) {
@@ -480,13 +484,195 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                    }
                }        
               }  
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = 1.0;
+          } else if (!strcmp(propval[0], "calphad2sl")) {
+              currentmaterial->chemfe_model = CALPHAD2SL_CHEMENERGY;
+              currentmaterial->nsites = 2;
+              CALPHAD2SL *currentcalphad2sl = &currentmaterial->energy.calphad2sl;
+              /* initial composition */
+              {
+               currentmaterial->c0 = malloc(currentmaterial->nsites*user->ncp*sizeof(PetscReal));
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0_p", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[propctr] = atof(propval[propctr]);
+               ierr = GetProperty(propval, &propsize, materialmapping, "c0_q", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentmaterial->c0[user->ncp+propctr] = atof(propval[propctr]);
+              }
+              /* stochiometry */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "stochiometry", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == 2);
+               currentcalphad2sl->p = atof(propval[0]); currentcalphad2sl->q = atof(propval[1]);
+               assert(fabs(currentcalphad2sl->p + currentcalphad2sl->q - 1.0) < TOL);
+              } 
+              /* solute mobility */
+              {
+               currentcalphad2sl->mobilityc = malloc(user->ncp*sizeof(PetscReal));
+               ierr = GetProperty(propval, &propsize, materialmapping, "mobilityc", buffer, filesize); CHKERRQ(ierr);
+               assert(propsize == user->ncp);
+               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentcalphad2sl->mobilityc[propctr] = atof(propval[propctr]);
+              } 
+              /* unary enthalpy */
+              {
+               char unarymapping[PETSC_MAX_PATH_LEN];
+               currentcalphad2sl->unary = (TSeries *) malloc(user->ncp*user->ncp*sizeof(TSeries));
+               TSeries *currentunary = &currentcalphad2sl->unary[0];
+               for (PetscInt cp=0; cp<user->ncp; cp++) {
+                   for (PetscInt cq=0; cq<user->ncp; cq++, currentunary++) {
+                       sprintf(unarymapping, "%s/unary_enthalpy/(%s:%s)",materialmapping,user->componentname[cp],user->componentname[cq]);
+                       ierr = GetProperty(propval, &propsize, unarymapping, "t_coefficient", buffer, filesize);
+                       currentunary->nTser = propsize;
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->coeff[propctr] = atof(propval[propctr]);
+                       ierr = GetProperty(propval, &propsize, unarymapping, "t_exponent", buffer, filesize);
+                       assert(propsize == currentunary->nTser);
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->exp[propctr] = atoi(propval[propctr]);
+                       ierr = GetProperty(propval, &propsize, unarymapping, "tlnt_coefficient", buffer, filesize);
+                       if (propsize) {currentunary->logCoeff = atof(propval[0]);} else {currentunary->logCoeff = 0.0;}
+                   }
+               }    
+              }
+              /* binary enthalpy */
+              {
+               char binarymapping[PETSC_MAX_PATH_LEN];
+               RK *currentbinary;
+               currentcalphad2sl->binaryp = (RK *) malloc(user->ncp*user->ncp*(user->ncp-1)*sizeof(struct RK)/2);
+               currentbinary = &currentcalphad2sl->binaryp[0];
+               for (PetscInt cp_i=0; cp_i<user->ncp; cp_i++) {
+                   for (PetscInt cp_j=cp_i+1; cp_j<user->ncp; cp_j++) {
+                       for (PetscInt cq=0; cq<user->ncp; cq++, currentbinary++) {
+                           sprintf(binarymapping, "%s/binary_enthalpy/(%s,%s:%s)",materialmapping,user->componentname[cp_i],
+                                                                                                  user->componentname[cp_j],user->componentname[cq]);
+                           ierr = GetProperty(propval, &propsize, binarymapping, "nrk", buffer, filesize);
+                           if (propsize) {currentbinary->n = atoi(propval[0]);} else {currentbinary->n = 0;}
+                           currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                           TSeries *currententhalpy = &currentbinary->enthalpy[0];
+                           for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
+                               sprintf(binarymapping, "%s/binary_enthalpy/(%s,%s:%s)/rk_%d",materialmapping,user->componentname[cp_i],
+                                                                                                            user->componentname[cp_j],user->componentname[cq],nrk);
+                               ierr = GetProperty(propval, &propsize, binarymapping, "t_coefficient", buffer, filesize);
+                               currententhalpy->nTser = propsize;
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, binarymapping, "t_exponent", buffer, filesize);
+                               assert(propsize == currententhalpy->nTser);
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                           }
+                       }
+                   }
+               }        
+               currentcalphad2sl->binaryq = (RK *) malloc(user->ncp*user->ncp*(user->ncp-1)*sizeof(struct RK)/2);
+               currentbinary = &currentcalphad2sl->binaryq[0];
+               for (PetscInt cp=0; cp<user->ncp; cp++) {
+                   for (PetscInt cq_i=0; cq_i<user->ncp; cq_i++) {
+                       for (PetscInt cq_j=cq_i+1; cq_j<user->ncp; cq_j++, currentbinary++) {
+                           sprintf(binarymapping, "%s/binary_enthalpy/(%s:%s,%s)",materialmapping,user->componentname[cp],user->componentname[cq_i],
+                                                                                                                          user->componentname[cq_j]);
+                           ierr = GetProperty(propval, &propsize, binarymapping, "nrk", buffer, filesize);
+                           if (propsize) {currentbinary->n = atoi(propval[0]);} else {currentbinary->n = 0;}
+                           currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                           TSeries *currententhalpy = &currentbinary->enthalpy[0];
+                           for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
+                               sprintf(binarymapping, "%s/binary_enthalpy/(%s:%s,%s)/rk_%d",materialmapping,user->componentname[cp],user->componentname[cq_i],
+                                                                                                                                    user->componentname[cq_j],nrk);
+                               ierr = GetProperty(propval, &propsize, binarymapping, "t_coefficient", buffer, filesize);
+                               currententhalpy->nTser = propsize;
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, binarymapping, "t_exponent", buffer, filesize);
+                               assert(propsize == currententhalpy->nTser);
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                           }
+                       }
+                   }
+               }        
+              }  
+              /* ternary enthalpy */
+              {
+               char ternarymapping[PETSC_MAX_PATH_LEN];
+               RK *currentternary;
+               currentcalphad2sl->ternaryp = (RK *) malloc(user->ncp*user->ncp*(user->ncp-1)*(user->ncp-2)*sizeof(struct RK)/6);
+               currentternary = &currentcalphad2sl->ternaryp[0];
+               for (PetscInt cp_i=0; cp_i<user->ncp; cp_i++) {
+                   for (PetscInt cp_j=cp_i+1; cp_j<user->ncp; cp_j++) {
+                       for (PetscInt cp_k=cp_j+1; cp_k<user->ncp; cp_k++) {
+                           for (PetscInt cq=0; cq<user->ncp; cq++, currentternary++) {
+                               sprintf(ternarymapping, "%s/ternary_enthalpy/(%s,%s,%s:%s)",materialmapping,user->componentname[cp_i],
+                                                                                                           user->componentname[cp_j],
+                                                                                                           user->componentname[cp_k],user->componentname[cq]);
+                               ierr = GetProperty(propval, &propsize, ternarymapping, "nrk", buffer, filesize);
+                               if (propsize) {currentternary->n = atoi(propval[0]);} else {currentternary->n = 0;}
+                               currentternary->enthalpy = (TSeries *) malloc(currentternary->n*sizeof(TSeries));
+                               TSeries *currententhalpy = &currentternary->enthalpy[0];
+                               for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
+                                   sprintf(ternarymapping, "%s/ternary_enthalpy/(%s,%s,%s:%s)/rk_%d",materialmapping,user->componentname[cp_i],
+                                                                                                                     user->componentname[cp_j],
+                                                                                                                     user->componentname[cp_k],user->componentname[cq],nrk);
+                                   ierr = GetProperty(propval, &propsize, ternarymapping, "t_coefficient", buffer, filesize);
+                                   currententhalpy->nTser = propsize;
+                                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                                   ierr = GetProperty(propval, &propsize, ternarymapping, "t_exponent", buffer, filesize);
+                                   assert(propsize == currententhalpy->nTser);
+                                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                               }
+                           }
+                       }
+                   }
+               }        
+               currentcalphad2sl->ternaryq = (RK *) malloc(user->ncp*user->ncp*(user->ncp-1)*(user->ncp-2)*sizeof(struct RK)/6);
+               currentternary = &currentcalphad2sl->ternaryq[0];
+               for (PetscInt cp=0; cp<user->ncp; cp++) {
+                   for (PetscInt cq_i=0; cq_i<user->ncp; cq_i++) {
+                       for (PetscInt cq_j=cq_i+1; cq_j<user->ncp; cq_j++) {
+                           for (PetscInt cq_k=cq_j+1; cq_k<user->ncp; cq_k++, currentternary++) {
+                               sprintf(ternarymapping, "%s/ternary_enthalpy/(%s:%s,%s,%s)",materialmapping,user->componentname[cp],user->componentname[cq_i],
+                                                                                                                                   user->componentname[cq_j],
+                                                                                                                                   user->componentname[cq_k]);
+                               ierr = GetProperty(propval, &propsize, ternarymapping, "nrk", buffer, filesize);
+                               if (propsize) {currentternary->n = atoi(propval[0]);} else {currentternary->n = 0;}
+                               currentternary->enthalpy = (TSeries *) malloc(currentternary->n*sizeof(TSeries));
+                               TSeries *currententhalpy = &currentternary->enthalpy[0];
+                               for (PetscInt nrk=0; nrk < currentternary->n; nrk++, currententhalpy++) {
+                                   sprintf(ternarymapping, "%s/ternary_enthalpy/(%s:%s,%s,%s)/rk_%d",materialmapping,user->componentname[cp],user->componentname[cq_i],
+                                                                                                                                             user->componentname[cq_j],
+                                                                                                                                             user->componentname[cq_k],nrk);
+                                   ierr = GetProperty(propval, &propsize, ternarymapping, "t_coefficient", buffer, filesize);
+                                   currententhalpy->nTser = propsize;
+                                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                                   ierr = GetProperty(propval, &propsize, ternarymapping, "t_exponent", buffer, filesize);
+                                   assert(propsize == currententhalpy->nTser);
+                                   for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                               }
+                           }
+                       }
+                   }
+               }        
+              }  
+              currentmaterial->stochiometry = malloc(currentmaterial->nsites*sizeof(PetscReal));
+              currentmaterial->stochiometry[0] = currentcalphad2sl->p;
+              currentmaterial->stochiometry[1] = currentcalphad2sl->q;
           } else {
               currentmaterial->chemfe_model = NONE_CHEMENERGY;
+              currentmaterial->nsites = 0;
           }
          }
+         MAXSITES = MAXSITES > currentmaterial->nsites
+                  ? MAXSITES : currentmaterial->nsites;
      }
     }
 
+    /* field offsets */
+    SF_SIZE = MAXSITES*user->ncp;
+    SP_SIZE = MAXSITES*user->ndp;
+
+    AS_OFFSET = 0;
+    AS_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf) + 1;
+    PF_OFFSET = AS_OFFSET+AS_SIZE;
+    PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
+    DP_OFFSET = PF_OFFSET+PF_SIZE;
+    DP_SIZE   = user->ndp;
+    EX_OFFSET = DP_OFFSET+DP_SIZE;
+    EX_SIZE   = PF_SIZE*SP_SIZE;
+    
     /* Parsing config file nucleation */
     {
      NUCLEUS *currentnucleus = &user->nucleus[0];
@@ -946,7 +1132,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscErrorCode    ierr;
     Vec               solutionl;
     PetscScalar       *fdof, *fdofl, *offset, *offsetg;
-    PetscInt          localcell, cell, face, phase, g;
+    PetscInt          localcell, cell, face, phase, g, c, s;
     PetscInt          conesize, supp, nsupp;
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
@@ -954,6 +1140,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     PetscScalar       *pcell, *dcell, *ccell;
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
+    PetscReal         sitepot[SP_SIZE];
 
     PetscFunctionBeginUser;  
     ierr = DMGetLabel(user->da_solution, "phase", &plabel);
@@ -1019,17 +1206,23 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         F2IFUNC(gslist,&offset[AS_OFFSET]);
         pcell  = &offset[PF_OFFSET];
         dcell  = &offset[DP_OFFSET];
-        ccell  = &offset[CP_OFFSET];
+        ccell  = &offset[EX_OFFSET];
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            ChemicalpotentialExplicit(&ccell[g*user->ndp],currentmaterial->c0,temperature,gslist[g+1],user);
+            SitepotentialExplicit(&ccell[g*SP_SIZE],currentmaterial->c0,temperature,gslist[g+1],user);
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
-                Chemicalpotential(dcell,currentmaterial->c0,temperature,gslist[g+1],user);
+                Sitepotential(sitepot,currentmaterial->c0,temperature,gslist[g+1],user);
+                memset(dcell,0,user->ndp*sizeof(PetscReal));
+                for (s=0; s<currentmaterial->nsites; s++) {
+                    for (c=0; c<user->ndp; c++) {
+                        dcell[c] += sitepot[s*user->ndp+c];
+                    }
+                }
             } else {
                 pcell[g] = 0.0;
             }

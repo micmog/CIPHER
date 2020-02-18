@@ -30,8 +30,9 @@
 #define R_GAS_CONST 8.314462
 
 /* field offsets */
-PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   CP_SIZE;
-PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
+PetscInt MAXSITES, SP_SIZE, SF_SIZE;
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET;
 
 /* Types declarations */
 
@@ -46,7 +47,8 @@ typedef enum {
 /* chemical FE model type */
 typedef enum {
    QUADRATIC_CHEMENERGY,
-   CALPHAD_CHEMENERGY,
+   CALPHADDIS_CHEMENERGY,
+   CALPHAD2SL_CHEMENERGY,
    NONE_CHEMENERGY
 } chemfe_model_t;
 
@@ -111,13 +113,22 @@ typedef struct MOBILITY {
     RK *binary;
 } MOBILITY;
 
-/* CALPHAD energy parameters container */
-typedef struct CALPHAD {
+/* CALPHAD2SL energy parameters container */
+typedef struct CALPHAD2SL {
+    PetscReal p, q;
+    TSeries *unary;
+    RK *binaryp, *binaryq;
+    RK *ternaryp, *ternaryq;
+    PetscReal *mobilityc;
+} CALPHAD2SL;
+
+/* CALPHADDIS energy parameters container */
+typedef struct CALPHADDIS {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
     MOBILITY *mobilityc;
-} CALPHAD;
+} CALPHADDIS;
 
 /* Quadratic energy parameters container */
 typedef struct QUAD {
@@ -130,14 +141,16 @@ typedef struct QUAD {
 /* Energy container */
 typedef union CHEMFE {
     QUAD    quad;
-    CALPHAD calphad;
+    CALPHADDIS calphaddis;
+    CALPHAD2SL calphad2sl;
 } CHEMFE;
 
 /* Phase container */
 typedef struct MATERIAL {
     chemfe_model_t chemfe_model;
+    PetscInt nsites;
     PetscReal molarvolume, chempot_ex_kineticcoeff;
-    PetscReal *c0;
+    PetscReal *c0, *stochiometry;
     CHEMFE energy;
 } MATERIAL;
 
