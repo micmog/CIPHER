@@ -39,6 +39,7 @@ PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, CP_OFFSET;
 typedef enum {
    CNT_NUCLEATION,
    CONST_NUCLEATION,
+   THERMAL_NUCLEATION,
    NONE_NUCLEATION
 } nucleation_model_t;
 
@@ -68,10 +69,18 @@ typedef struct CONST_NUC {
     PetscReal nucleation_rate;
 } CONST_NUC;
 
+/* thermal nucleation model container */
+typedef struct THERMAL_NUC {
+    PetscReal D0, migration, gamma, shapefactor;
+    PetscReal minsize, atomicvolume, lengthscale;
+    PetscReal solvus_temperature, enthalpy_fusion;
+} THERMAL_NUC;
+
 /* nucleation model */
 typedef union NUC {
-    CNT_NUC    cnt;
-    CONST_NUC  constant;
+    CNT_NUC     cnt;
+    CONST_NUC   constant;
+    THERMAL_NUC thermal;
 } NUC;
 
 /* Nucleus parameters */

@@ -78,6 +78,37 @@ char Nucleation_constant(const PetscReal current_time, const PetscReal current_t
 }
 
 /*
+ Thermal nucleation rate model for new phases
+ */
+char Nucleation_thermal(const PetscReal current_time, const PetscReal current_timestep, 
+                        const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                        const PetscInt siteID, const AppCtx *user)
+{
+    THERMAL_NUC *currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
+    PetscReal KbT = KBANGST2*temperature;
+    PetscReal thermal_gv = currentthermalnuc->enthalpy_fusion*(1.0 - temperature/currentthermalnuc->solvus_temperature);
+    PetscReal radius_c = 2.0*currentthermalnuc->gamma/thermal_gv/ANGSTROM;
+    if (   radius_c < currentthermalnuc->lengthscale*pow(volume,1.0/user->dim)
+        && radius_c > currentthermalnuc->minsize) {
+        PetscReal zeldovich = currentthermalnuc->atomicvolume
+                            * sqrt(currentthermalnuc->gamma/KbT)
+                            / (2.0*PETSC_PI*radius_c*radius_c);
+        PetscReal beta = 4.0*PETSC_PI
+                       * currentthermalnuc->D0*exp(-currentthermalnuc->migration/temperature)
+                       * radius_c/currentthermalnuc->atomicvolume;
+        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta);
+        PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentthermalnuc->gamma*radius_c*radius_c)
+                                               * currentthermalnuc->shapefactor
+                                               / (3.0*KbT));
+        PetscReal site_probability = current_timestep * zeldovich * beta
+                                   * nucleation_probability * exp(-incubation_time/current_time);
+        PetscReal random_number = (rand()/(double)RAND_MAX);
+        if (random_number < site_probability) return 1;
+    }
+    return 0;
+}
+
+/*
  None nucleation model for new phases
  */
 char Nucleation_none(const PetscReal current_time, const PetscReal current_timestep, 
@@ -705,6 +736,8 @@ void material_init(const AppCtx *user)
             Nucfunc[nuc].Nucleation = &Nucleation_cnt;
         } else if (currentnucleus->nuc_model == CONST_NUCLEATION) {
             Nucfunc[nuc].Nucleation = &Nucleation_constant;
+        } else if (currentnucleus->nuc_model == THERMAL_NUCLEATION) {
+            Nucfunc[nuc].Nucleation = &Nucleation_thermal;
         } else if (currentnucleus->nuc_model == NONE_NUCLEATION) {
             Nucfunc[nuc].Nucleation = &Nucleation_none;
         }
