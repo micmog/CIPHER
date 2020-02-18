@@ -116,7 +116,7 @@ char Nucleation_none(const PetscReal current_time, const PetscReal current_times
 }
 
 /*
- None nucleation model for new phases
+ Nucleation model for new phases
  */
 char Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
                 const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
