@@ -13,6 +13,7 @@
 
 #define ANGSTROM 1.0e-10
 #define KBANGST2 1.38064852E-3
+#define KRONDELTA(a,b) ((a == b) ?  (1.0) : (0.0))
 
 /* nucleation functions */
 typedef struct NUCFUNC {
@@ -710,7 +711,7 @@ static void CompositionMobility_none(PetscReal *mobilityc, const PetscReal *site
 /*
  Composition mobility
  */
-void CompositionMobilityLatticeRef(PetscReal *mobilityc_latticeref, const PetscReal *sitefrac, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
+void CompositionMobilityComponent(PetscReal *mobilityc_latticeref, const PetscReal *sitefrac, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
     Matfunc[user->phasematerialmapping[phaseID]].CompositionMobility(mobilityc_latticeref,sitefrac,temperature,currentmaterial->energy,user->ncp);
@@ -720,14 +721,17 @@ void CompositionMobilityLatticeRef(PetscReal *mobilityc_latticeref, const PetscR
 /*
  Composition mobility
  */
-void CompositionMobilityVolumeRef(PetscReal *mobilityc_volumeref, const PetscReal *mobilityc_latticeref, const AppCtx *user)
+void CompositionMobilityVolumeRef(PetscReal *mobilityc_volumeref, const PetscReal *mobilityc_latticeref, const PetscReal *composition, const AppCtx *user)
 {
     memset(mobilityc_volumeref,0,user->ndp*user->ndp*sizeof(PetscReal));
-    for (PetscInt ck=0; ck<user->ndp; ck++) {
-        mobilityc_volumeref[ck*user->ndp+ck] += mobilityc_latticeref[ck];
-//         for (PetscInt cj=0; cj<user->ndp; cj++) {
-//             mobilityc_volumeref[ck*user->ndp+cj] -= mobilityc_latticeref[cj]/user->ncp; 
-//         }        
+    for (PetscInt ci=0; ci<user->ndp; ci++) {
+        for (PetscInt cj=0; cj<user->ndp; cj++) {
+            for (PetscInt ck=0; ck<user->ncp; ck++) {
+                mobilityc_volumeref[ci*user->ndp+cj] += (KRONDELTA(cj,ck) - composition[cj])
+                                                      * (KRONDELTA(ck,ci) - composition[ci])
+                                                      * composition[ck]*mobilityc_latticeref[ck];
+            }
+        }
     }        
 }
 
