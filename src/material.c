@@ -719,7 +719,7 @@ void CompositionMobilityComponent(PetscReal *mobilityc_latticeref, const PetscRe
 }
 
 /*
- Composition mobility
+ Composition mobility (Jan-Olof Andersson and John Agren, Journal of Applied Physics 72, 1350 (1992); doi: 10.1063/1.351745)
  */
 void CompositionMobilityVolumeRef(PetscReal *mobilityc_volumeref, const PetscReal *mobilityc_latticeref, const PetscReal *composition, const AppCtx *user)
 {
