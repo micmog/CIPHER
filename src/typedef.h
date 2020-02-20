@@ -52,6 +52,13 @@ typedef enum {
    NONE_CHEMENERGY
 } chemfe_model_t;
 
+/* boundary type */
+typedef enum {
+   NEUMANN_BC,
+   DIRICHLET_BC,
+   NONE_BC
+} boundary_t;
+
 /* interpolation type */
 typedef enum {
    LINEAR_INTERPOLATION,
@@ -161,6 +168,13 @@ typedef struct INTERFACE {
     MOBILITY *mobility;
 } INTERFACE;
 
+/* boundary conditions */
+typedef struct BOUNDARYCONDITIONS {
+    PetscInt boundaryid;
+    boundary_t *type;
+    PetscReal *val;
+} BOUNDARYCONDITIONS;
+
 /* AMR solparams */
 typedef struct AMRPARAMS {
     PetscInt  initrefine, initcoarsen, maxnrefine, minnrefine, amrinterval, *initblocksize;
@@ -193,8 +207,8 @@ typedef struct AppCtx {
     PetscMPIInt worldrank, worldsize;
     /* number of phases, materials, interfaces and components */
     PetscInt npf, ndp, ncp, ntp;
-    PetscInt nf, nmat;
-    char **componentname, **materialname, **interfacename, **nucleusname;
+    PetscInt nf, nmat, nbcs;
+    char **componentname, **materialname, **interfacename, **nucleusname, **bcname;
     /* grid resolution */
     PetscInt dim, *resolution;
     PetscReal *size;
@@ -218,6 +232,8 @@ typedef struct AppCtx {
     /* interface material parameters */
     INTERFACE *interface;
     PetscInt *interfacelist;
+    /* solution solparams */
+    BOUNDARYCONDITIONS *bcs;
     /* solution solparams */
     SOLUTIONPARAMS solparams;
     /* AMR solparams */
