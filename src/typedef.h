@@ -181,7 +181,7 @@ typedef struct MATERIAL {
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
     thermal_model_t thermal_model;
-    PetscReal specific_heat;
+    PetscReal temperature0, specific_heat;
     THERMAL thermal;
 } MATERIAL;
 

@@ -675,6 +675,12 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 
          /* thermal transport */
          {
+          /* initial temperature */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "temperature0", buffer, filesize);
+           assert(propsize == 1);
+           currentmaterial->temperature0 = atof(propval[0]);
+          }
           /* thermal specific heat */
           {
            ierr = GetProperty(propval, &propsize, materialmapping, "specific_heat", buffer, filesize);
