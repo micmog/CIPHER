@@ -194,8 +194,8 @@ typedef struct INTERFACE {
 /* boundary conditions */
 typedef struct BOUNDARYCONDITIONS {
     PetscInt boundaryid;
-    boundary_t *type;
-    PetscReal *val;
+    boundary_t chem_bctype, thermal_bctype;
+    PetscReal *chem_bcval, thermal_bcval;
 } BOUNDARYCONDITIONS;
 
 /* AMR solparams */
@@ -206,7 +206,7 @@ typedef struct AMRPARAMS {
 /* solution solparams */
 typedef struct SOLUTIONPARAMS {
     /* load case parameters */
-    PetscReal *time, *temperature, timestep, mintimestep, maxtimestep;
+    PetscReal *time, timestep, mintimestep, maxtimestep;
     PetscInt  nloadcases, currentloadcase;
     PetscInt  step;
     /* phase field parameters */

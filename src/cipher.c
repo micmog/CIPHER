@@ -57,7 +57,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
-    PetscReal         specific_heat, tconductivity[user->ninteriorcells], temperature, temperatureL, temperatureR;
+    PetscReal         specific_heat, tconductivity[user->ninteriorcells], *temperature, *temperatureL, *temperatureR;
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -79,7 +79,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             pcell = &offset[PF_OFFSET];
             chempot = &offset[DP_OFFSET];
             sitepot_ex = &offset[EX_OFFSET];
-            temperature =  offset[TM_OFFSET];
+            temperature =  &offset[TM_OFFSET];
             sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
             composition = &composition_global[cell*user->ncp];
             mobilitycv = &mobilitycv_global[cell*user->ncp];
@@ -98,6 +98,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     }    
                 }
             }    
+            tconductivity[cell] = 0.0;
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (s=0; s<currentmaterial->nsites; s++) {
@@ -106,8 +107,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                                   - sitepot_ex[g*SP_SIZE+s*user->ndp+c];
                     }
                 }
-                Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
-                CompositionMobilityComponent(mobility_elem,&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
+                CompositionMobilityComponent(mobility_elem,&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (c=0; c<user->ncp; c++) mobilitycv[c] += interpolant[g]*mobility_elem[c];
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ncp; c++) {
@@ -135,7 +136,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistL,&offset[AS_OFFSET]);
         pcellL = &offset[PF_OFFSET];
         chempotL = &offset[DP_OFFSET];
-        temperatureL = offset[TM_OFFSET];
+        temperatureL = &offset[TM_OFFSET];
         mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
         compositionL = &composition_global[scells[0]*user->ncp];
         offset = NULL;
@@ -143,7 +144,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistR,&offset[AS_OFFSET]);
         pcellR = &offset[PF_OFFSET];
         chempotR = &offset[DP_OFFSET];
-        temperatureR = offset[TM_OFFSET];
+        temperatureR = &offset[TM_OFFSET];
         mobilitycvR = &mobilitycv_global[scells[1]*user->ncp];
         compositionR = &composition_global[scells[1]*user->ncp];
         if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
@@ -173,7 +174,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         if (fabs(tconductivity[scells[0]]) > 1e-32 && fabs(tconductivity[scells[1]]) > 1e-32) {
             fluxt = 2.0*tconductivity[scells[0]]*tconductivity[scells[1]]
                   / (tconductivity[scells[0]] + tconductivity[scells[1]])
-                  * (temperatureR - temperatureL);
+                  * ((*temperatureR) - (*temperatureL));
         } else {
             fluxt = 0.0;
         }    
@@ -231,7 +232,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     F2IFUNC(slistL,&offset[AS_OFFSET]);
                     pcellL = &offset[PF_OFFSET];
                     chempotL = &offset[DP_OFFSET];
-                    temperatureL = offset[TM_OFFSET];
+                    temperatureL = &offset[TM_OFFSET];
                     mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
                     compositionL = &composition_global[scells[0]*user->ncp];
             
@@ -240,21 +241,19 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         
                     /* get common active phases */
                     CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
-                    memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
-                    for (c=0; c<user->ndp; c++) {
-                        if        (currentboundary->type[c] == NEUMANN_BC  ) {
-                            work_vec_DP[c] =  currentboundary->val[c];
-                        } else if (currentboundary->type[c] == DIRICHLET_BC) {
-                            work_vec_DP[c] = (currentboundary->val[c] - chempotL[c]);
+                    if (!(currentboundary->chem_bctype == NONE_BC)) {
+                        memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
+                        if (currentboundary->chem_bctype == NEUMANN_BC) {
+                            for (c=0; c<user->ndp; c++) work_vec_DP[c] =  currentboundary->chem_bcval[c] * deltaL;
+                        } else {
+                            for (c=0; c<user->ndp; c++) work_vec_DP[c] = (currentboundary->chem_bcval[c] - chempotL[c]);
                         }
+                        MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
                     }
-                    MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
-                    if        (currentboundary->type[user->ndp] == NEUMANN_BC  ) {
-                        fluxt =  currentboundary->val[user->ndp];
-                    } else if (currentboundary->type[user->ndp] == DIRICHLET_BC) {
-                        fluxt = tconductivity[scells[0]]*(currentboundary->val[user->ndp] - temperatureL);
-                    } else {
-                        fluxt = 0.0;
+                    if        (currentboundary->thermal_bctype == NEUMANN_BC  ) {
+                        fluxt = tconductivity[scells[0]]* currentboundary->thermal_bcval * deltaL;
+                    } else if (currentboundary->thermal_bctype == DIRICHLET_BC) {
+                        fluxt = tconductivity[scells[0]]*(currentboundary->thermal_bcval - (*temperatureL));
                     }  
 
                     {
@@ -263,10 +262,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         dlaplL = &offset[DP_OFFSET];
                         tlaplL = &offset[TM_OFFSET];
                         cfactor = 1.0/FastPow(deltaL,2);
-                        for (c=0; c<user->ndp; c++) {
-                            dlaplL[c] += cfactor*fluxd[c];
+                        if (!(currentboundary->chem_bctype == NONE_BC)) {
+                            for (c=0; c<user->ndp; c++) dlaplL[c] += cfactor*fluxd[c];
                         }
-                        *tlaplL += cfactor*fluxt;
+                        if (!(currentboundary->thermal_bctype == NONE_BC)) *tlaplL += cfactor*fluxt;
                     }
                 }    
                 ISRestoreIndices(bcIS, &bcfaces);
@@ -286,7 +285,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         pcell = &offset[PF_OFFSET];
         chempot = &offset[DP_OFFSET];
         sitepot_ex = &offset[EX_OFFSET];
-        temperature =  offset[TM_OFFSET];
+        temperature =  &offset[TM_OFFSET];
         sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
@@ -335,7 +334,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            Chemenergy(chemsource,sitefrac,chempot,temperature,slist,user);
+            Chemenergy(chemsource,sitefrac,chempot,(*temperature),slist,user);
             memset(work_vec_DP,0,DP_SIZE*sizeof(PetscReal));
             for (g=0; g<slist[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
@@ -368,8 +367,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
                     interface_mobility = currentinterface->mobility->m0
-                                       * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
-                                             / R_GAS_CONST/temperature);
+                                       * exp(  SumTSeries((*temperature), currentinterface->mobility->unary[0])
+                                             / R_GAS_CONST/(*temperature));
                     rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
                                                  + (caplsource[gk] - caplsource[gj])
                                                  - (chemsource[gk] - chemsource[gj])
@@ -390,8 +389,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                             interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
                             interface_mobility = currentinterface->mobility->m0
-                                               * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
-                                                     / R_GAS_CONST/temperature);
+                                               * exp(  SumTSeries((*temperature), currentinterface->mobility->unary[0])
+                                                     / R_GAS_CONST/(*temperature));
                             rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
                                                          + (caplsource[gk] - caplsource[gj])
                                                          - (chemsource[gk] - chemsource[gj])
@@ -408,7 +407,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             /* calculate explicit potential rate */
             for (g=0; g<slist[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                SitepotentialExplicit(work_vec_SP,&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                SitepotentialExplicit(work_vec_SP,&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ndp; c++) {
                         cprhs[g*SP_SIZE+s*user->ndp+c] = currentmaterial->chempot_ex_kineticcoeff
@@ -421,7 +420,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(dcdm,0,DP_SIZE*DP_SIZE*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                SitefracTangent(&work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE],&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                SitefracTangent(&work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE],&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ndp*user->ndp; c++) {
                         dcdm[c] += interpolant[g]
@@ -521,7 +520,7 @@ PetscErrorCode PostStep(TS ts)
     PetscInt       g, gk, gj, c, s;
     MATERIAL       *currentmaterial, *sitematerial;
     uint16_t       superset[AS_SIZE], setunion[AS_SIZE], setintersection[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
-    PetscReal      currenttime, currenttimestep, temperature;
+    PetscReal      currenttime, currenttimestep, *temperature;
     DMLabel        slabel;
     IS             siteIS;
     PetscReal      cellvolume, interpolant[PF_SIZE], chemsource[PF_SIZE];
@@ -571,7 +570,7 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
-                        temperature =  offset[TM_OFFSET];
+                        temperature = &offset[TM_OFFSET];
 
                         /* check that active phases are a subset of matrix phases */
                         SetIntersection(setintersection,injectionL,injectionR,slist,currentnucleus->matrixlist);
@@ -592,7 +591,7 @@ PetscErrorCode PostStep(TS ts)
                             }
                         }    
                         slist[++slist[0]] = site_phase;
-                        SitepotentialExplicit(&ccell[(slist[0]-1)*SP_SIZE],sitematerial->c0,temperature,site_phase,user);
+                        SitepotentialExplicit(&ccell[(slist[0]-1)*SP_SIZE],sitematerial->c0,(*temperature),site_phase,user);
                         for (g =0; g<slist[0];  g++) {
                             currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                             for (s=0; s<currentmaterial->nsites; s++) {
@@ -601,13 +600,13 @@ PetscErrorCode PostStep(TS ts)
                                                               - ccell[g*SP_SIZE+s*user->ndp+c];
                                 }
                             }
-                            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
+                            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
                         }
                         memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-                        Chemenergy(chemsource,sitefrac,chempot_interface,temperature,slist,user);
+                        Chemenergy(chemsource,sitefrac,chempot_interface,(*temperature),slist,user);
                         cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
                         for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
-                        temperature_leaf[site] += temperature;
+                        temperature_leaf[site] += (*temperature);
                     }
                 }    
                 if (siteIS) {
@@ -666,13 +665,13 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
-                        temperature =  offset[TM_OFFSET];
+                        temperature = &offset[TM_OFFSET];
 
                         /* update cell state */
                         slist[0] = 1; slist[1] = site_phase;
                         I2FFUNC(&offset[AS_OFFSET],slist);
                         pcell[0] = 1.0;
-                        SitepotentialExplicit(ccell,sitematerial->c0,temperature,site_phase,user);
+                        SitepotentialExplicit(ccell,sitematerial->c0,(*temperature),site_phase,user);
                     }
                 }
                 if (siteIS) {
@@ -752,7 +751,7 @@ PetscErrorCode PostStep(TS ts)
          pcell = &offsetg[PF_OFFSET];
          dcell = &offsetg[DP_OFFSET];
          ccell = &offsetg[EX_OFFSET];
-         temperature =  offsetg[TM_OFFSET];
+         temperature = &offsetg[TM_OFFSET];
          offset = NULL;
          ierr = DMPlexPointLocalRef(user->da_solution, cell, fadof, &offset); CHKERRQ(ierr);
          F2IFUNC(superset,&offset[AS_OFFSET]);
@@ -778,7 +777,7 @@ PetscErrorCode PostStep(TS ts)
          for (g=0; g<superset[0];  g++) {
              phiSS[g] = 0.0;
              currentmaterial = &user->material[user->phasematerialmapping[superset[g+1]]];
-             SitepotentialExplicit(&sitepot_exSS[g*SP_SIZE],currentmaterial->c0,temperature,superset[g+1],user);
+             SitepotentialExplicit(&sitepot_exSS[g*SP_SIZE],currentmaterial->c0,(*temperature),superset[g+1],user);
          }
         
          /* reorder dofs to new active phase superset */
@@ -820,7 +819,7 @@ PetscErrorCode PostStep(TS ts)
            pcell = &offset[PF_OFFSET];
            dcell = &offset[DP_OFFSET];
            ccell = &offset[EX_OFFSET];
-           temperature =  offset[TM_OFFSET];
+           temperature = &offset[TM_OFFSET];
            offset = NULL;
            ierr = DMPlexPointGlobalRef(user->da_output,cell, xout, &offset); CHKERRQ(ierr);
        
@@ -865,7 +864,7 @@ PetscErrorCode PostStep(TS ts)
                                                          - ccell[g*SP_SIZE+s*user->ndp+c];
                            }
                        }
-                       Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
+                       Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
                        for (s=0; s<currentmaterial->nsites; s++) {
                            for (c=0; c<user->ncp; c++) {
                                avgcomp[c] += interpolant[g]
@@ -892,6 +891,8 @@ PetscErrorCode PostStep(TS ts)
                    for (c=0; c<user->ndp; c++) {
                        if (!strcmp(user->componentname[c],tok)) *offset = dcell[c];
                    }
+               } else if (!strcmp(name,"temperature")) {
+                   *offset = (*temperature);
                }
            }
        }
