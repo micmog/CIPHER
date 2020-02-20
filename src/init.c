@@ -243,8 +243,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       user->bcs = (BOUNDARYCONDITIONS *) malloc(user->nbcs*sizeof(struct BOUNDARYCONDITIONS));
       BOUNDARYCONDITIONS *currentbc = &user->bcs[0];
       for (PetscInt bc=0; bc<user->nbcs; bc++, currentbc++) {
-          currentbc->type = malloc((user->ndp)*sizeof(boundary_t));
-          currentbc->val = malloc((user->ndp)*sizeof(PetscReal));
+          currentbc->type = malloc((user->ndp+1)*sizeof(boundary_t));
+          currentbc->val = malloc((user->ndp+1)*sizeof(PetscReal));
           user->bcname[bc] = malloc(PETSC_MAX_PATH_LEN);
           strcpy(user->bcname[bc],propval[bc]);
       }
@@ -825,7 +825,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          assert(propsize == 1); currentboundary->boundaryid = atoi(propval[0]);
          /* boundary type */
          ierr = GetProperty(propval, &propsize, boundarymapping, "type", buffer, filesize);
-         assert(propsize == user->ndp); 
+         assert(propsize == user->ndp+1); 
          for (PetscInt propctr = 0; propctr < propsize; propctr++) {
              if      (!strcmp(propval[propctr], "neumann"  )) {currentboundary->type[propctr] = NEUMANN_BC;  }
              else if (!strcmp(propval[propctr], "dirichlet")) {currentboundary->type[propctr] = DIRICHLET_BC;}
@@ -833,7 +833,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          }
          /* boundary val */
          ierr = GetProperty(propval, &propsize, boundarymapping, "value", buffer, filesize);
-         assert(propsize == user->ndp); 
+         assert(propsize == user->ndp+1); 
          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->val[propctr] = atof(propval[propctr]);
      }
     }
