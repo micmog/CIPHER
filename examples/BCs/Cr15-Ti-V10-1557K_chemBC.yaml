@@ -113,8 +113,9 @@ interface :
 boundary: 
   influx: 
     id: 3
-    type: [neumann, neumann]
-    value: [1.0e+3, 0.0]
+    chem:
+      type: neumann
+      value: [1.0e+3, 0.0]
 
 mappings:
   phase_material_mapping : |-
