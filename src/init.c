@@ -236,7 +236,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      /* boundary names */
      {
-      ierr = GetProperty(propval, &propsize, "header", "boundaries", buffer, filesize); CHKERRQ(ierr);
+      ierr = GetProperty(propval, &propsize, "header", "boundaries", buffer, filesize);
       assert(propsize <= 6);
       user->nbcs = propsize;
       user->bcname = malloc(user->nbcs*sizeof(char *));
@@ -832,7 +832,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          /* boundary val */
          ierr = GetProperty(propval, &propsize, boundarymapping, "value", buffer, filesize);
          assert(propsize == user->ndp); 
-         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->type[propctr] = atof(propval[propctr]);
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->val[propctr] = atof(propval[propctr]);
      }
     }
 
