@@ -31,8 +31,8 @@
 
 /* field offsets */
 PetscInt MAXSITES, SP_SIZE, SF_SIZE;
-PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE;
-PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET;
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE,   TM_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET, TM_OFFSET;
 
 /* Types declarations */
 

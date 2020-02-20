@@ -672,6 +672,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     DP_SIZE   = user->ndp;
     EX_OFFSET = DP_OFFSET+DP_SIZE;
     EX_SIZE   = PF_SIZE*SP_SIZE;
+    TM_OFFSET = EX_OFFSET+EX_SIZE;
+    TM_SIZE   = 1;
     
     /* Parsing config file nucleation */
     {

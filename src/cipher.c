@@ -877,7 +877,7 @@ int main(int argc,char **args)
   {
     PetscFE solution_fe;
     ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE,
+                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE+TM_SIZE,
                                 PETSC_FALSE,NULL,PETSC_DEFAULT,&solution_fe);CHKERRQ(ierr);
     ierr = PetscObjectSetName((PetscObject) solution_fe, "solution");CHKERRQ(ierr);
     ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fe);CHKERRQ(ierr);
