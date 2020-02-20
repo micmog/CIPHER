@@ -22,7 +22,6 @@ typedef struct NUCFUNC {
 
 /* constitutive functions */
 typedef struct MATFUNC {
-    void (*Heatflux)              (PetscReal *, const PetscReal *,                  const THERMAL               );
     void (*Chemenergy)            (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*SitepotentialExplicit) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*SitepotentialImplicit) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
@@ -125,34 +124,6 @@ char Nucleation(const PetscReal current_time, const PetscReal current_timestep,
                 const PetscInt siteID, const AppCtx *user)
 {
     return Nucfunc[user->sitenucleusmapping[siteID]].Nucleation(current_time,current_timestep,temperature,volume,gv,siteID,user);
-}
-
-/*
- Heatflux - Conduction model for Heat flux
- */
-static void Heatflux_conduction(PetscReal *heatflux, const PetscReal *temperature_gradient, const THERMAL thermal)
-{
-    const TCONDUCTION *currenttconduction = &thermal.conduction;
-    *heatflux = currenttconduction->conductivity*(*temperature_gradient);
-}
-
-/*
- Heatflux - Adiabatic model for Heat flux
- */
-static void Heatflux_adiabatic(PetscReal *heatflux, const PetscReal *temperature_gradient, const THERMAL thermal)
-{
-    *heatflux = 0.0;
-}
-
-/*
- Heatflux - Heat flux
- */
-void Heatflux(PetscReal *heatflux, const PetscReal *temperature_gradient, const uint16_t *phaseID, const AppCtx *user)
-{
-    for (PetscInt g=0; g<phaseID[0]; g++) {
-        const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
-        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Heatflux(&heatflux[g],temperature_gradient,currentmaterial->thermal);
-    }
 }
 
 /*
@@ -801,12 +772,6 @@ void material_init(const AppCtx *user)
             Matfunc[mat].SitefracTangent = &SitefracTangent_none;
             Matfunc[mat].CompositionMobility = &CompositionMobility_none;
         }
-        
-        if        (currentmaterial->thermal_model == CONDUCTION_THERMAL) {
-            Matfunc[mat].Heatflux = &Heatflux_conduction;
-        } else if (currentmaterial->thermal_model == ADIABATIC_THERMAL ) {
-            Matfunc[mat].Heatflux = &Heatflux_adiabatic;
-        }    
     }    
     
     Nucfunc = (NUCFUNC *) malloc(user->nnuclei*sizeof(struct NUCFUNC));

@@ -684,8 +684,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           /* thermal specific heat */
           {
            ierr = GetProperty(propval, &propsize, materialmapping, "specific_heat", buffer, filesize);
-           assert(propsize == 1);
-           currentmaterial->specific_heat = atof(propval[0]);
+           if (propsize) {assert(propsize == 1); currentmaterial->specific_heat = atof(propval[0]);}
+           else {currentmaterial->specific_heat = 1.0;}
+          }
+          /* thermal conductivity */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
+           if (propsize) {assert(propsize == 1); currentmaterial->tconductivity = atof(propval[0]);}
+           else {currentmaterial->tconductivity = 0.0;}
           }
           /* thermal transport type */
           ierr = GetProperty(propval, &propsize, materialmapping, "thermalflux", buffer, filesize);
@@ -694,13 +700,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               currentmaterial->thermal_model = ADIABATIC_THERMAL;
           } else if (!strcmp(propval[0], "conduction")) {
               currentmaterial->thermal_model = CONDUCTION_THERMAL;
-              TCONDUCTION *currenttconduction = &currentmaterial->thermal.conduction;
-              /* thermal conductivity */
-              {
-               ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
-               assert(propsize == 1);
-               currenttconduction->conductivity = atof(propval[0]);
-              }
           }   
          }
      }
@@ -1296,7 +1295,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
                         dcell[c] += sitepot[s*user->ndp+c];
                     }
                 }
-                tcell = currentmaterial->specific_heat*currentmaterial->temperature0;
+                tcell = currentmaterial->temperature0;
             } else {
                 pcell[g] = 0.0;
             }

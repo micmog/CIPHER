@@ -160,7 +160,6 @@ typedef union CHEMFE {
 
 /* Thermal conduction parameters container */
 typedef struct TCONDUCTION {
-    PetscReal conductivity;
 } TCONDUCTION;
 
 /* Thermal adiabatic parameters container */
@@ -181,7 +180,7 @@ typedef struct MATERIAL {
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
     thermal_model_t thermal_model;
-    PetscReal temperature0, specific_heat;
+    PetscReal temperature0, specific_heat, tconductivity;
     THERMAL thermal;
 } MATERIAL;
 

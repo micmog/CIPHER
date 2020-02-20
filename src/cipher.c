@@ -37,6 +37,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         *mobilitycv, *mobilitycvL, *mobilitycvR;
     PetscReal         *sitefrac, *sitepot_ex, sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
     PetscScalar       *dlapl, *dlaplL, *dlaplR, *dprhs, *cprhs, fluxd[DP_SIZE];
+    PetscScalar       *tlapl, *tlaplL, *tlaplR, *tmrhs, fluxt;
     uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE];
     const PetscInt    *scells;
     PetscReal         ffactor, cfactor, deltaL, deltaR;
@@ -56,6 +57,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
+    PetscReal         specific_heat, tconductivity[user->ninteriorcells], temperature, temperatureL, temperatureR;
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -67,7 +69,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = DMGetLocalVector(user->da_solution,&laplacian); CHKERRQ(ierr);
     ierr = VecZeroEntries(laplacian); CHKERRQ(ierr);
     ierr = VecGetArray(laplacian,&lap); CHKERRQ(ierr);
-    PetscReal temperature = Interpolate(ftime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
 
     /* Precalculate cell quantities */
     if (user->ndp) {
@@ -78,6 +79,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             pcell = &offset[PF_OFFSET];
             chempot = &offset[DP_OFFSET];
             sitepot_ex = &offset[EX_OFFSET];
+            temperature =  offset[TM_OFFSET];
             sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
             composition = &composition_global[cell*user->ncp];
             mobilitycv = &mobilitycv_global[cell*user->ncp];
@@ -114,6 +116,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                         * sitefrac[g*SF_SIZE+s*user->ncp+c];
                     }
                 }
+                tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
             }
         }
     }
@@ -132,6 +135,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistL,&offset[AS_OFFSET]);
         pcellL = &offset[PF_OFFSET];
         chempotL = &offset[DP_OFFSET];
+        temperatureL = offset[TM_OFFSET];
         mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
         compositionL = &composition_global[scells[0]*user->ncp];
         offset = NULL;
@@ -139,8 +143,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistR,&offset[AS_OFFSET]);
         pcellR = &offset[PF_OFFSET];
         chempotR = &offset[DP_OFFSET];
+        temperatureR = offset[TM_OFFSET];
         mobilitycvR = &mobilitycv_global[scells[1]*user->ncp];
-        compositionR = &composition_global[scells[0]*user->ncp];
+        compositionR = &composition_global[scells[1]*user->ncp];
         if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
 
         /* get geometric data */
@@ -165,12 +170,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             work_vec_DP[c] = (chempotR[c] - chempotL[c]);
         }
         MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+        if (fabs(tconductivity[scells[0]]) > 1e-32 && fabs(tconductivity[scells[1]]) > 1e-32) {
+            fluxt = 2.0*tconductivity[scells[0]]*tconductivity[scells[1]]
+                  / (tconductivity[scells[0]] + tconductivity[scells[1]])
+                  * (temperatureR - temperatureL);
+        } else {
+            fluxt = 0.0;
+        }    
 
         {
             offset = NULL;
             ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
             plaplL = &offset[PF_OFFSET];
             dlaplL = &offset[DP_OFFSET];
+            tlaplL = &offset[TM_OFFSET];
             cfactor = ffactor/FastPow(deltaL,user->dim);
             for (g=0; g<setintersect[0]; g++) {
                 plaplL[injectionL[g]] += cfactor*fluxp[g];
@@ -178,12 +191,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (c=0; c<user->ndp; c++) {
                 dlaplL[c] += cfactor*fluxd[c];
             }
+            *tlaplL += cfactor*fluxt;
         }
         {
             offset = NULL;
             ierr = DMPlexPointLocalRef(user->da_solution, scells[1], lap,  &offset); CHKERRQ(ierr);
             plaplR = &offset[PF_OFFSET];
             dlaplR = &offset[DP_OFFSET];
+            tlaplR = &offset[TM_OFFSET];
             cfactor = ffactor/FastPow(deltaR,user->dim);
             for (g=0; g<setintersect[0]; g++) {
                 plaplR[injectionR[g]] -= cfactor*fluxp[g];
@@ -191,6 +206,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (c=0; c<user->ndp; c++) {
                 dlaplR[c] -= cfactor*fluxd[c];
             }
+            *tlaplR -= cfactor*fluxt;
         }
     }    
 
@@ -215,6 +231,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     F2IFUNC(slistL,&offset[AS_OFFSET]);
                     pcellL = &offset[PF_OFFSET];
                     chempotL = &offset[DP_OFFSET];
+                    temperatureL = offset[TM_OFFSET];
                     mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
                     compositionL = &composition_global[scells[0]*user->ncp];
             
@@ -232,15 +249,24 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         }
                     }
                     MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+                    if        (currentboundary->type[user->ndp] == NEUMANN_BC  ) {
+                        fluxt =  currentboundary->val[user->ndp];
+                    } else if (currentboundary->type[user->ndp] == DIRICHLET_BC) {
+                        fluxt = tconductivity[scells[0]]*(currentboundary->val[user->ndp] - temperatureL);
+                    } else {
+                        fluxt = 0.0;
+                    }  
 
                     {
                         offset = NULL;
                         ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
                         dlaplL = &offset[DP_OFFSET];
+                        tlaplL = &offset[TM_OFFSET];
                         cfactor = 1.0/FastPow(deltaL,2);
                         for (c=0; c<user->ndp; c++) {
                             dlaplL[c] += cfactor*fluxd[c];
                         }
+                        *tlaplL += cfactor*fluxt;
                     }
                 }    
                 ISRestoreIndices(bcIS, &bcfaces);
@@ -260,16 +286,19 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         pcell = &offset[PF_OFFSET];
         chempot = &offset[DP_OFFSET];
         sitepot_ex = &offset[EX_OFFSET];
+        temperature =  offset[TM_OFFSET];
         sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
         plapl = &offset[PF_OFFSET];
         dlapl = &offset[DP_OFFSET];
+        tlapl = &offset[TM_OFFSET];
         offset = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution,cell, rhs,  &offset); CHKERRQ(ierr);
         pfrhs = &offset[PF_OFFSET];
         dprhs = &offset[DP_OFFSET];
         cprhs = &offset[EX_OFFSET];
+        tmrhs = &offset[TM_OFFSET];
         
         /* calculate phase interpolants */
         EvalInterpolant(interpolant,pcell,slist[0]);
@@ -454,7 +483,15 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
             Invertmatrix(dmdc,dcdm,DP_SIZE);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,DP_SIZE);  
-        }    
+        }
+        
+        /* temperature rate */
+        specific_heat = 0.0;
+        for (g =0; g<slist[0];  g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+            specific_heat += interpolant[g]*currentmaterial->specific_heat;
+        }
+        *tmrhs = (*tlapl)/specific_heat;    
     }
 
     /* Restore FVM residuals */
@@ -498,13 +535,13 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
     ierr = TSGetTime(ts,&currenttime);CHKERRQ(ierr);
     ierr = TSGetTimeStep(ts,&currenttimestep);CHKERRQ(ierr);
-    temperature = Interpolate(currenttime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     
     /* Update nucleation events */
     if (user->nsites) {
         PetscReal sitefrac[PF_SIZE*SF_SIZE];
         PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
         PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
+        PetscReal temperature_leaf[user->nsites], temperature_root[user->nsites_local];
         char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
 
         ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
@@ -512,6 +549,7 @@ PetscErrorCode PostStep(TS ts)
         ierr = VecGetArray(solution,&fdof);
         memset(gv_leaf,0,user->nsites*sizeof(PetscReal));
         memset(volume_leaf,0,user->nsites*sizeof(PetscReal));
+        memset(temperature_leaf,0,user->nsites*sizeof(PetscReal));
         for (site = 0; site<user->nsites; site++) {
             if (user->siteactivity_global[site]) {
                 DMLabelGetStratumIS(slabel, site+1, &siteIS);
@@ -533,6 +571,7 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
+                        temperature =  offset[TM_OFFSET];
 
                         /* check that active phases are a subset of matrix phases */
                         SetIntersection(setintersection,injectionL,injectionR,slist,currentnucleus->matrixlist);
@@ -568,6 +607,7 @@ PetscErrorCode PostStep(TS ts)
                         Chemenergy(chemsource,sitefrac,chempot_interface,temperature,slist,user);
                         cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
                         for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
+                        temperature_leaf[site] += temperature;
                     }
                 }    
                 if (siteIS) {
@@ -588,11 +628,14 @@ PetscErrorCode PostStep(TS ts)
         memset(volume_root,0,user->nsites_local*sizeof(PetscReal));
         PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
         PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
+        memset(temperature_root,0,user->nsites_local*sizeof(PetscReal));
+        PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,temperature_leaf,temperature_root,MPI_SUM);
+        PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,temperature_leaf,temperature_root,MPI_SUM);
         memset(deactive_root,0,user->nsites_local*sizeof(char));
         for (site=0; site<user->nsites_local; site++) {
             if (user->siteactivity_local[site]) {
-                deactive_root[site] = Nucleation(currenttime,currenttimestep,temperature,
-                                                 volume_root[site],gv_root[site],
+                deactive_root[site] = Nucleation(currenttime,currenttimestep,
+                                                 temperature_root[site],volume_root[site],gv_root[site],
                                                  user->siteoffset+site,user);
             }    
         }  
@@ -623,6 +666,7 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
+                        temperature =  offset[TM_OFFSET];
 
                         /* update cell state */
                         slist[0] = 1; slist[1] = site_phase;
@@ -708,6 +752,7 @@ PetscErrorCode PostStep(TS ts)
          pcell = &offsetg[PF_OFFSET];
          dcell = &offsetg[DP_OFFSET];
          ccell = &offsetg[EX_OFFSET];
+         temperature =  offsetg[TM_OFFSET];
          offset = NULL;
          ierr = DMPlexPointLocalRef(user->da_solution, cell, fadof, &offset); CHKERRQ(ierr);
          F2IFUNC(superset,&offset[AS_OFFSET]);
@@ -775,6 +820,7 @@ PetscErrorCode PostStep(TS ts)
            pcell = &offset[PF_OFFSET];
            dcell = &offset[DP_OFFSET];
            ccell = &offset[EX_OFFSET];
+           temperature =  offset[TM_OFFSET];
            offset = NULL;
            ierr = DMPlexPointGlobalRef(user->da_output,cell, xout, &offset); CHKERRQ(ierr);
        
