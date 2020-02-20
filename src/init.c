@@ -909,7 +909,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      assert(user->solparams.interpolation != NONE_INTERPOLATION);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "time", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize > 1); user->solparams.nloadcases = propsize; user->solparams.currentloadcase = 0; 
+     assert(propsize > 0); user->solparams.nloadcases = propsize; 
      user->solparams.time = malloc(user->solparams.nloadcases*sizeof(PetscReal));
      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.time[propctr] = atof(propval[propctr]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); 
@@ -920,7 +920,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      else {user->solparams.mintimestep = 1.0e-18;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
-     else {user->solparams.maxtimestep = user->solparams.time[user->solparams.nloadcases-1];}
+     else {user->solparams.maxtimestep = user->solparams.time[0];}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);

@@ -1286,15 +1286,15 @@ int main(int argc,char **args)
   }    
   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
 
-  PetscReal currenttime = ctx.solparams.time[0];
+  PetscReal currenttime = 0.0, loadcasetime = 0.0;
   PetscInt  nsteps = 0;
   for (ctx.solparams.currentloadcase = 0;
-       ctx.solparams.currentloadcase < ctx.solparams.nloadcases-1;
-       ctx.solparams.currentloadcase++) {
+       ctx.solparams.currentloadcase < ctx.solparams.nloadcases;
+       loadcasetime += ctx.solparams.time[ctx.solparams.currentloadcase++]) {
       ctx.solparams.timestep = ctx.solparams.mintimestep;
-      ierr = TSSetMaxTime(ts,ctx.solparams.time[ctx.solparams.currentloadcase+1]);CHKERRQ(ierr);
+      ierr = TSSetMaxTime(ts,loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase]);CHKERRQ(ierr);
       ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
-      for (;currenttime < ctx.solparams.time[ctx.solparams.currentloadcase+1];) {
+      for (;currenttime < loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase];) {
           ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
           ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
           ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
