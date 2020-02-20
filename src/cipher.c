@@ -963,6 +963,35 @@ int main(int argc,char **args)
     free(ctx.voxelsitemapping);
   }
 
+  /* Add boundary label */
+  {
+      DM facedm;
+      Vec facegeom;
+      const PetscScalar *fgeom;
+      PetscFVFaceGeom *fg;
+      PetscInt face, fstart, fend, dim, nsupp, boundaryid;
+    
+      ierr = DMCreateLabel(ctx.da_solution, "boundary");
+      ierr = DMPlexTSGetGeometryFVM(ctx.da_solution, &facegeom, NULL, NULL);
+      ierr = VecGetDM(facegeom,&facedm);
+      ierr = VecGetArrayRead(facegeom,&fgeom);
+      ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &fstart, &fend); CHKERRQ(ierr);
+      for (face = fstart; face < fend; ++face) {
+          ierr = DMPlexGetSupportSize(ctx.da_solution, face, &nsupp);
+          if (nsupp == 1) {
+              ierr = DMPlexPointLocalRead(facedm,face,fgeom,&fg);
+              boundaryid = 0;
+              for (dim=0; dim<ctx.dim; ++dim) {
+                  boundaryid++;
+                  if (fabs(fg->centroid[dim]                ) > 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
+                  boundaryid++;
+                  if (fabs(fg->centroid[dim] - ctx.size[dim]) > 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
+              }
+          }
+      }
+      ierr = VecRestoreArrayRead(facegeom,&fgeom);
+  }
+
   /* Set up star forest */
   if (ctx.nsites) {
       PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
