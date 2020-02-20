@@ -234,6 +234,21 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       }
       user->ndp = user->ncp-1;
      }
+     /* boundary names */
+     {
+      ierr = GetProperty(propval, &propsize, "header", "boundaries", buffer, filesize);
+      assert(propsize <= 6);
+      user->nbcs = propsize;
+      user->bcname = malloc(user->nbcs*sizeof(char *));
+      user->bcs = (BOUNDARYCONDITIONS *) malloc(user->nbcs*sizeof(struct BOUNDARYCONDITIONS));
+      BOUNDARYCONDITIONS *currentbc = &user->bcs[0];
+      for (PetscInt bc=0; bc<user->nbcs; bc++, currentbc++) {
+          currentbc->type = malloc((user->ndp)*sizeof(boundary_t));
+          currentbc->val = malloc((user->ndp)*sizeof(PetscReal));
+          user->bcname[bc] = malloc(PETSC_MAX_PATH_LEN);
+          strcpy(user->bcname[bc],propval[bc]);
+      }
+     }
      /* output names */
      {
       ierr = GetProperty(propval, &propsize, "header", "outputs", buffer, filesize); CHKERRQ(ierr);
@@ -795,6 +810,30 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
          } else {currentinterface->mobilityc = NULL;}
      }    
+    }
+
+    /* Parsing config file boundary conditions */
+    {
+     BOUNDARYCONDITIONS *currentboundary = &user->bcs[0];
+     for (PetscInt bc=0; bc<user->nbcs; bc++,currentboundary++) {
+         char boundarymapping[PETSC_MAX_PATH_LEN];
+         sprintf(boundarymapping,"boundary/%s",user->bcname[bc]);
+         /* boundary ID */
+         ierr = GetProperty(propval, &propsize, boundarymapping, "id", buffer, filesize);
+         assert(propsize == 1); currentboundary->boundaryid = atoi(propval[0]);
+         /* boundary type */
+         ierr = GetProperty(propval, &propsize, boundarymapping, "type", buffer, filesize);
+         assert(propsize == user->ndp); 
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+             if      (!strcmp(propval[propctr], "neumann"  )) {currentboundary->type[propctr] = NEUMANN_BC;  }
+             else if (!strcmp(propval[propctr], "dirichlet")) {currentboundary->type[propctr] = DIRICHLET_BC;}
+             else                                             {currentboundary->type[propctr] = NONE_BC;     }
+         }
+         /* boundary val */
+         ierr = GetProperty(propval, &propsize, boundarymapping, "value", buffer, filesize);
+         assert(propsize == user->ndp); 
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->val[propctr] = atof(propval[propctr]);
+     }
     }
 
     /* Parsing config file solution parameters */

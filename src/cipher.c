@@ -194,6 +194,61 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         }
     }    
 
+    /* Loop over boundary faces and add boundary conditions */
+    {
+        DMLabel bclabel;
+        IS bcIS;
+        PetscInt bcface, nbcfaces;
+        const PetscInt *bcfaces;
+        BOUNDARYCONDITIONS *currentboundary = &user->bcs[0];
+        DMGetLabel(user->da_solution, "boundary", &bclabel);
+        for (PetscInt bc = 0; bc<user->nbcs; bc++, currentboundary++) {
+            DMLabelGetStratumIS(bclabel, currentboundary->boundaryid, &bcIS);
+            if (bcIS) {
+                ISGetLocalSize(bcIS, &nbcfaces);
+                ISGetIndices(bcIS, &bcfaces);
+                for (bcface = 0; bcface < nbcfaces; ++bcface) {
+                    DMPlexGetSupport(user->da_solution, bcfaces[bcface], &scells);
+                    /* get neighbouring cell data */
+                    offset = NULL;
+                    ierr = DMPlexPointLocalRef(user->da_solution, scells[0], fdof, &offset); CHKERRQ(ierr);
+                    F2IFUNC(slistL,&offset[AS_OFFSET]);
+                    pcellL = &offset[PF_OFFSET];
+                    chempotL = &offset[DP_OFFSET];
+                    mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
+                    compositionL = &composition_global[scells[0]*user->ncp];
+            
+                    /* get geometric data */
+                    deltaL = user->cellgeom[scells[0]];
+        
+                    /* get common active phases */
+                    CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
+                    memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
+                    for (c=0; c<user->ndp; c++) {
+                        if        (currentboundary->type[c] == NEUMANN_BC  ) {
+                            work_vec_DP[c] =  currentboundary->val[c];
+                        } else if (currentboundary->type[c] == DIRICHLET_BC) {
+                            work_vec_DP[c] = (currentboundary->val[c] - chempotL[c]);
+                        }
+                    }
+                    MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+
+                    {
+                        offset = NULL;
+                        ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
+                        dlaplL = &offset[DP_OFFSET];
+                        cfactor = 1.0/FastPow(deltaL,2);
+                        for (c=0; c<user->ndp; c++) {
+                            dlaplL[c] += cfactor*fluxd[c];
+                        }
+                    }
+                }    
+                ISRestoreIndices(bcIS, &bcfaces);
+                ISDestroy(&bcIS);
+            }
+        } 
+    }   
+
     /* Loop over cells and compute local contribution to the RHS */
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
@@ -961,6 +1016,35 @@ int main(int argc,char **args)
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     free(ctx.voxelphasemapping);
     free(ctx.voxelsitemapping);
+  }
+
+  /* Add boundary label */
+  {
+      DM facedm;
+      Vec facegeom;
+      const PetscScalar *fgeom;
+      PetscFVFaceGeom *fg;
+      PetscInt face, fstart, fend, dim, nsupp, boundaryid;
+    
+      ierr = DMCreateLabel(ctx.da_solution, "boundary");
+      ierr = DMPlexTSGetGeometryFVM(ctx.da_solution, &facegeom, NULL, NULL);
+      ierr = VecGetDM(facegeom,&facedm);
+      ierr = VecGetArrayRead(facegeom,&fgeom);
+      ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &fstart, &fend); CHKERRQ(ierr);
+      for (face = fstart; face < fend; ++face) {
+          ierr = DMPlexGetSupportSize(ctx.da_solution, face, &nsupp);
+          if (nsupp == 1) {
+              ierr = DMPlexPointLocalRead(facedm,face,fgeom,&fg);
+              boundaryid = 0;
+              for (dim=0; dim<ctx.dim; ++dim) {
+                  boundaryid++;
+                  if (fabs(fg->centroid[dim]                ) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
+                  boundaryid++;
+                  if (fabs(fg->centroid[dim] - ctx.size[dim]) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
+              }
+          }
+      }
+      ierr = VecRestoreArrayRead(facegeom,&fgeom);
   }
 
   /* Set up star forest */
