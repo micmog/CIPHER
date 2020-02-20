@@ -9,19 +9,16 @@ header:
   outputs : [cr_c, ti_c, v_c, matid] 
 
 solution_parameters:
-  timestepmin : 1e-16
-  timestepmax : 1e-3
-  temperature : [1557.0, 1557.0]
-  time : [0.0, 100.0]
+  time : 100.0
   interfacewidth : 4
-  initblocksize : [2, 256]
-  initrefine : 1
-  maxnrefine : 0
+  initblocksize : [1, 128]
+  initrefine : 2
+  maxnrefine : 2
   minnrefine : 0
-  initcoarsen : 0
-  amrinterval : 10000000 
-  reltol : 1e-6
-  abstol : 1e-6 
+  initcoarsen : 2
+  amrinterval : 100 
+  reltol : 1e-4
+  abstol : 1e-4 
   outputfreq : 10000
   outfile : CrTiV
   interpolation: cubic
@@ -31,6 +28,7 @@ material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0 : 1557.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.174, 0.77, 0.056]
     mobilityc :
@@ -106,6 +104,7 @@ material:
   liquid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0 : 1557.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.15, 0.75, 0.1]
     mobilityc :

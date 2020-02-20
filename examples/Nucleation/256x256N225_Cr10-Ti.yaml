@@ -11,18 +11,17 @@ header:
   outputs : [cr_c, ti_c, matid, phaseid]
 
 solution_parameters:
-    time : [0.0, 100.0]
-    temperature : [1609.000000, 1609.000000]
+    time : 100.0
     interfacewidth : 4
     initblocksize : [2, 2]
     initrefine : 7
     maxnrefine : 7
     minnrefine : 0
     initcoarsen : 7
-    amrinterval : 100
+    amrinterval : 50
     reltol : 1e-4
     abstol : 1e-4
-    outputfreq : 10000
+    outputfreq : 1000
     outfile : Cr10-Ti-2dGrowthNuc
     interpolation: cubic
     petscoptions : -ts_adapt_monitor -ts_rk_type 2a
@@ -32,13 +31,14 @@ material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1609.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.067970, 0.932030]
     mobilityc :
       cr :
-        mobility0 : 0.0
+        mobility0 : 1.0e-0
       ti :
-        mobility0 : 0.0
+        mobility0 : 1.0e-0
     unary_enthalpy :
       cr :
         t_coefficient : [-8856.94, 157.48, 0.00189435, -1.47721e-06, 139250]
@@ -62,13 +62,14 @@ material:
   liquid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1609.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.100640, 0.899360]
     mobilityc :
       cr :
-        mobility0 : 1.0e+12
+        mobility0 : 1e+2
       ti :
-        mobility0 : 1.0e+12
+        mobility0 : 1e+2
     unary_enthalpy :
       cr :
         t_coefficient : [15483.015, 146.059775, 0.00189435, -1.47721e-06, 2.37615e-21, 139250]
@@ -96,13 +97,13 @@ nucleus:
   solid :
     matrix : [8]
     nucleation_model: constant
-    nucleation_rate: 1e-3
+    nucleation_rate: 1e-2
     
 interface :
   solid-liquid :
     energy : 0.5e+6
     mobility : 
-      m0: 1.0-11
+      m0: 1e-6
 
 mappings:
   phase_material_mapping : |-

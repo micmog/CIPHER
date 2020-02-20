@@ -10,8 +10,7 @@ header:
   outputs : [cr_c, ti_c, v_c] 
 
 solution_parameters:
-  temperature : [1557.0, 1557.0]
-  time : [0.0, 1000.0]
+  time : 1000.0
   mintimestep: 1e-4
   interfacewidth : 4
   initblocksize : [1, 128]
@@ -31,6 +30,7 @@ material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-0
+    temperature0: 1557.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.174, 0.77, 0.056]
     mobilityc :
@@ -112,7 +112,7 @@ interface :
 
 boundary: 
   influx: 
-    id: 3
+    boundary_id: 3
     chem:
       type: neumann
       value: [1.0e+3, 0.0]

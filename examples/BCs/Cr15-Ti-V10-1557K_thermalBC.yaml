@@ -10,7 +10,7 @@ header:
   outputs : [cr_c, ti_c, v_c, temperature] 
 
 solution_parameters:
-  time : [0.0, 1000000.0]
+  time : 10000.0
   mintimestep: 1e-4
   interfacewidth : 4
   initblocksize : [1, 128]
