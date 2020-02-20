@@ -1209,7 +1209,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
     uint16_t          gslist[AS_SIZE], nalist[AS_SIZE];
-    PetscScalar       *pcell, *dcell, *ccell;
+    PetscScalar       *pcell, *dcell, *ccell, tcell;
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
     PetscReal         sitepot[SP_SIZE];
@@ -1279,6 +1279,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         pcell  = &offset[PF_OFFSET];
         dcell  = &offset[DP_OFFSET];
         ccell  = &offset[EX_OFFSET];
+        tcell  =  offset[TM_OFFSET];
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
@@ -1295,6 +1296,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
                         dcell[c] += sitepot[s*user->ndp+c];
                     }
                 }
+                tcell = currentmaterial->specific_heat*currentmaterial->temperature0;
             } else {
                 pcell[g] = 0.0;
             }
