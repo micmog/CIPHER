@@ -672,6 +672,31 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          }
          MAXSITES = MAXSITES > currentmaterial->nsites
                   ? MAXSITES : currentmaterial->nsites;
+
+         /* thermal transport */
+         {
+          /* thermal specific heat */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "specific_heat", buffer, filesize);
+           assert(propsize == 1);
+           currentmaterial->specific_heat = atof(propval[0]);
+          }
+          /* thermal transport type */
+          ierr = GetProperty(propval, &propsize, materialmapping, "thermalflux", buffer, filesize);
+          if (propsize) {assert(propsize == 1);} else {strcpy(propval[0], "adiabatic");}
+          if        (!strcmp(propval[0], "adiabatic" )) {
+              currentmaterial->thermal_model = ADIABATIC_THERMAL;
+          } else if (!strcmp(propval[0], "conduction")) {
+              currentmaterial->thermal_model = CONDUCTION_THERMAL;
+              TCONDUCTION *currenttconduction = &currentmaterial->thermal.conduction;
+              /* thermal conductivity */
+              {
+               ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
+               assert(propsize == 1);
+               currenttconduction->conductivity = atof(propval[0]);
+              }
+          }   
+         }
      }
     }
 
