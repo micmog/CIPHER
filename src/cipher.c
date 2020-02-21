@@ -402,6 +402,16 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 }        
             }
         }    
+        
+        /* temperature rate */
+        specific_heat = 0.0; *tmrhs = *tlapl;
+        for (g =0; g<slist[0];  g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+            specific_heat += interpolant[g]*currentmaterial->specific_heat;
+            if (currentmaterial->latent_heat) *tmrhs += pfrhs[g]*currentmaterial->latent_heat;
+        }
+        *tmrhs /= specific_heat;
+        if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
             
         if (user->ndp) {
             /* calculate explicit potential rate */
@@ -470,9 +480,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (s=0; s<currentmaterial->nsites; s++) {
+                    memcpy(work_vec_MB,&cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE*sizeof(PetscReal));
+                    for (c=0; c<user->ndp; c++) work_vec_MB[c] += (*tmrhs)/(*temperature);
                     MatVecMult_CIPHER(&work_vec_CP[g*DP_SIZE],
                                       &work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE],
-                                      &cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE);
+                                      work_vec_MB,DP_SIZE);
                     for (c=0; c<user->ndp; c++) {
                         work_vec_DP[c] += interpolant[g]
                                         * currentmaterial->stochiometry[s]
@@ -483,16 +495,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             Invertmatrix(dmdc,dcdm,DP_SIZE);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,DP_SIZE);  
         }
-        
-        /* temperature rate */
-        specific_heat = 0.0; *tmrhs = *tlapl;
-        for (g =0; g<slist[0];  g++) {
-            currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-            specific_heat += interpolant[g]*currentmaterial->specific_heat;
-            if (currentmaterial->latent_heat) *tmrhs += pfrhs[g]*currentmaterial->latent_heat;
-        }
-        *tmrhs /= specific_heat;
-        if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
     }
 
     /* Restore FVM residuals */
@@ -1007,8 +1009,10 @@ int main(int argc,char **args)
 
   /* Pre-calculate local cells and geometry */
   {
+    DMLabel bclabel;
+    PetscReal cvolume, fcentroid[ctx.dim];
     PetscSection lsection, gsection;
-    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
     
     ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
     ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1022,17 +1026,28 @@ int main(int argc,char **args)
         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
         if (nldof > 0) ++(ctx.ninteriorcells);
     }
+    DMCreateLabel(ctx.da_solution, "boundary"); 
+    DMGetLabel(ctx.da_solution, "boundary", &bclabel);
     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
     for (point = pstart; point < pend; ++point) {
         ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+        if (nsupp == 1) {
+            DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+            boundaryid = 0;
+            for (dim=0; dim<ctx.dim; ++dim) {
+                boundaryid++;
+                if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                boundaryid++;
+                if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+            }
+        }
         ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
         if (nsupp != 2 || nchild > 0) continue;
         ctx.localfaces[(ctx.nlocalfaces)++] = point;
     }
     ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
     for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-        PetscReal cvolume;
         ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
         ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
     }
@@ -1067,35 +1082,6 @@ int main(int argc,char **args)
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     free(ctx.voxelphasemapping);
     free(ctx.voxelsitemapping);
-  }
-
-  /* Add boundary label */
-  {
-      DM facedm;
-      Vec facegeom;
-      const PetscScalar *fgeom;
-      PetscFVFaceGeom *fg;
-      PetscInt face, fstart, fend, dim, nsupp, boundaryid;
-    
-      ierr = DMCreateLabel(ctx.da_solution, "boundary");
-      ierr = DMPlexTSGetGeometryFVM(ctx.da_solution, &facegeom, NULL, NULL);
-      ierr = VecGetDM(facegeom,&facedm);
-      ierr = VecGetArrayRead(facegeom,&fgeom);
-      ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &fstart, &fend); CHKERRQ(ierr);
-      for (face = fstart; face < fend; ++face) {
-          ierr = DMPlexGetSupportSize(ctx.da_solution, face, &nsupp);
-          if (nsupp == 1) {
-              ierr = DMPlexPointLocalRead(facedm,face,fgeom,&fg);
-              boundaryid = 0;
-              for (dim=0; dim<ctx.dim; ++dim) {
-                  boundaryid++;
-                  if (fabs(fg->centroid[dim]                ) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
-                  boundaryid++;
-                  if (fabs(fg->centroid[dim] - ctx.size[dim]) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
-              }
-          }
-      }
-      ierr = VecRestoreArrayRead(facegeom,&fgeom);
   }
 
   /* Set up star forest */
@@ -1207,8 +1193,10 @@ int main(int argc,char **args)
           ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
           {
+            DMLabel bclabel;
+            PetscReal cvolume, fcentroid[ctx.dim];
             PetscSection lsection, gsection;
-            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
             
             ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
             ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1223,11 +1211,22 @@ int main(int argc,char **args)
                 if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                 if (nldof > 0) ++(ctx.ninteriorcells);
             }
+            DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
             ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
             free(ctx.localfaces);
             ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
             for (point = pstart; point < pend; ++point) {
                 ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+                if (nsupp == 1) {
+                    DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+                    boundaryid = 0;
+                    for (dim=0; dim<ctx.dim; ++dim) {
+                        boundaryid++;
+                        if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                        boundaryid++;
+                        if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                    }
+                }
                 ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                 if (nsupp != 2 || nchild > 0) continue;
                 ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1235,7 +1234,6 @@ int main(int argc,char **args)
             free(ctx.cellgeom);
             ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
             for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-                PetscReal cvolume;
                 ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
                 ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
             }
@@ -1373,8 +1371,10 @@ int main(int argc,char **args)
                   ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
                   {
+                    DMLabel bclabel;
+                    PetscReal cvolume, fcentroid[ctx.dim];
                     PetscSection lsection, gsection;
-                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
             
                     ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
                     ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1389,11 +1389,22 @@ int main(int argc,char **args)
                         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                         if (nldof > 0) ++(ctx.ninteriorcells);
                     }
+                    DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
                     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
                     free(ctx.localfaces);
                     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
                     for (point = pstart; point < pend; ++point) {
                         ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+                        if (nsupp == 1) {
+                            DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+                            boundaryid = 0;
+                            for (dim=0; dim<ctx.dim; ++dim) {
+                                boundaryid++;
+                                if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                                boundaryid++;
+                                if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                            }
+                        }
                         ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                         if (nsupp != 2 || nchild > 0) continue;
                         ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1401,12 +1412,11 @@ int main(int argc,char **args)
                     free(ctx.cellgeom);
                     ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
                     for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-                        PetscReal cvolume;
                         ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
                         ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
                     }
                   }
-          
+
                   /* Set up star forest */
                   if (ctx.nsites){
                       PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
