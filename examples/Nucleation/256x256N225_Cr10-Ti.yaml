@@ -7,11 +7,12 @@ header:
   materials : [solid, liquid]
   nuclei : [solid]
   interfaces : [solid-liquid]
+  boundaries : [influx, outflux]
   components : [cr, ti]
-  outputs : [cr_c, ti_c, matid, phaseid]
+  outputs : [cr_c, ti_c, matid, temperature]
 
 solution_parameters:
-    time : 100.0
+    time : 10000.0
     interfacewidth : 4
     initblocksize : [2, 2]
     initrefine : 7
@@ -31,7 +32,9 @@ material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
-    temperature0: 1609.0
+    temperature0: 1800.0   # initial temperature Ti
+    specific_heat: 2.6e+9
+    tconductivity: 7.0e+12
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.067970, 0.932030]
     mobilityc :
@@ -62,7 +65,9 @@ material:
   liquid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
-    temperature0: 1609.0
+    temperature0: 1800.0   # initial temperature Ti
+    specific_heat: 2.6e+9
+    tconductivity: 7.0e+12
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.100640, 0.899360]
     mobilityc :
@@ -96,14 +101,39 @@ material:
 nucleus:
   solid :
     matrix : [8]
-    nucleation_model: constant
-    nucleation_rate: 1e-2
+    nucleation_model: cnt
+    length_scale : 1.0e+4
+    minsize : 1.0
+    atomic_volume : 16.0
+    gamma : 0.1
+    shape_factor : 0.1
+    migration : 1.0e+4
+    D0: 1.0e+10
     
 interface :
   solid-liquid :
     energy : 0.5e+6
     mobility : 
       m0: 1e-6
+
+boundary: 
+  # fix initial temperature Ti on the top surface
+  influx: 
+    boundary_id: 4
+    thermal:
+      type: dirichlet
+      value: 1800.0   
+  
+  # thermal gradient, G, on bottom surface. 
+  # G = (Tb - Ti)/L, where Tb is the temperature at the bottom surface and 
+  # L is the length of the box (256 in this case).
+  # (Tb - Tm) and G are the two axes in the solidification diagram. 
+  # Tm is the melting temp.
+  outflux: 
+    boundary_id: 3
+    thermal:
+      type: neumann
+      value: -2.0   
 
 mappings:
   phase_material_mapping : |-
