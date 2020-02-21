@@ -490,7 +490,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
             specific_heat += interpolant[g]*currentmaterial->specific_heat;
         }
-        *tmrhs = (*tlapl)/specific_heat;    
+        *tmrhs = (*tlapl)/specific_heat;
+        if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
     }
 
     /* Restore FVM residuals */
@@ -606,7 +607,7 @@ PetscErrorCode PostStep(TS ts)
                         Chemenergy(chemsource,sitefrac,chempot_interface,(*temperature),slist,user);
                         cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
                         for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
-                        temperature_leaf[site] += (*temperature);
+                        temperature_leaf[site] += cellvolume*(*temperature);
                     }
                 }    
                 if (siteIS) {
@@ -633,6 +634,8 @@ PetscErrorCode PostStep(TS ts)
         memset(deactive_root,0,user->nsites_local*sizeof(char));
         for (site=0; site<user->nsites_local; site++) {
             if (user->siteactivity_local[site]) {
+                gv_root[site] /= volume_root[site];
+                temperature_root[site] /= volume_root[site];
                 deactive_root[site] = Nucleation(currenttime,currenttimestep,
                                                  temperature_root[site],volume_root[site],gv_root[site],
                                                  user->siteoffset+site,user);
