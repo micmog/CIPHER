@@ -52,12 +52,6 @@ typedef enum {
    NONE_CHEMENERGY
 } chemfe_model_t;
 
-/* chemical FE model type */
-typedef enum {
-   CONDUCTION_THERMAL,
-   ADIABATIC_THERMAL
-} thermal_model_t;
-
 /* boundary type */
 typedef enum {
    NEUMANN_BC,
@@ -158,20 +152,6 @@ typedef union CHEMFE {
     CALPHAD2SL calphad2sl;
 } CHEMFE;
 
-/* Thermal conduction parameters container */
-typedef struct TCONDUCTION {
-} TCONDUCTION;
-
-/* Thermal adiabatic parameters container */
-typedef struct TADIABATIC {
-} TADIABATIC;
-
-/* Thermal container */
-typedef union THERMAL {
-    TCONDUCTION conduction;
-    TADIABATIC  adiabatic;
-} THERMAL;
-
 /* Phase container */
 typedef struct MATERIAL {
     chemfe_model_t chemfe_model;
@@ -179,9 +159,7 @@ typedef struct MATERIAL {
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
-    thermal_model_t thermal_model;
-    PetscReal temperature0, specific_heat, tconductivity;
-    THERMAL thermal;
+    PetscReal temperature0, specific_heat, latent_heat, tconductivity;
 } MATERIAL;
 
 /* interface container */

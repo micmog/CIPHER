@@ -240,7 +240,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     deltaL = user->cellgeom[scells[0]];
         
                     /* get common active phases */
-                    CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
                     if (!(currentboundary->chem_bctype == NONE_BC)) {
                         memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
                         if (currentboundary->chem_bctype == NEUMANN_BC) {
@@ -248,6 +247,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         } else {
                             for (c=0; c<user->ndp; c++) work_vec_DP[c] = (currentboundary->chem_bcval[c] - chempotL[c]);
                         }
+                        CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
                         MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
                     }
                     if        (currentboundary->thermal_bctype == NEUMANN_BC  ) {
@@ -485,12 +485,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         }
         
         /* temperature rate */
-        specific_heat = 0.0;
+        specific_heat = 0.0; *tmrhs = *tlapl;
         for (g =0; g<slist[0];  g++) {
             currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
             specific_heat += interpolant[g]*currentmaterial->specific_heat;
+            if (currentmaterial->latent_heat) *tmrhs += pfrhs[g]*currentmaterial->latent_heat;
         }
-        *tmrhs = (*tlapl)/specific_heat;
+        *tmrhs /= specific_heat;
         if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
     }
 

@@ -685,20 +685,18 @@ PetscErrorCode SetUpConfig(AppCtx *user)
            if (propsize) {assert(propsize == 1); currentmaterial->specific_heat = atof(propval[0]);}
            else {currentmaterial->specific_heat = 1.0;}
           }
+          /* thermal latent heat */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "latent_heat", buffer, filesize);
+           if (propsize) {assert(propsize == 1); currentmaterial->latent_heat = atof(propval[0]);}
+           else {currentmaterial->latent_heat = 0.0;}
+          }
           /* thermal conductivity */
           {
            ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
            if (propsize) {assert(propsize == 1); currentmaterial->tconductivity = atof(propval[0]);}
            else {currentmaterial->tconductivity = 0.0;}
           }
-          /* thermal transport type */
-          ierr = GetProperty(propval, &propsize, materialmapping, "thermalflux", buffer, filesize);
-          if (propsize) {assert(propsize == 1);} else {strcpy(propval[0], "adiabatic");}
-          if        (!strcmp(propval[0], "adiabatic" )) {
-              currentmaterial->thermal_model = ADIABATIC_THERMAL;
-          } else if (!strcmp(propval[0], "conduction")) {
-              currentmaterial->thermal_model = CONDUCTION_THERMAL;
-          }   
          }
      }
     }
