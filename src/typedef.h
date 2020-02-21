@@ -206,7 +206,7 @@ typedef struct AMRPARAMS {
 /* solution solparams */
 typedef struct SOLUTIONPARAMS {
     /* load case parameters */
-    PetscReal *time, timestep, mintimestep, maxtimestep;
+    PetscReal *time, *temperature_rate, timestep, mintimestep, maxtimestep;
     PetscInt  nloadcases, currentloadcase;
     PetscInt  step;
     /* phase field parameters */

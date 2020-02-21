@@ -42,7 +42,7 @@ char Nucleation_cnt(const PetscReal current_time, const PetscReal current_timest
 {
     CNT_NUC *currentcntnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.cnt;
     PetscReal KbT = KBANGST2*temperature;
-    PetscReal radius_c = 2.0*currentcntnuc->gamma*volume/gv/ANGSTROM;
+    PetscReal radius_c = 2.0*currentcntnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentcntnuc->lengthscale*pow(volume,1.0/user->dim)
         && radius_c > currentcntnuc->minsize) {
         PetscReal zeldovich = currentcntnuc->atomicvolume
@@ -696,7 +696,7 @@ static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *site
     memset(mobilityc,0,numcomps*sizeof(PetscReal));
     const QUAD *currentquad = &energy.quad;
     for (PetscInt ck=0; ck<numcomps; ck++) {
-        mobilityc[ck] = currentquad->mobilityc[ck];
+        mobilityc[ck] = sitefrac[ck]*currentquad->mobilityc[ck];
     }        
 }
 
@@ -729,7 +729,7 @@ void CompositionMobilityVolumeRef(PetscReal *mobilityc_volumeref, const PetscRea
             for (PetscInt ck=0; ck<user->ncp; ck++) {
                 mobilityc_volumeref[ci*user->ndp+cj] += (KRONDELTA(cj,ck) - composition[cj])
                                                       * (KRONDELTA(ck,ci) - composition[ci])
-                                                      * composition[ck]*mobilityc_latticeref[ck];
+                                                      * mobilityc_latticeref[ck];
             }
         }
     }        

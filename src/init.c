@@ -912,6 +912,14 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      assert(propsize > 0); user->solparams.nloadcases = propsize; 
      user->solparams.time = malloc(user->solparams.nloadcases*sizeof(PetscReal));
      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.time[propctr] = atof(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature_rate", buffer, filesize);
+     if (propsize) {
+         assert(propsize == user->solparams.nloadcases);
+         user->solparams.temperature_rate = malloc(user->solparams.nloadcases*sizeof(PetscReal));
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_rate[propctr] = atof(propval[propctr]);
+     } else {
+         user->solparams.temperature_rate = NULL;
+     }
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); 
      if (propsize) {assert(propsize == 1); user->solparams.timestep = atof(propval[0]);} 
      else {user->solparams.timestep = 1.0e-18;}
