@@ -894,6 +894,7 @@ int main(int argc,char **args)
   VecTagger      refineTag = NULL, coarsenTag = NULL;
   /* numerical parameters */
   PetscErrorCode ierr;
+  PetscFV        solution_fv;
       
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Initialize program
@@ -930,28 +931,27 @@ int main(int argc,char **args)
   
   /* Create finite volume discretisation for solution */
   {
-    PetscFE solution_fe;
-    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE,
-                                PETSC_FALSE,NULL,PETSC_DEFAULT,&solution_fe);CHKERRQ(ierr);
-    ierr = PetscObjectSetName((PetscObject) solution_fe, "solution");CHKERRQ(ierr);
-    ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fe);CHKERRQ(ierr);
+    ierr = PetscFVCreate(PETSC_COMM_WORLD, &solution_fv);CHKERRQ(ierr);
+    ierr = PetscFVSetFromOptions(solution_fv);CHKERRQ(ierr);
+    ierr = PetscFVSetNumComponents(solution_fv, AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE);CHKERRQ(ierr);
+    ierr = PetscFVSetSpatialDimension(solution_fv, ctx.dim);CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) solution_fv,"solution");CHKERRQ(ierr);
+    ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fv);CHKERRQ(ierr);
     ierr = DMCreateDS(ctx.da_solution);CHKERRQ(ierr);
-    ierr = PetscFEDestroy(&solution_fe);CHKERRQ(ierr);
     ierr = DMCopyDisc(ctx.da_solution,ctx.da_solforest);CHKERRQ(ierr);
   }
   
   /* Create finite volume discretisation for output */
   {
-    PetscFE output_fe;
+    PetscFV output_fv;
     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                ctx.noutputs,
-                                PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
-    ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
-    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
-    ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
-    ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+    ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
+    ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
+    ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
+    ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
+    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
+    ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
   }
 
   /* Pre-calculate local cells and geometry */
@@ -1225,15 +1225,16 @@ int main(int argc,char **args)
           }
 
           {
-            PetscFE output_fe;
+            PetscFV output_fv;
             ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
             ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-            ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                        ctx.noutputs,
-                                        PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
-            ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
-            ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
-            ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+            ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
+            ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
+            ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
+            ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
+            ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
+            ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
+            ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
           }
       }
   }    
@@ -1267,7 +1268,6 @@ int main(int argc,char **args)
       
               ierr = DMLabelCreate(PETSC_COMM_SELF,"adapt",&adaptlabel);CHKERRQ(ierr);
               ierr = DMLabelSetDefaultValue(adaptlabel,DM_ADAPT_COARSEN);CHKERRQ(ierr);
-
               ierr = DMGetLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
               ierr = DMGlobalToLocalBegin(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
               ierr = DMGlobalToLocalEnd(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
@@ -1391,15 +1391,16 @@ int main(int argc,char **args)
                   }
               
                   {
-                    PetscFE output_fe;
+                    PetscFV output_fv;
                     ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
                     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-                    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                                ctx.noutputs,
-                                                PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
-                    ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
-                    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
-                    ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+                    ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
+                    ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
+                    ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
+                    ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
+                    ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
+                    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
+                    ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
                   }
                   ierr = TSDestroy(&ts);CHKERRQ(ierr);
                   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
