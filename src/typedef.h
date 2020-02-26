@@ -217,9 +217,12 @@ typedef struct AppCtx {
     /* aux grids and vecs */
     DM da_solution, da_solforest;
     DM da_output;
+    /* geometric info */
     PetscInt *localcells, nlocalcells, ninteriorcells;
     PetscInt *localfaces, nlocalfaces;
     PetscReal *cellgeom;
+    PetscInt gradient_calculation, *gradient_nleastsq;
+    PetscReal *gradient_matrix;
     /* phase material parameters */
     MATERIAL *material;
     PetscInt *voxelphasemapping, *phasematerialmapping;

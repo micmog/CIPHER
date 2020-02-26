@@ -920,6 +920,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      for (PetscInt dim=0; dim<user->dim; ++dim) {
          assert(user->amrparams.initblocksize[dim]*FastPow(2,user->amrparams.initrefine) == user->resolution[dim]);
      }
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "gradient_calculation", buffer, filesize);
+     if (propsize) {assert(propsize == 1 && atoi(propval[0]) >= 0 && atoi(propval[0]) <= 1); user->gradient_calculation = atoi(propval[0]);}
+     else {user->gradient_calculation = 0;}
     }
 
     /* Parsing config file mappings */

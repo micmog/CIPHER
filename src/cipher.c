@@ -30,15 +30,15 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     AppCtx            *user = (AppCtx*) ptr;
     Vec               localX, laplacian;
     PetscScalar       *fdof, *rhs, *lap, *offset;
-    PetscScalar       *pcell, *pcellL, *pcellR;
+    PetscScalar       *pcell, *pcellL, *pcellR, *ncell;
     PetscScalar       *plapl, *plaplL, *plaplR, *pfrhs, fluxp[PF_SIZE];
     PetscReal         *chempot, *chempotL, *chempotR;
     PetscReal         *composition, *compositionL, *compositionR;
     PetscReal         *mobilitycv, *mobilitycvL, *mobilitycvR;
     PetscReal         *sitefrac, *sitepot_ex, sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
     PetscScalar       *dlapl, *dlaplL, *dlaplR, *dprhs, *cprhs, fluxd[DP_SIZE];
-    uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE];
-    const PetscInt    *scells;
+    uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE], nlist[AS_SIZE], setintersection[AS_SIZE];
+    const PetscInt    *scells, *cone;
     PetscReal         ffactor, cfactor, deltaL, deltaR;
     PetscInt          localcell, cell, localface, face; 
     PetscReal         interpolant[PF_SIZE], caplflux[PF_SIZE], caplsource[PF_SIZE];
@@ -56,6 +56,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
+    PetscReal         pgrad[user->dim*PF_SIZE], *gradient_matrix;
+    PetscInt          conesize, nsupp, supp, dim, nleastsq;
+
     
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -275,6 +278,43 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         EvalInterpolant(interpolant,pcell,slist[0]);
                 
         if (slist[0] > 1) {
+            /* calculate phase field gradients */
+            if (user->gradient_calculation) {
+                gradient_matrix = &user->gradient_matrix[24*user->dim*localcell];
+                for (g=0; g<slist[0]; g++) {
+                    for (dim=0; dim<user->dim; dim++) {
+                        pgrad[user->dim*g+dim] = 0.0;
+                        for (nleastsq=0; nleastsq<user->gradient_nleastsq[localcell]; nleastsq++)
+                            pgrad[user->dim*g+dim] -= gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*pcell[g];
+                    }
+                }        
+                ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
+                ierr = DMPlexGetCone(user->da_solution,cell,&cone);
+                nleastsq=0;
+                for (face=0; face<conesize; face++) {
+                    ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
+                    ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
+                    for (supp=0; supp<nsupp; supp++) {
+                        if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
+                            offset = NULL;
+                            ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdof, &offset);
+                            F2IFUNC(nlist,&offset[AS_OFFSET]);
+                            ncell = &offset[PF_OFFSET];
+                            SetIntersection(setintersection,slistL,slistR,slist,nlist);
+                            for (g=0; g<setintersection[0]; g++) {
+                                for (dim=0; dim<user->dim; dim++) {
+                                    pgrad[user->dim*slistL[g]+dim] += gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*ncell[slistR[g]];
+                                }
+                            }        
+                            nleastsq++;
+                        }
+                    }
+                }
+                for (g=0; g<slist[0]; g++) {
+                    printf("cell %d phase %d grad %e %e\n",cell,g,pgrad[user->dim*g+0],pgrad[user->dim*g+1]);
+                }
+            }
+        
             /* phase capillary driving force */ 
             memset(caplflux  ,0,slist[0]*sizeof(PetscReal));
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
@@ -987,6 +1027,57 @@ int main(int argc,char **args)
     }
   }
   
+  /* Precalculate gradient matrix */
+  if (ctx.gradient_calculation){
+      PetscInt       conesize, nsupp;
+      const PetscInt *cone, *scells;
+      PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+      PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+      PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+      
+      ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+      ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+      for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+          cell = ctx.localcells[localcell];
+          ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+          ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+          ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+          ctx.gradient_nleastsq[localcell] = 0;
+          for (face=0; face<conesize; face++) {
+              ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+              ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+              for (supp=0; supp<nsupp; supp++) {
+                  if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                      ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                          &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                      for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                      (ctx.gradient_nleastsq[localcell])++;
+                  }
+              }
+          }
+          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+              for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                  val = 0.0;
+                  for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                      val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                  }
+                  ata_mat[dim_i*ctx.dim+dim_j] = val;
+                  ata_mat[dim_j*ctx.dim+dim_i] = val;
+              }
+          }
+          Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+          gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+          memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+              for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                  for (dim=0; dim<ctx.dim; ++dim) 
+                      gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                     *      a_mat[dim_j*ctx.dim+dim];
+              }
+          }    
+      }    
+  }
+
   /* Add phase label */
   {
     DM celldm;
@@ -1155,6 +1246,7 @@ int main(int argc,char **args)
           ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
           ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
+          /* Pre-calculate local cells and geometry */
           {
             PetscSection lsection, gsection;
             PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
@@ -1190,6 +1282,57 @@ int main(int argc,char **args)
             }
           }
           
+          /* Precalculate gradient matrix */
+          if (ctx.gradient_calculation){
+              PetscInt       conesize, nsupp;
+              const PetscInt *cone, *scells;
+              PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+              PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+              PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+              
+              free(ctx.gradient_matrix);ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+              free(ctx.gradient_nleastsq);ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+              for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+                  cell = ctx.localcells[localcell];
+                  ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+                  ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+                  ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+                  ctx.gradient_nleastsq[localcell] = 0;
+                  for (face=0; face<conesize; face++) {
+                      ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                      ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                      for (supp=0; supp<nsupp; supp++) {
+                          if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                              ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                                  &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                              for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                              (ctx.gradient_nleastsq[localcell])++;
+                          }
+                      }
+                  }
+                  for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                      for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                          val = 0.0;
+                          for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                              val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                          }
+                          ata_mat[dim_i*ctx.dim+dim_j] = val;
+                          ata_mat[dim_j*ctx.dim+dim_i] = val;
+                      }
+                  }
+                  Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+                  gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+                  memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+                  for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                      for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                          for (dim=0; dim<ctx.dim; ++dim) 
+                              gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                             *      a_mat[dim_j*ctx.dim+dim];
+                      }
+                  }    
+              }    
+          }
+
           /* Set up star forest */
           if (ctx.nsites) {
               PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
@@ -1321,6 +1464,7 @@ int main(int argc,char **args)
                   ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
                   ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
+                  /* Pre-calculate local cells and geometry */
                   {
                     PetscSection lsection, gsection;
                     PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
@@ -1356,6 +1500,57 @@ int main(int argc,char **args)
                     }
                   }
           
+                  /* Precalculate gradient matrix */
+                  if (ctx.gradient_calculation){
+                      PetscInt       conesize, nsupp;
+                      const PetscInt *cone, *scells;
+                      PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+                      PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+                      PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+                      
+                      free(ctx.gradient_matrix);ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+                      free(ctx.gradient_nleastsq);ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+                      for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+                          cell = ctx.localcells[localcell];
+                          ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+                          ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+                          ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+                          ctx.gradient_nleastsq[localcell] = 0;
+                          for (face=0; face<conesize; face++) {
+                              ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                              ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                              for (supp=0; supp<nsupp; supp++) {
+                                  if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                                      ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                                          &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                                      for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                                      (ctx.gradient_nleastsq[localcell])++;
+                                  }
+                              }
+                          }
+                          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                              for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                                  val = 0.0;
+                                  for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                                      val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                                  }
+                                  ata_mat[dim_i*ctx.dim+dim_j] = val;
+                                  ata_mat[dim_j*ctx.dim+dim_i] = val;
+                              }
+                          }
+                          Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+                          gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+                          memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+                          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                              for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                                  for (dim=0; dim<ctx.dim; ++dim) 
+                                      gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                                     *      a_mat[dim_j*ctx.dim+dim];
+                              }
+                          }    
+                      }    
+                  }
+
                   /* Set up star forest */
                   if (ctx.nsites){
                       PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
