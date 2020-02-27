@@ -47,7 +47,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         dmdc[user->ndp*user->ndp], dcdm[user->ndp*user->ndp];
     uint16_t          setintersect[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     PetscReal         nactivephases, rhsval, triplejunctionenergy;
-    PetscInt          g, gi, gj, gk, c, s, interfacekj, interfaceji, interfaceki;
+    PetscInt          g, gi, gj, gk, c, s, interfacekj;
     MATERIAL          *currentmaterial;
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_MB[DP_SIZE*DP_SIZE];
@@ -55,10 +55,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CT[PF_SIZE*MAXSITES*DP_SIZE*DP_SIZE];
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
-    PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
-    PetscReal         pgrad[user->dim*PF_SIZE], interface_anisotropy[PF_SIZE*PF_SIZE];
-    PetscReal         *currentanisotropy, *gradient_matrix;
-    PetscInt          conesize, nsupp, supp, dim, nleastsq;
+    PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
+    PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
+    PetscReal         pgrad[user->dim*PF_SIZE], interface_normals[user->dim*PF_SIZE*PF_SIZE];
+    PetscReal         *currentinormal, *currentival, *gradient_matrix, dot_product;
+    PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
 
     
     /* Gather FVM residuals */
@@ -312,50 +313,67 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     }
                 }
             }
+            memset(interface_normals,0,user->dim*slist[0]*slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
-                    *currentanisotropy = 1.0;
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
                     if (user->gradient_calculation) {
                         for (dim=0, rhsval=0.0; dim<user->dim; dim++) 
                             rhsval += (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim])
                                     * (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim]);
                         rhsval = sqrt(rhsval);
                         if (rhsval > 1e-16) {
-                            *currentanisotropy -= 3.0*currentinterface->anisotropy;
-                            for (dim=0; dim<user->dim; dim++) *currentanisotropy += 4.0*currentinterface->anisotropy
-                                                                                  * FastPow( (  pgrad[user->dim*gk+dim] 
-                                                                                              - pgrad[user->dim*gj+dim])
-                                                                                            / rhsval, 4);
+                            for (dim=0; dim<user->dim; dim++) currentinormal[dim] = (  pgrad[user->dim*gk+dim] 
+                                                                                     - pgrad[user->dim*gj+dim])
+                                                                                   /( rhsval);
                         }
                     }
                 }
             }
         
             /* phase capillary driving force */ 
+            memset(interface_energy,0,slist[0]*slist[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_energy[gk*slist[0]+gj];
+                    (*currentival) = 1.0;
+                    for (dir=0; dir<currentinterface->ienergy->n; dir++) {
+                        dot_product = 0.0;
+                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
+                                                                       * currentinterface->ienergy->dir[user->dim*dir+dim];
+                        (*currentival) += dot_product*dot_product*currentinterface->ienergy->val[dir];
+                    }
+                    (*currentival) *= currentinterface->ienergy->e->m0
+                                    * exp(  SumTSeries(temperature, currentinterface->ienergy->e->unary[0])
+                                          / R_GAS_CONST/temperature);
+                }
+            }   
             memset(caplflux  ,0,slist[0]*sizeof(PetscReal));
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
-                    caplflux  [gk] -= (*currentanisotropy)*currentinterface->energy*plapl[gj];
-                    caplflux  [gj] -= (*currentanisotropy)*currentinterface->energy*plapl[gk];
-                    caplsource[gk] -= (*currentanisotropy)*currentinterface->energy*pcell[gj];
-                    caplsource[gj] -= (*currentanisotropy)*currentinterface->energy*pcell[gk];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_energy[gk*slist[0]+gj];
+                    caplflux  [gk] -= (*currentival)*plapl[gj];
+                    caplflux  [gj] -= (*currentival)*plapl[gk];
+                    caplsource[gk] -= (*currentival)*pcell[gj];
+                    caplsource[gj] -= (*currentival)*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
-                        triplejunctionenergy = currentinterface->energy;
-                        interfaceji = user->interfacelist[slist[gj+1]*user->npf + slist[gi+1]];
-                        currentinterface = &user->interface[interfaceji];
-                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
-                                               triplejunctionenergy : currentinterface->energy;
-                        interfaceki = user->interfacelist[slist[gk+1]*user->npf + slist[gi+1]];
-                        currentinterface = &user->interface[interfaceki];
-                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
-                                               triplejunctionenergy : currentinterface->energy;
+                        triplejunctionenergy = 0.0;
+                        currentival = &interface_energy[gk*slist[0]+gj];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
+                        currentival = &interface_energy[gj*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
+                        currentival = &interface_energy[gk*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
@@ -392,21 +410,37 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
+            memset(interface_mobility,0,slist[0]*slist[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_mobility[gk*slist[0]+gj];
+                    (*currentival) = 1.0;
+                    for (dir=0; dir<currentinterface->imobility->n; dir++) {
+                        dot_product = 0.0;
+                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
+                                                                       * currentinterface->imobility->dir[user->dim*dir+dim];
+                        (*currentival) += dot_product*dot_product*currentinterface->imobility->val[dir];
+                    }
+                    (*currentival) *= currentinterface->imobility->m->m0
+                                    * exp(  SumTSeries(temperature, currentinterface->imobility->m->unary[0])
+                                          / R_GAS_CONST/temperature);
+                }
+            }   
             nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
-                    interface_mobility = (*currentanisotropy)
-                                       * currentinterface->mobility->m0
-                                       * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
-                                             / R_GAS_CONST/temperature);
-                    rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                 + (caplsource[gk] - caplsource[gj])
-                                                 - (chemsource[gk] - chemsource[gj])
-                                                 * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_mobility[gk*slist[0]+gj];
+                    rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+                                             + (caplsource[gk] - caplsource[gj])
+                                             - (chemsource[gk] - chemsource[gj])
+                                             * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
@@ -422,15 +456,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         if (active[gj]) {
                             interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
-                            currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
-                            interface_mobility = (*currentanisotropy)
-                                               * currentinterface->mobility->m0
-                                               * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
-                                                     / R_GAS_CONST/temperature);
-                            rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                         + (caplsource[gk] - caplsource[gj])
-                                                         - (chemsource[gk] - chemsource[gj])
-                                                         * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                            currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                            currentival = &interface_mobility[gk*slist[0]+gj];
+                            rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+                                                     + (caplsource[gk] - caplsource[gj])
+                                                     - (chemsource[gk] - chemsource[gj])
+                                                     * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
                         }
                     }

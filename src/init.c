@@ -374,8 +374,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
               /* mobility */
               {
                char mobmapping[PETSC_MAX_PATH_LEN];
-               currentcalphaddis->mobilityc = (MOBILITY *) malloc(user->ncp*sizeof(MOBILITY));
-               MOBILITY *currentmobility = &currentcalphaddis->mobilityc[0];
+               currentcalphaddis->mobilityc = (TACTIVATIONPROP *) malloc(user->ncp*sizeof(TACTIVATIONPROP));
+               TACTIVATIONPROP *currentmobility = &currentcalphaddis->mobilityc[0];
                for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
                    sprintf(mobmapping, "%s/mobilityc/%s",materialmapping,user->componentname[c]);
                    ierr = GetProperty(propval, &propsize, mobmapping, "mobility0", buffer, filesize);
@@ -776,30 +776,95 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
          char interfacemapping[PETSC_MAX_PATH_LEN];
          sprintf(interfacemapping,"interface/%s",user->interfacename[interface]);
-         /* interface anisotropy */
-         ierr = GetProperty(propval, &propsize, interfacemapping, "anisotropy", buffer, filesize);
-         if (propsize) {assert(propsize == 1); currentinterface->anisotropy = atof(propval[0]);}
-         else {currentinterface->anisotropy = 0.0;}
-         /* interface energy */
-         ierr = GetProperty(propval, &propsize, interfacemapping, "energy", buffer, filesize); CHKERRQ(ierr);
-         assert(propsize == 1);
-         currentinterface->energy = atof(propval[0]);
          /* interface mobility */
          {
           char mobmapping[PETSC_MAX_PATH_LEN];
-          currentinterface->mobility = (MOBILITY *) malloc(sizeof(MOBILITY));
+          currentinterface->imobility = (IMOBILITY *) malloc(sizeof(IMOBILITY));
+          currentinterface->imobility->m = (TACTIVATIONPROP *) malloc(sizeof(TACTIVATIONPROP));
           sprintf(mobmapping, "%s/mobility",interfacemapping);
           ierr = GetProperty(propval, &propsize, mobmapping, "m0", buffer, filesize); CHKERRQ(ierr);
-          assert(propsize == 1); currentinterface->mobility->m0 = atof(propval[0]);
-          currentinterface->mobility->unary = (TSeries *) malloc(sizeof(TSeries));
+          assert(propsize == 1); currentinterface->imobility->m->m0 = atof(propval[0]);
+          currentinterface->imobility->m->unary = (TSeries *) malloc(sizeof(TSeries));
           sprintf(mobmapping, "%s/mobility/activation_energy",interfacemapping);
           ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
-          currentinterface->mobility->unary->nTser = propsize;
-          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobility->unary->coeff[propctr] = atof(propval[propctr]);
+          currentinterface->imobility->m->unary->nTser = propsize;
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->imobility->m->unary->coeff[propctr] = atof(propval[propctr]);
           ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
-          assert(propsize == currentinterface->mobility->unary->nTser);
-          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobility->unary->exp[propctr] = atoi(propval[propctr]);
-          currentinterface->mobility->unary->logCoeff = 0.0;
+          assert(propsize == currentinterface->imobility->m->unary->nTser);
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->imobility->m->unary->exp[propctr] = atoi(propval[propctr]);
+          currentinterface->imobility->m->unary->logCoeff = 0.0;
+          sprintf(mobmapping, "%s/mobility",interfacemapping);
+          ierr = GetProperty(propval, &propsize, mobmapping, "anisotropy_values", buffer, filesize);
+          if (propsize) {
+              assert(propsize > 0); 
+              currentinterface->imobility->n = propsize;
+              currentinterface->imobility->val = malloc(currentinterface->imobility->n*sizeof(PetscReal));
+              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->imobility->val[propctr] = atof(propval[propctr]);
+          } else {
+              currentinterface->imobility->n = 0;
+          }    
+          ierr = GetProperty(propval, &propsize, mobmapping, "anisotropy_directions", buffer, filesize);
+          if (propsize) {
+              assert(propsize == user->dim*currentinterface->imobility->n); 
+              currentinterface->imobility->dir = malloc(user->dim*currentinterface->imobility->n*sizeof(PetscReal));
+              for (PetscInt propctr = 0; propctr < propsize; propctr += user->dim) {
+                  PetscReal vecnorm = 0.0;
+                  for (PetscInt dim = 0; dim < user->dim; dim++) {
+                      currentinterface->imobility->dir[propctr+dim] = atof(propval[propctr+dim]);
+                      vecnorm += currentinterface->imobility->dir[propctr+dim]*currentinterface->imobility->dir[propctr+dim];
+                  }
+                  vecnorm = sqrt(vecnorm);
+                  for (PetscInt dim = 0; dim < user->dim; dim++) {
+                      assert(vecnorm > 0.0);
+                      currentinterface->imobility->dir[propctr+dim] /= vecnorm;
+                  }
+              }    
+          }    
+         }
+         /* interface energy */
+         {
+          char energymapping[PETSC_MAX_PATH_LEN];
+          currentinterface->ienergy = (IENERGY *) malloc(sizeof(IENERGY));
+          currentinterface->ienergy->e = (TACTIVATIONPROP *) malloc(sizeof(TACTIVATIONPROP));
+          sprintf(energymapping, "%s/energy",interfacemapping);
+          ierr = GetProperty(propval, &propsize, energymapping, "e0", buffer, filesize); CHKERRQ(ierr);
+          assert(propsize == 1); currentinterface->ienergy->e->m0 = atof(propval[0]);
+          currentinterface->ienergy->e->unary = (TSeries *) malloc(sizeof(TSeries));
+          sprintf(energymapping, "%s/energy/activation_energy",interfacemapping);
+          ierr = GetProperty(propval, &propsize, energymapping, "t_coefficient", buffer, filesize);
+          currentinterface->ienergy->e->unary->nTser = propsize;
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->ienergy->e->unary->coeff[propctr] = atof(propval[propctr]);
+          ierr = GetProperty(propval, &propsize, energymapping, "t_exponent", buffer, filesize);
+          assert(propsize == currentinterface->ienergy->e->unary->nTser);
+          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->ienergy->e->unary->exp[propctr] = atoi(propval[propctr]);
+          currentinterface->ienergy->e->unary->logCoeff = 0.0;
+          sprintf(energymapping, "%s/energy",interfacemapping);
+          ierr = GetProperty(propval, &propsize, energymapping, "anisotropy_values", buffer, filesize);
+          if (propsize) {
+              assert(propsize > 0); 
+              currentinterface->ienergy->n = propsize;
+              currentinterface->ienergy->val = malloc(currentinterface->ienergy->n*sizeof(PetscReal));
+              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->ienergy->val[propctr] = atof(propval[propctr]);
+          } else {
+              currentinterface->ienergy->n = 0;
+          }    
+          ierr = GetProperty(propval, &propsize, energymapping, "anisotropy_directions", buffer, filesize);
+          if (propsize) {
+              assert(propsize == user->dim*currentinterface->ienergy->n); 
+              currentinterface->ienergy->dir = malloc(user->dim*currentinterface->ienergy->n*sizeof(PetscReal));
+              for (PetscInt propctr = 0; propctr < propsize; propctr += user->dim) {
+                  PetscReal vecnorm = 0.0;
+                  for (PetscInt dim = 0; dim < user->dim; dim++) {
+                      currentinterface->ienergy->dir[propctr+dim] = atof(propval[propctr+dim]);
+                      vecnorm += currentinterface->ienergy->dir[propctr+dim]*currentinterface->ienergy->dir[propctr+dim];
+                  }
+                  vecnorm = sqrt(vecnorm);
+                  for (PetscInt dim = 0; dim < user->dim; dim++) {
+                      assert(vecnorm > 0.0);
+                      currentinterface->ienergy->dir[propctr+dim] /= vecnorm;
+                  }
+              }    
+          }    
          }
          /* segregation potential */
          ierr = GetProperty(propval, &propsize, interfacemapping, "potential", buffer, filesize);
