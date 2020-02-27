@@ -11,22 +11,23 @@ header:
   outputs : [cr_c, ti_c, matid, phaseid]
 
 solution_parameters:
-    time : [0.0, 100.0]
-    temperature : [1609.000000, 1609.000000]
-    interfacewidth : 4
-    initblocksize : [2, 2]
-    initrefine : 7
-    maxnrefine : 7
-    minnrefine : 0
-    initcoarsen : 7
-    amrinterval : 100
-    reltol : 1e-4
-    abstol : 1e-4
-    outputfreq : 10000
-    outfile : Cr10-Ti-2dGrowthNuc
-    interpolation: cubic
-    petscoptions : -ts_adapt_monitor -ts_rk_type 2a
-    random_seed : 1579993586
+  time : [0.0, 100.0]
+  temperature : [1609.000000, 1609.000000]
+  interfacewidth : 4
+  initblocksize : [2, 2]
+  initrefine : 7
+  maxnrefine : 7
+  minnrefine : 6
+  initcoarsen : 1
+  amrinterval : 100
+  reltol : 1e-4
+  abstol : 1e-4
+  outputfreq : 10000
+  outfile : Cr10-Ti-2dGrowthNuc
+  interpolation: cubic
+  gradient_calculation: 1
+  petscoptions : -ts_adapt_monitor -ts_rk_type 2a
+  random_seed : 1579993586
   
 material:
   solid:
@@ -100,7 +101,8 @@ nucleus:
     
 interface :
   solid-liquid :
-    energy : 0.5e+6
+    energy : 
+      e0: 0.5e+6
     mobility : 
       m0: 1.0-11
 

@@ -161,7 +161,8 @@ material:
 
 interface :
   solid-liquid :
-    energy : 0.5e+3
+    energy : 
+      e0: 0.5e+3
     mobility : 
       m0: 1.2e-5
 
