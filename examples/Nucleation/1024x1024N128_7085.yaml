@@ -318,14 +318,16 @@ nucleus:
   
 interface :
   grainboundary :
-    energy : 2.0e+8
+    energy : 
+      e0: 2.0e+8
     mobility : 
       m0: 0.0e+2
       activation_energy:
         t_coefficient : -1.0e+5
         t_exponent: 0
   pptboundary :
-    energy : 1.0e+8
+    energy : 
+      e0: 1.0e+8
     mobility : 
       m0: 1.0e+2
       activation_energy:

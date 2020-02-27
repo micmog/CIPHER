@@ -303,7 +303,8 @@ material:
 
 interface :
   grainboundary :
-    energy : 5.0e+8
+    energy : 
+      e0: 5.0e+8
     mobility : 
       m0: 2.0e+2
       activation_energy:
@@ -311,7 +312,8 @@ interface :
         t_exponent: 0
     potential : [0.175e+4, -0.180e+4, -0.235e+4]  
   pptboundary :
-    energy : 5.0e+8
+    energy : 
+      e0: 5.0e+8
     mobility : 
       m0: 2.0e+2
       activation_energy:

@@ -667,7 +667,7 @@ static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal
 {
     PetscReal migration[numcomps];
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
-    MOBILITY *currentmobility = &currentcalphaddis->mobilityc[0];
+    TACTIVATIONPROP *currentmobility = &currentcalphaddis->mobilityc[0];
     memset(mobilityc,0,numcomps*sizeof(PetscReal));
     for (PetscInt ck=0; ck<numcomps; ck++,currentmobility++) {
         RK *currentbinary = &currentmobility->binary[0];

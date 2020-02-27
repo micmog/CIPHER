@@ -8,11 +8,11 @@ header:
   nuclei : [precipitate]
   interfaces : [grainboundary, pptboundary]
   components : [al, cu, mg, zn]
-  outputs : [al_c, cu_c, mg_c, zn_c, 0_phi, 1_phi, temperature] 
+  outputs : [al_c, cu_c, mg_c, zn_c, 0_phi, 1_phi, phaseid, matid] 
 
 solution_parameters:
-  time : [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 1.0]
-  temperature_rate: [-3.418, -2.724, -2.293, -2.003, -1.84, -1.595, -1.411, -1.386, -1.229, -1.234, -1.056, -1.073, -1.123, -0.742, -1.02, -0.82, -0.752, -0.814, -0.632, -0.662, -0.724, -0.465, -0.56, -0.542, -0.287, -0.604, -0.39, -0.274, -0.182, -0.151, -0.107, -0.088, -0.072, -0.01, 0.0]
+  time : [0.0, 10.0]
+  temperature : [493.0, 493.0]
   interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9
@@ -22,18 +22,15 @@ solution_parameters:
   amrinterval : 200 
   outputfreq : 5000
   interpolation: cubic
-  reltol: 1e-4
-  abstol: 1e-4
-  petscoptions : -ts_adapt_monitor -ts_rk_type 2a
+  petscoptions : -ts_adapt_monitor
   random_seed : 1579993586
 
 material:
   matrix:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
-    temperature0: 670.551445
     chempot_ex_kineticcoeff : 1.0
-    c0 : [0.9360, 0.0103, 0.0268, 0.0269]
+    c0 : [0.9418, 0.0072, 0.0180, 0.0330]
     mobilityc :
       al :
         mobility0 : 1.0e+18
@@ -170,15 +167,15 @@ material:
                 t_exponent: [0, 1]
     unary_enthalpy : 
       al : 
-        t_coefficient : [-7976.15, 137.093038, -1.884662e-3, -8.77664e-6, 74092.0]
+        t_coefficient : [-7976.15, 137.093038, -1.884662e-3, -0.877664e-6, 74092.0]
         t_exponent: [0, 1, 2, 3, -1]
         tlnt_coefficient : -24.3671976
       cu : 
-        t_coefficient : [-7770.458, 130.485235, -2.65684e-3, 1.29223e-6, 52478.0]
+        t_coefficient : [-7770.458, 130.485235, -2.65684e-3, 0.129223e-6, 52478.0]
         t_exponent: [0, 1, 2, 3, -1]
         tlnt_coefficient : -24.112392
       mg : 
-        t_coefficient : [-5767.34, 142.775547, 4.858e-3, -1.393669e-6, 78950.0]
+        t_coefficient : [-5767.34, 142.775547, 0.4858e-3, -1.393669e-6, 78950.0]
         t_exponent: [0, 1, 2, 3, -1]
         tlnt_coefficient : -26.1849782
       zn : 
@@ -212,13 +209,13 @@ material:
         zn : 
           nrk : 3
           rk_0 :     
-            t_coefficient : [4971.0, -3.500025]
+            t_coefficient : [+7297.48, +0.47512]
             t_exponent: [0, 1]
           rk_1 :     
-            t_coefficient : [225.0, 0.1]
+            t_coefficient : [+6612.88, -4.59110]
             t_exponent: [0, 1]
           rk_2 :     
-            t_coefficient : [950.0, 2.5e-5]
+            t_coefficient : [-3097.19, +3.30635]
             t_exponent: [0, 1]
       cu : 
         mg : 
@@ -270,51 +267,160 @@ material:
               t_coefficient : 5.9580949e+4
               t_exponent: 0
   precipitate :
-    chemicalenergy : quadratic
-    molarvolume : 1e-5
-    temperature0: 670.551445
+    chemicalenergy : calphad2sl
+    molarvolume : 3e-5
     chempot_ex_kineticcoeff : 1.0
-    c0 : [0.217306322, 0.143556608, 0.3329534, 0.30618367]
+    stochiometry : [0.666666666666, 0.333333333333]
+    c0_p : [0.0, 0.0, 0.0, 1.0]
+    c0_q : [0.0, 0.0, 1.0, 0.0]
     mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
-    ceq :
-      al :
-        t_coefficient : [-9.473562506959e-3, 1.54008503132e-4, 2.59436543e-7]
-        t_exponent : [0, 1, 2]
-      cu :
-        t_coefficient : [7.5199584060444e-2, -9.3528572126e-5, 2.85505079e-7]
-        t_exponent: [0, 1, 2]
-      mg :
-        t_coefficient : [3.09230386232181e-1, 1.04675038950e-4, -1.07525450e-7]
-        t_exponent: [0, 1, 2]
-      zn :
-        t_coefficient : [5.54898797748947e-1, 1.37558070551e-4, -7.45761812e-7]
-        t_exponent: [0, 1, 2]
-    ref_enthalpy :
-      t_coefficient : [-1.681743263355992e+4, -2.162892636441e+1, -2.745732102e-2]
-      t_exponent: [0, 1, 2]
+    unary_enthalpy:
+      (zn:mg) : 
+        t_coefficient : [-5.94389140e+04, 3.91615685e+02, -2.93826800e-03, -3.92359500e-06, 7.89500000e+04]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.35876062e+01
+      (al:al) : 
+        t_coefficient : [-8.92845000e+03, 4.11279114e+02, -5.65398600e-03, -2.63299200e-06, 2.22276000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.31015928e+01
+      (cu:cu) : 
+        t_coefficient : [-8.31137400e+03, 3.91455705e+02, -7.97052000e-03, 3.87669000e-07, 1.57434000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.23371760e+01
+      (mg:mg) : 
+        t_coefficient : [-1.01020200e+04, 4.31026641e+02, 1.45740000e-03, -4.18100700e-06, 2.36850000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.85549346e+01
+      (zn:zn) : 
+        t_coefficient : [-6.85736100e+03, 3.55410207e+02,  -5.13610200e-03, -3.79488900e-06]
+        t_exponent : [0, 1, 2, 3]
+        tlnt_coefficient : -7.11039420e+01
+      (al:mg) : 
+        t_coefficient : [ -1.16480400e+04, 4.34661623e+02, -3.28352400e-03, -3.14899700e-06, 2.27134000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.49193734e+01
+      (al:zn) : 
+        t_coefficient : [ -8.23808700e+03, 3.92656145e+02, -5.48135800e-03, -3.02029100e-06, 1.48184000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.24357092e+01
+      (mg:al) : 
+        t_coefficient : [1.26181700e+04, 4.07644132e+02, -9.13062000e-04, -3.66500200e-06, 2.31992000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.67371540e+01
+      (mg:zn) : 
+        t_coefficient : [4.13345330e+04, 3.96982293e+02, -7.40434000e-04, -4.05230100e-06, 1.57900000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.60712704e+01
+      (zn:al) : 
+        t_coefficient : [-7.54772400e+03, 3.74033176e+02, -5.30873000e-03, -3.40759000e-06, 7.40920000e+04]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.17698256e+01
+      (cu:mg) : 
+        t_coefficient : [-3.67182560e+04, 2.76882017e+02, -2.20238800e-02, -1.13522300e-06, 1.83906000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -5.44486622e+01
+      (mg:cu) : 
+        t_coefficient : [-3.81251380e+04, 4.20422329e+02, -1.68524000e-03, -2.65811500e-06, 2.10378000e+05]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -7.64823484e+01
     binary_enthalpy:
-      al :
-        t_coefficient : 1.0e+6
-        t_exponent : 0
-      cu :
-        t_coefficient : 1.0e+6
-        t_exponent: 0
-      mg :
-        t_coefficient : 1.0e+6
-        t_exponent: 0
-      zn :
-        t_coefficient : 0.0e+6
-        t_exponent: 0
+      (al:mg,zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (mg:mg,zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (zn:mg,zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (mg,zn:al) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 35000.0
+          t_exponent : 0
+      (mg,zn:mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 35000.0
+          t_exponent : 0
+      (mg,zn:zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 35000.0
+          t_exponent : 0
+      (al:al,mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 15000.0
+          t_exponent : 0
+      (mg:al,mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 15000.0
+          t_exponent : 0
+      (zn:al,mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 15000.0
+          t_exponent : 0
+      (al,mg:al) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (al,mg:mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (al,mg:zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : 8000.0
+          t_exponent : 0
+      (al,zn:al) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : [-7500.0, -18.0]
+          t_exponent : [0, 1]
+      (al,zn:mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : [-7500.0, -18.0]
+          t_exponent : [0, 1]
+      (al,zn:zn) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : [-7500.0, -18.0]
+          t_exponent : [0, 1]
+      (cu,zn:mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : [-145000.0, 36.0]
+          t_exponent : [0, 1]
+      (al,cu:mg) : 
+        nrk : 1
+        rk_0 : 
+          t_coefficient : [-145000.0, 36.0]
+          t_exponent : [0, 1]
 
 nucleus:
   precipitate :
+    nucleation_model: thermal
+    solvus_temperature: 680.0
+    enthalpy_fusion: 4500.0
     matrix : [0, 1]
-    nucleation_model: cnt
     length_scale : 10.0
     minsize : 1.0
     atomic_volume : 16.0
     gamma : 0.5
-    shape_factor : 0.1
+    shape_factor : 0.05
     migration : 1.0e+4
     D0: 1.0e+10
   

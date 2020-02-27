@@ -114,11 +114,11 @@ typedef struct RK {
 } RK;
 
 /* Mobility */
-typedef struct MOBILITY {
+typedef struct TACTIVATIONPROP {
     PetscReal m0;
     TSeries *unary;
     RK *binary;
-} MOBILITY;
+} TACTIVATIONPROP;
 
 /* CALPHAD2SL energy parameters container */
 typedef struct CALPHAD2SL {
@@ -134,7 +134,7 @@ typedef struct CALPHADDIS {
     TSeries ref;
     TSeries *unary;
     RK *binary, *ternary;
-    MOBILITY *mobilityc;
+    TACTIVATIONPROP *mobilityc;
 } CALPHADDIS;
 
 /* Quadratic energy parameters container */
@@ -162,11 +162,25 @@ typedef struct MATERIAL {
     PetscReal temperature0, specific_heat, latent_heat, tconductivity;
 } MATERIAL;
 
+/* Interface energy parameters */
+typedef struct IENERGY {
+    TACTIVATIONPROP *e;
+    PetscReal *dir, *val;
+    PetscInt n;
+} IENERGY;
+
+/* Interface mobility parameters */
+typedef struct IMOBILITY {
+    TACTIVATIONPROP *m;
+    PetscReal *dir, *val;
+    PetscInt n;
+} IMOBILITY;
+
 /* interface container */
 typedef struct INTERFACE {
-    PetscReal energy;
+    IENERGY *ienergy;
+    IMOBILITY *imobility;
     PetscReal *potential, *mobilityc;
-    MOBILITY *mobility;
 } INTERFACE;
 
 /* boundary conditions */
@@ -218,9 +232,12 @@ typedef struct AppCtx {
     /* aux grids and vecs */
     DM da_solution, da_solforest;
     DM da_output;
+    /* geometric info */
     PetscInt *localcells, nlocalcells, ninteriorcells;
     PetscInt *localfaces, nlocalfaces;
     PetscReal *cellgeom;
+    PetscInt gradient_calculation, *gradient_nleastsq;
+    PetscReal *gradient_matrix;
     /* phase material parameters */
     MATERIAL *material;
     PetscInt *voxelphasemapping, *phasematerialmapping;

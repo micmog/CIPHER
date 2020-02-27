@@ -30,7 +30,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     AppCtx            *user = (AppCtx*) ptr;
     Vec               localX, laplacian;
     PetscScalar       *fdof, *rhs, *lap, *offset;
-    PetscScalar       *pcell, *pcellL, *pcellR;
+    PetscScalar       *pcell, *pcellL, *pcellR, *ncell;
     PetscScalar       *plapl, *plaplL, *plaplR, *pfrhs, fluxp[PF_SIZE];
     PetscReal         *chempot, *chempotL, *chempotR;
     PetscReal         *composition, *compositionL, *compositionR;
@@ -38,8 +38,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         *sitefrac, *sitepot_ex, sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
     PetscScalar       *dlapl, *dlaplL, *dlaplR, *dprhs, *cprhs, fluxd[DP_SIZE];
     PetscScalar       *tlapl, *tlaplL, *tlaplR, *tmrhs, fluxt;
-    uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE];
-    const PetscInt    *scells;
+    uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE], nlist[AS_SIZE], setintersection[AS_SIZE];
+    const PetscInt    *scells, *cone;
     PetscReal         ffactor, cfactor, deltaL, deltaR;
     PetscInt          localcell, cell, localface, face; 
     PetscReal         interpolant[PF_SIZE], caplflux[PF_SIZE], caplsource[PF_SIZE];
@@ -48,7 +48,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         dmdc[user->ndp*user->ndp], dcdm[user->ndp*user->ndp];
     uint16_t          setintersect[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     PetscReal         nactivephases, rhsval, triplejunctionenergy;
-    PetscInt          g, gi, gj, gk, c, s, interfacekj, interfaceji, interfaceki;
+    PetscInt          g, gi, gj, gk, c, s, interfacekj;
     MATERIAL          *currentmaterial;
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_MB[DP_SIZE*DP_SIZE];
@@ -56,9 +56,13 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CT[PF_SIZE*MAXSITES*DP_SIZE*DP_SIZE];
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
-    PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
+    PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
     PetscReal         specific_heat, tconductivity[user->ninteriorcells], *temperature, *temperatureL, *temperatureR;
-    
+    PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
+    PetscReal         pgrad[user->dim*PF_SIZE], interface_normals[user->dim*PF_SIZE*PF_SIZE];
+    PetscReal         *currentinormal, *currentival, *gradient_matrix, dot_product;
+    PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
+
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
     ierr = DMGlobalToLocalBegin(user->da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
@@ -303,27 +307,100 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         EvalInterpolant(interpolant,pcell,slist[0]);
                 
         if (slist[0] > 1) {
+            /* calculate phase field gradients */
+            if (user->gradient_calculation) {
+                gradient_matrix = &user->gradient_matrix[24*user->dim*localcell];
+                for (g=0; g<slist[0]; g++) {
+                    for (dim=0; dim<user->dim; dim++) {
+                        pgrad[user->dim*g+dim] = 0.0;
+                        for (nleastsq=0; nleastsq<user->gradient_nleastsq[localcell]; nleastsq++)
+                            pgrad[user->dim*g+dim] -= gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*pcell[g];
+                    }
+                }        
+                ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
+                ierr = DMPlexGetCone(user->da_solution,cell,&cone);
+                nleastsq=0;
+                for (face=0; face<conesize; face++) {
+                    ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
+                    ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
+                    for (supp=0; supp<nsupp; supp++) {
+                        if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
+                            offset = NULL;
+                            ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdof, &offset);
+                            F2IFUNC(nlist,&offset[AS_OFFSET]);
+                            ncell = &offset[PF_OFFSET];
+                            SetIntersection(setintersection,slistL,slistR,slist,nlist);
+                            for (g=0; g<setintersection[0]; g++) {
+                                for (dim=0; dim<user->dim; dim++) {
+                                    pgrad[user->dim*slistL[g]+dim] += gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*ncell[slistR[g]];
+                                }
+                            }        
+                            nleastsq++;
+                        }
+                    }
+                }
+            }
+            memset(interface_normals,0,user->dim*slist[0]*slist[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    if (user->gradient_calculation) {
+                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) 
+                            rhsval += (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim])
+                                    * (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim]);
+                        rhsval = sqrt(rhsval);
+                        if (rhsval > 1e-16) {
+                            for (dim=0; dim<user->dim; dim++) currentinormal[dim] = (  pgrad[user->dim*gk+dim] 
+                                                                                     - pgrad[user->dim*gj+dim])
+                                                                                   /( rhsval);
+                        }
+                    }
+                }
+            }
+        
             /* phase capillary driving force */ 
+            memset(interface_energy,0,slist[0]*slist[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_energy[gk*slist[0]+gj];
+                    (*currentival) = 1.0;
+                    for (dir=0; dir<currentinterface->ienergy->n; dir++) {
+                        dot_product = 0.0;
+                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
+                                                                       * currentinterface->ienergy->dir[user->dim*dir+dim];
+                        (*currentival) += dot_product*dot_product*currentinterface->ienergy->val[dir];
+                    }
+                    (*currentival) *= currentinterface->ienergy->e->m0
+                                    * exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
+                                          / R_GAS_CONST/(*temperature));
+                }
+            }   
             memset(caplflux  ,0,slist[0]*sizeof(PetscReal));
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    caplflux  [gk] -= currentinterface->energy*plapl[gj];
-                    caplflux  [gj] -= currentinterface->energy*plapl[gk];
-                    caplsource[gk] -= currentinterface->energy*pcell[gj];
-                    caplsource[gj] -= currentinterface->energy*pcell[gk];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_energy[gk*slist[0]+gj];
+                    caplflux  [gk] -= (*currentival)*plapl[gj];
+                    caplflux  [gj] -= (*currentival)*plapl[gk];
+                    caplsource[gk] -= (*currentival)*pcell[gj];
+                    caplsource[gj] -= (*currentival)*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
-                        triplejunctionenergy = currentinterface->energy;
-                        interfaceji = user->interfacelist[slist[gj+1]*user->npf + slist[gi+1]];
-                        currentinterface = &user->interface[interfaceji];
-                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
-                                               triplejunctionenergy : currentinterface->energy;
-                        interfaceki = user->interfacelist[slist[gk+1]*user->npf + slist[gi+1]];
-                        currentinterface = &user->interface[interfaceki];
-                        triplejunctionenergy = triplejunctionenergy > currentinterface->energy ?
-                                               triplejunctionenergy : currentinterface->energy;
+                        triplejunctionenergy = 0.0;
+                        currentival = &interface_energy[gk*slist[0]+gj];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
+                        currentival = &interface_energy[gj*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
+                        currentival = &interface_energy[gk*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
+                                               triplejunctionenergy : (*currentival);
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
@@ -360,19 +437,37 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
+            memset(interface_mobility,0,slist[0]*slist[0]*sizeof(PetscReal));
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_mobility[gk*slist[0]+gj];
+                    (*currentival) = 1.0;
+                    for (dir=0; dir<currentinterface->imobility->n; dir++) {
+                        dot_product = 0.0;
+                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
+                                                                       * currentinterface->imobility->dir[user->dim*dir+dim];
+                        (*currentival) += dot_product*dot_product*currentinterface->imobility->val[dir];
+                    }
+                    (*currentival) *= currentinterface->imobility->m->m0
+                                    * exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
+                                          / R_GAS_CONST/(*temperature));
+                }
+            }   
             nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    interface_mobility = currentinterface->mobility->m0
-                                       * exp(  SumTSeries((*temperature), currentinterface->mobility->unary[0])
-                                             / R_GAS_CONST/(*temperature));
-                    rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                 + (caplsource[gk] - caplsource[gj])
-                                                 - (chemsource[gk] - chemsource[gj])
-                                                 * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                    currentival = &interface_mobility[gk*slist[0]+gj];
+                    rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+                                             + (caplsource[gk] - caplsource[gj])
+                                             - (chemsource[gk] - chemsource[gj])
+                                             * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
@@ -388,13 +483,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         if (active[gj]) {
                             interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
-                            interface_mobility = currentinterface->mobility->m0
-                                               * exp(  SumTSeries((*temperature), currentinterface->mobility->unary[0])
-                                                     / R_GAS_CONST/(*temperature));
-                            rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
-                                                         + (caplsource[gk] - caplsource[gj])
-                                                         - (chemsource[gk] - chemsource[gj])
-                                                         * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                            currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
+                            currentival = &interface_mobility[gk*slist[0]+gj];
+                            rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+                                                     + (caplsource[gk] - caplsource[gj])
+                                                     - (chemsource[gk] - chemsource[gj])
+                                                     * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
                         }
                     }
@@ -981,7 +1075,7 @@ int main(int argc,char **args)
   ierr = DMConvert(ctx.da_solforest,DMPLEX,&ctx.da_solution);CHKERRQ(ierr);
   ierr = DMLocalizeCoordinates(ctx.da_solution);CHKERRQ(ierr);
   
-  /* Create finite volume discretisation for solution */
+  /* Create discretisation for solution */
   {
     PetscFE solution_fe;
     ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
@@ -994,7 +1088,7 @@ int main(int argc,char **args)
     ierr = DMCopyDisc(ctx.da_solution,ctx.da_solforest);CHKERRQ(ierr);
   }
   
-  /* Create finite volume discretisation for output */
+  /* Create discretisation for output */
   {
     PetscFE output_fe;
     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
@@ -1053,6 +1147,57 @@ int main(int argc,char **args)
     }
   }
   
+  /* Precalculate gradient matrix */
+  if (ctx.gradient_calculation){
+      PetscInt       conesize, nsupp;
+      const PetscInt *cone, *scells;
+      PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+      PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+      PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+      
+      ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+      ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+      for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+          cell = ctx.localcells[localcell];
+          ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+          ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+          ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+          ctx.gradient_nleastsq[localcell] = 0;
+          for (face=0; face<conesize; face++) {
+              ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+              ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+              for (supp=0; supp<nsupp; supp++) {
+                  if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                      ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                          &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                      for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                      (ctx.gradient_nleastsq[localcell])++;
+                  }
+              }
+          }
+          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+              for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                  val = 0.0;
+                  for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                      val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                  }
+                  ata_mat[dim_i*ctx.dim+dim_j] = val;
+                  ata_mat[dim_j*ctx.dim+dim_i] = val;
+              }
+          }
+          Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+          gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+          memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+              for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                  for (dim=0; dim<ctx.dim; ++dim) 
+                      gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                     *      a_mat[dim_j*ctx.dim+dim];
+              }
+          }    
+      }    
+  }
+
   /* Add phase label */
   {
     DM celldm;
@@ -1192,6 +1337,7 @@ int main(int argc,char **args)
           ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
           ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
+          /* Pre-calculate local cells and geometry */
           {
             DMLabel bclabel;
             PetscReal cvolume, fcentroid[ctx.dim];
@@ -1239,6 +1385,57 @@ int main(int argc,char **args)
             }
           }
           
+          /* Precalculate gradient matrix */
+          if (ctx.gradient_calculation){
+              PetscInt       conesize, nsupp;
+              const PetscInt *cone, *scells;
+              PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+              PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+              PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+              
+              free(ctx.gradient_matrix);ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+              free(ctx.gradient_nleastsq);ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+              for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+                  cell = ctx.localcells[localcell];
+                  ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+                  ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+                  ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+                  ctx.gradient_nleastsq[localcell] = 0;
+                  for (face=0; face<conesize; face++) {
+                      ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                      ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                      for (supp=0; supp<nsupp; supp++) {
+                          if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                              ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                                  &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                              for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                              (ctx.gradient_nleastsq[localcell])++;
+                          }
+                      }
+                  }
+                  for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                      for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                          val = 0.0;
+                          for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                              val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                          }
+                          ata_mat[dim_i*ctx.dim+dim_j] = val;
+                          ata_mat[dim_j*ctx.dim+dim_i] = val;
+                      }
+                  }
+                  Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+                  gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+                  memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+                  for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                      for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                          for (dim=0; dim<ctx.dim; ++dim) 
+                              gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                             *      a_mat[dim_j*ctx.dim+dim];
+                      }
+                  }    
+              }    
+          }
+
           /* Set up star forest */
           if (ctx.nsites) {
               PetscInt *roots, sitepresent[ctx.nsites], sitesperproc, site, rootctr;
@@ -1274,15 +1471,16 @@ int main(int argc,char **args)
           }
 
           {
-            PetscFE output_fe;
-            ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
-            ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-            ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                        ctx.noutputs,
-                                        PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
-            ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
-            ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
-            ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
+             PetscFE output_fe;
+             ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
+             ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
+             ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                         ctx.noutputs,
+                                         PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
+             ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
+             ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+             ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
+             ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
           }
       }
   }    
@@ -1316,7 +1514,6 @@ int main(int argc,char **args)
       
               ierr = DMLabelCreate(PETSC_COMM_SELF,"adapt",&adaptlabel);CHKERRQ(ierr);
               ierr = DMLabelSetDefaultValue(adaptlabel,DM_ADAPT_COARSEN);CHKERRQ(ierr);
-
               ierr = DMGetLocalVector(ctx.da_solution,&lsolution);CHKERRQ(ierr);
               ierr = DMGlobalToLocalBegin(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
               ierr = DMGlobalToLocalEnd(ctx.da_solution,solution,INSERT_VALUES,lsolution); CHKERRQ(ierr);
@@ -1370,6 +1567,7 @@ int main(int argc,char **args)
                   ierr = VecCopy(postvec,solution);CHKERRQ(ierr);
                   ierr = VecDestroy(&postvec);CHKERRQ(ierr);
 
+                  /* Pre-calculate local cells and geometry */
                   {
                     DMLabel bclabel;
                     PetscReal cvolume, fcentroid[ctx.dim];
@@ -1416,6 +1614,57 @@ int main(int argc,char **args)
                         ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
                     }
                   }
+          
+                  /* Precalculate gradient matrix */
+                  if (ctx.gradient_calculation){
+                      PetscInt       conesize, nsupp;
+                      const PetscInt *cone, *scells;
+                      PetscInt       localcell, cell, face, supp, dim, dim_i, dim_j;
+                      PetscReal      val, centroid[ctx.dim], *gradient_matrix;
+                      PetscReal      a_mat[24*ctx.dim], ata_mat[ctx.dim*ctx.dim], atainv_mat[ctx.dim*ctx.dim];
+                      
+                      free(ctx.gradient_matrix);ctx.gradient_matrix = malloc(24*ctx.dim*ctx.nlocalcells*sizeof(PetscReal));
+                      free(ctx.gradient_nleastsq);ctx.gradient_nleastsq = malloc(ctx.nlocalcells*sizeof(PetscInt));
+                      for (localcell = 0; localcell < ctx.nlocalcells; ++localcell) {
+                          cell = ctx.localcells[localcell];
+                          ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, NULL, centroid, NULL);
+                          ierr = DMPlexGetConeSize(ctx.da_solution,cell,&conesize);
+                          ierr = DMPlexGetCone(ctx.da_solution,cell,&cone);
+                          ctx.gradient_nleastsq[localcell] = 0;
+                          for (face=0; face<conesize; face++) {
+                              ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                              ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                              for (supp=0; supp<nsupp; supp++) {
+                                  if (scells[supp] != cell && scells[supp] < ctx.ninteriorcells) {
+                                      ierr = DMPlexComputeCellGeometryFVM( ctx.da_solution,scells[supp],NULL,
+                                                                          &a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim],NULL);
+                                      for (dim=0; dim<ctx.dim; ++dim) a_mat[ctx.gradient_nleastsq[localcell]*ctx.dim+dim] -= centroid[dim];
+                                      (ctx.gradient_nleastsq[localcell])++;
+                                  }
+                              }
+                          }
+                          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                              for (dim_j=dim_i; dim_j<ctx.dim; ++dim_j) {
+                                  val = 0.0;
+                                  for (dim=0; dim<ctx.gradient_nleastsq[localcell]; ++dim) {
+                                      val += a_mat[dim*ctx.dim+dim_i]*a_mat[dim*ctx.dim+dim_j];
+                                  }
+                                  ata_mat[dim_i*ctx.dim+dim_j] = val;
+                                  ata_mat[dim_j*ctx.dim+dim_i] = val;
+                              }
+                          }
+                          Invertmatrix(atainv_mat,ata_mat,ctx.dim); 
+                          gradient_matrix = &ctx.gradient_matrix[24*ctx.dim*localcell];
+                          memset(gradient_matrix,0,ctx.dim*ctx.gradient_nleastsq[localcell]*sizeof(PetscReal));
+                          for (dim_i=0; dim_i<ctx.dim; ++dim_i) {
+                              for (dim_j=0; dim_j<ctx.gradient_nleastsq[localcell]; ++dim_j) {
+                                  for (dim=0; dim<ctx.dim; ++dim) 
+                                      gradient_matrix[dim_i*ctx.gradient_nleastsq[localcell]+dim_j] += atainv_mat[dim_i*ctx.dim+dim]
+                                                                                                     *      a_mat[dim_j*ctx.dim+dim];
+                              }
+                          }    
+                      }    
+                  }
 
                   /* Set up star forest */
                   if (ctx.nsites){
@@ -1460,6 +1709,7 @@ int main(int argc,char **args)
                                                 PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
                     ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
                     ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+                    ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
                     ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
                   }
                   ierr = TSDestroy(&ts);CHKERRQ(ierr);

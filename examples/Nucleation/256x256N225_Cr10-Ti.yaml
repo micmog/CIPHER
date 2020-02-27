@@ -112,7 +112,8 @@ nucleus:
     
 interface :
   solid-liquid :
-    energy : 0.5e+6
+    energy : 
+      e0: 0.5e+6
     mobility : 
       m0: 1e-6
 
