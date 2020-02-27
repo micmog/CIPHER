@@ -28,6 +28,7 @@
 
 /* Function prototypes */
 EXTERN char Nucleation(const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+EXTERN void Heatflux(PetscReal *, const PetscReal *, const uint16_t *, const AppCtx *);
 EXTERN void Chemenergy(PetscReal *, const PetscReal *, const PetscReal *, const PetscReal, const uint16_t *, const AppCtx *);
 EXTERN void SitepotentialExplicit(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void SitepotentialImplicit(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);

@@ -2,24 +2,26 @@
 header:
   grid : [4, 512]
   size : [4, 512]
-  n_phases : 2
-  materials : [solid, liquid]
+  n_phases : 1
+  materials : [solid]
   interfaces : [solid-liquid]
   components : [cr, ti, v]
-  outputs : [cr_c, ti_c, v_c, matid] 
+  boundaries : influx
+  outputs : [cr_c, ti_c, v_c] 
 
 solution_parameters:
-  time : 100.0
+  time : 1000.0
+  mintimestep: 1e-4
   interfacewidth : 4
   initblocksize : [1, 128]
   initrefine : 2
   maxnrefine : 2
   minnrefine : 0
   initcoarsen : 2
-  amrinterval : 100 
+  amrinterval : 100
   reltol : 1e-4
   abstol : 1e-4 
-  outputfreq : 10000
+  outputfreq : 1000
   outfile : CrTiV
   interpolation: cubic
   petscoptions : -ts_adapt_monitor
@@ -27,17 +29,17 @@ solution_parameters:
 material:
   solid:
     chemicalenergy : calphaddis
-    molarvolume : 1e-5
-    temperature0 : 1557.0
+    molarvolume : 1e-0
+    temperature0: 1557.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.174, 0.77, 0.056]
     mobilityc :
       cr :
-        mobility0 : 0.0
+        mobility0 : 1.0
       ti :
-        mobility0 : 0.0
+        mobility0 : 1.0
       v :
-        mobility0 : 0.0
+        mobility0 : 1.0
     unary_enthalpy :
       cr :
         t_coefficient : [-8856.94, +157.48, +1.89435E-3, -1.47721E-6, +139250.0]
@@ -101,62 +103,6 @@ material:
               index : 2
               t_coefficient : [96150.43, -50.14293]
               t_exponent: [0, 1]
-  liquid:
-    chemicalenergy : calphaddis
-    molarvolume : 1e-5
-    temperature0 : 1557.0
-    chempot_ex_kineticcoeff : 1.0
-    c0 : [0.15, 0.75, 0.1]
-    mobilityc :
-      cr :
-        mobility0 : 12945.617334
-      ti :
-        mobility0 : 12945.617334
-      v :
-        mobility0 : 12945.617334
-    unary_enthalpy :
-      cr :
-        t_coefficient : [15483.015, +146.059775, +1.89435E-3, -1.47721E-6, +2.37615E-21, +139250]
-        t_exponent: [0, 1, 2, 3, 7, -1]
-        tlnt_coefficient : -26.908
-      ti :
-        t_coefficient : [369519.198, -2553.9505, -163.409355E-3, +12.457117E-6, -67034516]
-        t_exponent: [0, 1, 2, 3, -1]
-        tlnt_coefficient : +342.059267
-      v :
-        t_coefficient : [12796.275, +133.835541, +6.25E-5, -6.8E-7, -519.136E-24]
-        t_exponent: [0, 1, 2, 3, 7]
-        tlnt_coefficient : -25.9
-    binary_enthalpy :
-      cr :
-        ti :
-          nrk : 3
-          rk_0 :
-            t_coefficient : -365.81
-            t_exponent: 0
-          rk_1 :
-            t_coefficient : -3030.23
-            t_exponent: 0
-          rk_2 :
-            t_coefficient : 1549.08
-            t_exponent: 0
-        v :
-          nrk : 2
-          rk_0 :
-            t_coefficient : -20224.86
-            t_exponent: 0
-          rk_1 :
-            t_coefficient : -13469.90
-            t_exponent: 0
-      ti :
-        v :
-          nrk : 2
-          rk_0 :
-            t_coefficient : 368.55
-            t_exponent: 0
-          rk_1 :
-            t_coefficient : 2838.63
-            t_exponent: 0
 
 interface :
   solid-liquid :
@@ -165,12 +111,18 @@ interface :
     mobility : 
       m0: 1.2e-5
 
+boundary: 
+  influx: 
+    boundary_id: 3
+    chem:
+      type: neumann
+      value: [1.0e+3, 0.0]
+
 mappings:
   phase_material_mapping : |-
-    1 to 2
+    1
   voxel_phase_mapping: |-
-    80 of 1
-    1968 of 2
+    2048 of 1
   interface_mapping: |-
-    4 of 1
+    1
  

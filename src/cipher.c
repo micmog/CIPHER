@@ -37,6 +37,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         *mobilitycv, *mobilitycvL, *mobilitycvR;
     PetscReal         *sitefrac, *sitepot_ex, sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
     PetscScalar       *dlapl, *dlaplL, *dlaplR, *dprhs, *cprhs, fluxd[DP_SIZE];
+    PetscScalar       *tlapl, *tlaplL, *tlaplR, *tmrhs, fluxt;
     uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE], nlist[AS_SIZE], setintersection[AS_SIZE];
     const PetscInt    *scells, *cone;
     PetscReal         ffactor, cfactor, deltaL, deltaR;
@@ -56,12 +57,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
+    PetscReal         specific_heat, tconductivity[user->ninteriorcells], *temperature, *temperatureL, *temperatureR;
     PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
     PetscReal         pgrad[user->dim*PF_SIZE], interface_normals[user->dim*PF_SIZE*PF_SIZE];
     PetscReal         *currentinormal, *currentival, *gradient_matrix, dot_product;
     PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
 
-    
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
     ierr = DMGlobalToLocalBegin(user->da_solution,X,INSERT_VALUES,localX); CHKERRQ(ierr);
@@ -72,7 +73,6 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = DMGetLocalVector(user->da_solution,&laplacian); CHKERRQ(ierr);
     ierr = VecZeroEntries(laplacian); CHKERRQ(ierr);
     ierr = VecGetArray(laplacian,&lap); CHKERRQ(ierr);
-    PetscReal temperature = Interpolate(ftime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
 
     /* Precalculate cell quantities */
     if (user->ndp) {
@@ -83,6 +83,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             pcell = &offset[PF_OFFSET];
             chempot = &offset[DP_OFFSET];
             sitepot_ex = &offset[EX_OFFSET];
+            temperature =  &offset[TM_OFFSET];
             sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
             composition = &composition_global[cell*user->ncp];
             mobilitycv = &mobilitycv_global[cell*user->ncp];
@@ -101,6 +102,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     }    
                 }
             }    
+            tconductivity[cell] = 0.0;
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (s=0; s<currentmaterial->nsites; s++) {
@@ -109,8 +111,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                                   - sitepot_ex[g*SP_SIZE+s*user->ndp+c];
                     }
                 }
-                Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
-                CompositionMobilityComponent(mobility_elem,&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
+                CompositionMobilityComponent(mobility_elem,&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (c=0; c<user->ncp; c++) mobilitycv[c] += interpolant[g]*mobility_elem[c];
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ncp; c++) {
@@ -119,6 +121,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                         * sitefrac[g*SF_SIZE+s*user->ncp+c];
                     }
                 }
+                tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
             }
         }
     }
@@ -137,6 +140,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistL,&offset[AS_OFFSET]);
         pcellL = &offset[PF_OFFSET];
         chempotL = &offset[DP_OFFSET];
+        temperatureL = &offset[TM_OFFSET];
         mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
         compositionL = &composition_global[scells[0]*user->ncp];
         offset = NULL;
@@ -144,8 +148,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         F2IFUNC(slistR,&offset[AS_OFFSET]);
         pcellR = &offset[PF_OFFSET];
         chempotR = &offset[DP_OFFSET];
+        temperatureR = &offset[TM_OFFSET];
         mobilitycvR = &mobilitycv_global[scells[1]*user->ncp];
-        compositionR = &composition_global[scells[0]*user->ncp];
+        compositionR = &composition_global[scells[1]*user->ncp];
         if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
 
         /* get geometric data */
@@ -170,12 +175,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             work_vec_DP[c] = (chempotR[c] - chempotL[c]);
         }
         MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+        if (fabs(tconductivity[scells[0]]) > 1e-32 && fabs(tconductivity[scells[1]]) > 1e-32) {
+            fluxt = 2.0*tconductivity[scells[0]]*tconductivity[scells[1]]
+                  / (tconductivity[scells[0]] + tconductivity[scells[1]])
+                  * ((*temperatureR) - (*temperatureL));
+        } else {
+            fluxt = 0.0;
+        }    
 
         {
             offset = NULL;
             ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
             plaplL = &offset[PF_OFFSET];
             dlaplL = &offset[DP_OFFSET];
+            tlaplL = &offset[TM_OFFSET];
             cfactor = ffactor/FastPow(deltaL,user->dim);
             for (g=0; g<setintersect[0]; g++) {
                 plaplL[injectionL[g]] += cfactor*fluxp[g];
@@ -183,12 +196,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (c=0; c<user->ndp; c++) {
                 dlaplL[c] += cfactor*fluxd[c];
             }
+            *tlaplL += cfactor*fluxt;
         }
         {
             offset = NULL;
             ierr = DMPlexPointLocalRef(user->da_solution, scells[1], lap,  &offset); CHKERRQ(ierr);
             plaplR = &offset[PF_OFFSET];
             dlaplR = &offset[DP_OFFSET];
+            tlaplR = &offset[TM_OFFSET];
             cfactor = ffactor/FastPow(deltaR,user->dim);
             for (g=0; g<setintersect[0]; g++) {
                 plaplR[injectionR[g]] -= cfactor*fluxp[g];
@@ -196,6 +211,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (c=0; c<user->ndp; c++) {
                 dlaplR[c] -= cfactor*fluxd[c];
             }
+            *tlaplR -= cfactor*fluxt;
         }
     }    
 
@@ -220,6 +236,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     F2IFUNC(slistL,&offset[AS_OFFSET]);
                     pcellL = &offset[PF_OFFSET];
                     chempotL = &offset[DP_OFFSET];
+                    temperatureL = &offset[TM_OFFSET];
                     mobilitycvL = &mobilitycv_global[scells[0]*user->ncp];
                     compositionL = &composition_global[scells[0]*user->ncp];
             
@@ -227,25 +244,32 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     deltaL = user->cellgeom[scells[0]];
         
                     /* get common active phases */
-                    CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
-                    memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
-                    for (c=0; c<user->ndp; c++) {
-                        if        (currentboundary->type[c] == NEUMANN_BC  ) {
-                            work_vec_DP[c] =  currentboundary->val[c];
-                        } else if (currentboundary->type[c] == DIRICHLET_BC) {
-                            work_vec_DP[c] = (currentboundary->val[c] - chempotL[c]);
+                    if (!(currentboundary->chem_bctype == NONE_BC)) {
+                        memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
+                        if (currentboundary->chem_bctype == NEUMANN_BC) {
+                            for (c=0; c<user->ndp; c++) work_vec_DP[c] =  currentboundary->chem_bcval[c] * deltaL;
+                        } else {
+                            for (c=0; c<user->ndp; c++) work_vec_DP[c] = (currentboundary->chem_bcval[c] - chempotL[c]);
                         }
+                        CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
+                        MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
                     }
-                    MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+                    if        (currentboundary->thermal_bctype == NEUMANN_BC  ) {
+                        fluxt = tconductivity[scells[0]]* currentboundary->thermal_bcval * deltaL;
+                    } else if (currentboundary->thermal_bctype == DIRICHLET_BC) {
+                        fluxt = tconductivity[scells[0]]*(currentboundary->thermal_bcval - (*temperatureL));
+                    }  
 
                     {
                         offset = NULL;
                         ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
                         dlaplL = &offset[DP_OFFSET];
+                        tlaplL = &offset[TM_OFFSET];
                         cfactor = 1.0/FastPow(deltaL,2);
-                        for (c=0; c<user->ndp; c++) {
-                            dlaplL[c] += cfactor*fluxd[c];
+                        if (!(currentboundary->chem_bctype == NONE_BC)) {
+                            for (c=0; c<user->ndp; c++) dlaplL[c] += cfactor*fluxd[c];
                         }
+                        if (!(currentboundary->thermal_bctype == NONE_BC)) *tlaplL += cfactor*fluxt;
                     }
                 }    
                 ISRestoreIndices(bcIS, &bcfaces);
@@ -265,16 +289,19 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         pcell = &offset[PF_OFFSET];
         chempot = &offset[DP_OFFSET];
         sitepot_ex = &offset[EX_OFFSET];
+        temperature =  &offset[TM_OFFSET];
         sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
         plapl = &offset[PF_OFFSET];
         dlapl = &offset[DP_OFFSET];
+        tlapl = &offset[TM_OFFSET];
         offset = NULL;
         ierr = DMPlexPointGlobalRef(user->da_solution,cell, rhs,  &offset); CHKERRQ(ierr);
         pfrhs = &offset[PF_OFFSET];
         dprhs = &offset[DP_OFFSET];
         cprhs = &offset[EX_OFFSET];
+        tmrhs = &offset[TM_OFFSET];
         
         /* calculate phase interpolants */
         EvalInterpolant(interpolant,pcell,slist[0]);
@@ -347,8 +374,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         (*currentival) += dot_product*dot_product*currentinterface->ienergy->val[dir];
                     }
                     (*currentival) *= currentinterface->ienergy->e->m0
-                                    * exp(  SumTSeries(temperature, currentinterface->ienergy->e->unary[0])
-                                          / R_GAS_CONST/temperature);
+                                    * exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
+                                          / R_GAS_CONST/(*temperature));
                 }
             }   
             memset(caplflux  ,0,slist[0]*sizeof(PetscReal));
@@ -384,7 +411,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }   
 
             /* phase chemical driving force */ 
-            Chemenergy(chemsource,sitefrac,chempot,temperature,slist,user);
+            Chemenergy(chemsource,sitefrac,chempot,(*temperature),slist,user);
             memset(work_vec_DP,0,DP_SIZE*sizeof(PetscReal));
             for (g=0; g<slist[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
@@ -425,8 +452,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         (*currentival) += dot_product*dot_product*currentinterface->imobility->val[dir];
                     }
                     (*currentival) *= currentinterface->imobility->m->m0
-                                    * exp(  SumTSeries(temperature, currentinterface->imobility->m->unary[0])
-                                          / R_GAS_CONST/temperature);
+                                    * exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
+                                          / R_GAS_CONST/(*temperature));
                 }
             }   
             nactivephases = 0.0;
@@ -469,12 +496,22 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 }        
             }
         }    
+        
+        /* temperature rate */
+        specific_heat = 0.0; *tmrhs = *tlapl;
+        for (g =0; g<slist[0];  g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+            specific_heat += interpolant[g]*currentmaterial->specific_heat;
+            if (currentmaterial->latent_heat) *tmrhs += pfrhs[g]*currentmaterial->latent_heat;
+        }
+        *tmrhs /= specific_heat;
+        if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
             
         if (user->ndp) {
             /* calculate explicit potential rate */
             for (g=0; g<slist[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                SitepotentialExplicit(work_vec_SP,&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                SitepotentialExplicit(work_vec_SP,&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ndp; c++) {
                         cprhs[g*SP_SIZE+s*user->ndp+c] = currentmaterial->chempot_ex_kineticcoeff
@@ -487,7 +524,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(dcdm,0,DP_SIZE*DP_SIZE*sizeof(PetscReal));
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                SitefracTangent(&work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE],&sitefrac[g*SF_SIZE],temperature,slist[g+1],user);
+                SitefracTangent(&work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE],&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ndp*user->ndp; c++) {
                         dcdm[c] += interpolant[g]
@@ -537,9 +574,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (s=0; s<currentmaterial->nsites; s++) {
+                    memcpy(work_vec_MB,&cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE*sizeof(PetscReal));
+                    for (c=0; c<user->ndp; c++) work_vec_MB[c] += (*tmrhs)/(*temperature);
                     MatVecMult_CIPHER(&work_vec_CP[g*DP_SIZE],
                                       &work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE],
-                                      &cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE);
+                                      work_vec_MB,DP_SIZE);
                     for (c=0; c<user->ndp; c++) {
                         work_vec_DP[c] += interpolant[g]
                                         * currentmaterial->stochiometry[s]
@@ -549,7 +588,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
             Invertmatrix(dmdc,dcdm,DP_SIZE);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,DP_SIZE);  
-        }    
+        }
     }
 
     /* Restore FVM residuals */
@@ -579,7 +618,7 @@ PetscErrorCode PostStep(TS ts)
     PetscInt       g, gk, gj, c, s;
     MATERIAL       *currentmaterial, *sitematerial;
     uint16_t       superset[AS_SIZE], setunion[AS_SIZE], setintersection[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
-    PetscReal      currenttime, currenttimestep, temperature;
+    PetscReal      currenttime, currenttimestep, *temperature;
     DMLabel        slabel;
     IS             siteIS;
     PetscReal      cellvolume, interpolant[PF_SIZE], chemsource[PF_SIZE];
@@ -593,13 +632,13 @@ PetscErrorCode PostStep(TS ts)
     ierr = TSGetApplicationContext(ts,&user);CHKERRQ(ierr);
     ierr = TSGetTime(ts,&currenttime);CHKERRQ(ierr);
     ierr = TSGetTimeStep(ts,&currenttimestep);CHKERRQ(ierr);
-    temperature = Interpolate(currenttime,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     
     /* Update nucleation events */
     if (user->nsites) {
         PetscReal sitefrac[PF_SIZE*SF_SIZE];
         PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
         PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
+        PetscReal temperature_leaf[user->nsites], temperature_root[user->nsites_local];
         char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
 
         ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
@@ -607,6 +646,7 @@ PetscErrorCode PostStep(TS ts)
         ierr = VecGetArray(solution,&fdof);
         memset(gv_leaf,0,user->nsites*sizeof(PetscReal));
         memset(volume_leaf,0,user->nsites*sizeof(PetscReal));
+        memset(temperature_leaf,0,user->nsites*sizeof(PetscReal));
         for (site = 0; site<user->nsites; site++) {
             if (user->siteactivity_global[site]) {
                 DMLabelGetStratumIS(slabel, site+1, &siteIS);
@@ -628,6 +668,7 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
+                        temperature = &offset[TM_OFFSET];
 
                         /* check that active phases are a subset of matrix phases */
                         SetIntersection(setintersection,injectionL,injectionR,slist,currentnucleus->matrixlist);
@@ -648,7 +689,7 @@ PetscErrorCode PostStep(TS ts)
                             }
                         }    
                         slist[++slist[0]] = site_phase;
-                        SitepotentialExplicit(&ccell[(slist[0]-1)*SP_SIZE],sitematerial->c0,temperature,site_phase,user);
+                        SitepotentialExplicit(&ccell[(slist[0]-1)*SP_SIZE],sitematerial->c0,(*temperature),site_phase,user);
                         for (g =0; g<slist[0];  g++) {
                             currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                             for (s=0; s<currentmaterial->nsites; s++) {
@@ -657,12 +698,13 @@ PetscErrorCode PostStep(TS ts)
                                                               - ccell[g*SP_SIZE+s*user->ndp+c];
                                 }
                             }
-                            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
+                            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
                         }
                         memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-                        Chemenergy(chemsource,sitefrac,chempot_interface,temperature,slist,user);
+                        Chemenergy(chemsource,sitefrac,chempot_interface,(*temperature),slist,user);
                         cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
                         for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
+                        temperature_leaf[site] += cellvolume*(*temperature);
                     }
                 }    
                 if (siteIS) {
@@ -683,11 +725,16 @@ PetscErrorCode PostStep(TS ts)
         memset(volume_root,0,user->nsites_local*sizeof(PetscReal));
         PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
         PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
+        memset(temperature_root,0,user->nsites_local*sizeof(PetscReal));
+        PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,temperature_leaf,temperature_root,MPI_SUM);
+        PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,temperature_leaf,temperature_root,MPI_SUM);
         memset(deactive_root,0,user->nsites_local*sizeof(char));
         for (site=0; site<user->nsites_local; site++) {
             if (user->siteactivity_local[site]) {
-                deactive_root[site] = Nucleation(currenttime,currenttimestep,temperature,
-                                                 volume_root[site],gv_root[site],
+                gv_root[site] /= volume_root[site];
+                temperature_root[site] /= volume_root[site];
+                deactive_root[site] = Nucleation(currenttime,currenttimestep,
+                                                 temperature_root[site],volume_root[site],gv_root[site],
                                                  user->siteoffset+site,user);
             }    
         }  
@@ -718,12 +765,13 @@ PetscErrorCode PostStep(TS ts)
                         pcell = &offset[PF_OFFSET];
                         dcell = &offset[DP_OFFSET];
                         ccell = &offset[EX_OFFSET];
+                        temperature = &offset[TM_OFFSET];
 
                         /* update cell state */
                         slist[0] = 1; slist[1] = site_phase;
                         I2FFUNC(&offset[AS_OFFSET],slist);
                         pcell[0] = 1.0;
-                        SitepotentialExplicit(ccell,sitematerial->c0,temperature,site_phase,user);
+                        SitepotentialExplicit(ccell,sitematerial->c0,(*temperature),site_phase,user);
                     }
                 }
                 if (siteIS) {
@@ -803,6 +851,7 @@ PetscErrorCode PostStep(TS ts)
          pcell = &offsetg[PF_OFFSET];
          dcell = &offsetg[DP_OFFSET];
          ccell = &offsetg[EX_OFFSET];
+         temperature = &offsetg[TM_OFFSET];
          offset = NULL;
          ierr = DMPlexPointLocalRef(user->da_solution, cell, fadof, &offset); CHKERRQ(ierr);
          F2IFUNC(superset,&offset[AS_OFFSET]);
@@ -828,7 +877,7 @@ PetscErrorCode PostStep(TS ts)
          for (g=0; g<superset[0];  g++) {
              phiSS[g] = 0.0;
              currentmaterial = &user->material[user->phasematerialmapping[superset[g+1]]];
-             SitepotentialExplicit(&sitepot_exSS[g*SP_SIZE],currentmaterial->c0,temperature,superset[g+1],user);
+             SitepotentialExplicit(&sitepot_exSS[g*SP_SIZE],currentmaterial->c0,(*temperature),superset[g+1],user);
          }
         
          /* reorder dofs to new active phase superset */
@@ -870,6 +919,7 @@ PetscErrorCode PostStep(TS ts)
            pcell = &offset[PF_OFFSET];
            dcell = &offset[DP_OFFSET];
            ccell = &offset[EX_OFFSET];
+           temperature = &offset[TM_OFFSET];
            offset = NULL;
            ierr = DMPlexPointGlobalRef(user->da_output,cell, xout, &offset); CHKERRQ(ierr);
        
@@ -914,7 +964,7 @@ PetscErrorCode PostStep(TS ts)
                                                          - ccell[g*SP_SIZE+s*user->ndp+c];
                            }
                        }
-                       Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,slist[g+1],user);
+                       Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
                        for (s=0; s<currentmaterial->nsites; s++) {
                            for (c=0; c<user->ncp; c++) {
                                avgcomp[c] += interpolant[g]
@@ -941,6 +991,8 @@ PetscErrorCode PostStep(TS ts)
                    for (c=0; c<user->ndp; c++) {
                        if (!strcmp(user->componentname[c],tok)) *offset = dcell[c];
                    }
+               } else if (!strcmp(name,"temperature")) {
+                   *offset = (*temperature);
                }
            }
        }
@@ -1027,7 +1079,7 @@ int main(int argc,char **args)
   {
     PetscFE solution_fe;
     ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
-                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE,
+                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE+TM_SIZE,
                                 PETSC_FALSE,NULL,PETSC_DEFAULT,&solution_fe);CHKERRQ(ierr);
     ierr = PetscObjectSetName((PetscObject) solution_fe, "solution");CHKERRQ(ierr);
     ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fe);CHKERRQ(ierr);
@@ -1051,8 +1103,10 @@ int main(int argc,char **args)
 
   /* Pre-calculate local cells and geometry */
   {
+    DMLabel bclabel;
+    PetscReal cvolume, fcentroid[ctx.dim];
     PetscSection lsection, gsection;
-    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
     
     ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
     ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1066,17 +1120,28 @@ int main(int argc,char **args)
         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
         if (nldof > 0) ++(ctx.ninteriorcells);
     }
+    DMCreateLabel(ctx.da_solution, "boundary"); 
+    DMGetLabel(ctx.da_solution, "boundary", &bclabel);
     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
     for (point = pstart; point < pend; ++point) {
         ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+        if (nsupp == 1) {
+            DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+            boundaryid = 0;
+            for (dim=0; dim<ctx.dim; ++dim) {
+                boundaryid++;
+                if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                boundaryid++;
+                if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+            }
+        }
         ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
         if (nsupp != 2 || nchild > 0) continue;
         ctx.localfaces[(ctx.nlocalfaces)++] = point;
     }
     ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
     for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-        PetscReal cvolume;
         ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
         ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
     }
@@ -1162,35 +1227,6 @@ int main(int argc,char **args)
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     free(ctx.voxelphasemapping);
     free(ctx.voxelsitemapping);
-  }
-
-  /* Add boundary label */
-  {
-      DM facedm;
-      Vec facegeom;
-      const PetscScalar *fgeom;
-      PetscFVFaceGeom *fg;
-      PetscInt face, fstart, fend, dim, nsupp, boundaryid;
-    
-      ierr = DMCreateLabel(ctx.da_solution, "boundary");
-      ierr = DMPlexTSGetGeometryFVM(ctx.da_solution, &facegeom, NULL, NULL);
-      ierr = VecGetDM(facegeom,&facedm);
-      ierr = VecGetArrayRead(facegeom,&fgeom);
-      ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &fstart, &fend); CHKERRQ(ierr);
-      for (face = fstart; face < fend; ++face) {
-          ierr = DMPlexGetSupportSize(ctx.da_solution, face, &nsupp);
-          if (nsupp == 1) {
-              ierr = DMPlexPointLocalRead(facedm,face,fgeom,&fg);
-              boundaryid = 0;
-              for (dim=0; dim<ctx.dim; ++dim) {
-                  boundaryid++;
-                  if (fabs(fg->centroid[dim]                ) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
-                  boundaryid++;
-                  if (fabs(fg->centroid[dim] - ctx.size[dim]) < 1e-18) DMSetLabelValue(ctx.da_solution,"boundary",face,boundaryid);
-              }
-          }
-      }
-      ierr = VecRestoreArrayRead(facegeom,&fgeom);
   }
 
   /* Set up star forest */
@@ -1303,8 +1339,10 @@ int main(int argc,char **args)
 
           /* Pre-calculate local cells and geometry */
           {
+            DMLabel bclabel;
+            PetscReal cvolume, fcentroid[ctx.dim];
             PetscSection lsection, gsection;
-            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
             
             ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
             ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1319,11 +1357,22 @@ int main(int argc,char **args)
                 if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                 if (nldof > 0) ++(ctx.ninteriorcells);
             }
+            DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
             ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
             free(ctx.localfaces);
             ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
             for (point = pstart; point < pend; ++point) {
                 ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+                if (nsupp == 1) {
+                    DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+                    boundaryid = 0;
+                    for (dim=0; dim<ctx.dim; ++dim) {
+                        boundaryid++;
+                        if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                        boundaryid++;
+                        if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                    }
+                }
                 ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                 if (nsupp != 2 || nchild > 0) continue;
                 ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1331,7 +1380,6 @@ int main(int argc,char **args)
             free(ctx.cellgeom);
             ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
             for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-                PetscReal cvolume;
                 ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
                 ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
             }
@@ -1438,15 +1486,15 @@ int main(int argc,char **args)
   }    
   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
 
-  PetscReal currenttime = ctx.solparams.time[0];
+  PetscReal currenttime = 0.0, loadcasetime = 0.0;
   PetscInt  nsteps = 0;
   for (ctx.solparams.currentloadcase = 0;
-       ctx.solparams.currentloadcase < ctx.solparams.nloadcases-1;
-       ctx.solparams.currentloadcase++) {
+       ctx.solparams.currentloadcase < ctx.solparams.nloadcases;
+       loadcasetime += ctx.solparams.time[ctx.solparams.currentloadcase++]) {
       ctx.solparams.timestep = ctx.solparams.mintimestep;
-      ierr = TSSetMaxTime(ts,ctx.solparams.time[ctx.solparams.currentloadcase+1]);CHKERRQ(ierr);
+      ierr = TSSetMaxTime(ts,loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase]);CHKERRQ(ierr);
       ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
-      for (;currenttime < ctx.solparams.time[ctx.solparams.currentloadcase+1];) {
+      for (;currenttime < loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase];) {
           ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
           ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
           ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
@@ -1521,8 +1569,10 @@ int main(int argc,char **args)
 
                   /* Pre-calculate local cells and geometry */
                   {
+                    DMLabel bclabel;
+                    PetscReal cvolume, fcentroid[ctx.dim];
                     PetscSection lsection, gsection;
-                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild;
+                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
             
                     ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
                     ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1537,11 +1587,22 @@ int main(int argc,char **args)
                         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                         if (nldof > 0) ++(ctx.ninteriorcells);
                     }
+                    DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
                     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
                     free(ctx.localfaces);
                     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
                     for (point = pstart; point < pend; ++point) {
                         ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
+                        if (nsupp == 1) {
+                            DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
+                            boundaryid = 0;
+                            for (dim=0; dim<ctx.dim; ++dim) {
+                                boundaryid++;
+                                if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                                boundaryid++;
+                                if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
+                            }
+                        }
                         ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                         if (nsupp != 2 || nchild > 0) continue;
                         ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1549,7 +1610,6 @@ int main(int argc,char **args)
                     free(ctx.cellgeom);
                     ctx.cellgeom = malloc(ctx.ninteriorcells*sizeof(PetscReal));
                     for (PetscInt cell = 0; cell < ctx.ninteriorcells; ++cell) {
-                        PetscReal cvolume;
                         ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
                         ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
                     }

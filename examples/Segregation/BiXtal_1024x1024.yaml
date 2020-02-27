@@ -9,8 +9,7 @@ header:
   outputs : [al_c, cu_c, mg_c, zn_c, al_chempot, cu_chempot, mg_chempot, phaseid] 
 
 solution_parameters:
-  temperature : [393.0, 393.0]
-  time : [0.0, 1.0e+6]
+  time : 1.0e+6
   interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9
@@ -27,6 +26,7 @@ material:
   matrix:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0 : 393.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.9418, 0.0072, 0.0180, 0.0330]
     mobilityc :

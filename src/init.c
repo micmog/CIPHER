@@ -240,14 +240,12 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       assert(propsize <= 6);
       user->nbcs = propsize;
       user->bcname = malloc(user->nbcs*sizeof(char *));
-      user->bcs = (BOUNDARYCONDITIONS *) malloc(user->nbcs*sizeof(struct BOUNDARYCONDITIONS));
       BOUNDARYCONDITIONS *currentbc = &user->bcs[0];
       for (PetscInt bc=0; bc<user->nbcs; bc++, currentbc++) {
-          currentbc->type = malloc((user->ndp)*sizeof(boundary_t));
-          currentbc->val = malloc((user->ndp)*sizeof(PetscReal));
           user->bcname[bc] = malloc(PETSC_MAX_PATH_LEN);
           strcpy(user->bcname[bc],propval[bc]);
       }
+      user->bcs = (BOUNDARYCONDITIONS *) malloc(user->nbcs*sizeof(struct BOUNDARYCONDITIONS));
      }
      /* output names */
      {
@@ -672,6 +670,34 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          }
          MAXSITES = MAXSITES > currentmaterial->nsites
                   ? MAXSITES : currentmaterial->nsites;
+
+         /* thermal transport */
+         {
+          /* initial temperature */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "temperature0", buffer, filesize);
+           assert(propsize == 1);
+           currentmaterial->temperature0 = atof(propval[0]);
+          }
+          /* thermal specific heat */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "specific_heat", buffer, filesize);
+           if (propsize) {assert(propsize == 1); currentmaterial->specific_heat = atof(propval[0]);}
+           else {currentmaterial->specific_heat = 1.0;}
+          }
+          /* thermal latent heat */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "latent_heat", buffer, filesize);
+           if (propsize) {assert(propsize == 1); currentmaterial->latent_heat = atof(propval[0]);}
+           else {currentmaterial->latent_heat = 0.0;}
+          }
+          /* thermal conductivity */
+          {
+           ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
+           if (propsize) {assert(propsize == 1); currentmaterial->tconductivity = atof(propval[0]);}
+           else {currentmaterial->tconductivity = 0.0;}
+          }
+         }
      }
     }
 
@@ -687,6 +713,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     DP_SIZE   = user->ndp;
     EX_OFFSET = DP_OFFSET+DP_SIZE;
     EX_SIZE   = PF_SIZE*SP_SIZE;
+    TM_OFFSET = EX_OFFSET+EX_SIZE;
+    TM_SIZE   = 1;
     
     /* Parsing config file nucleation */
     {
@@ -888,20 +916,48 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          char boundarymapping[PETSC_MAX_PATH_LEN];
          sprintf(boundarymapping,"boundary/%s",user->bcname[bc]);
          /* boundary ID */
-         ierr = GetProperty(propval, &propsize, boundarymapping, "id", buffer, filesize);
+         ierr = GetProperty(propval, &propsize, boundarymapping, "boundary_id", buffer, filesize);
          assert(propsize == 1); currentboundary->boundaryid = atoi(propval[0]);
-         /* boundary type */
-         ierr = GetProperty(propval, &propsize, boundarymapping, "type", buffer, filesize);
-         assert(propsize == user->ndp); 
-         for (PetscInt propctr = 0; propctr < propsize; propctr++) {
-             if      (!strcmp(propval[propctr], "neumann"  )) {currentboundary->type[propctr] = NEUMANN_BC;  }
-             else if (!strcmp(propval[propctr], "dirichlet")) {currentboundary->type[propctr] = DIRICHLET_BC;}
-             else                                             {currentboundary->type[propctr] = NONE_BC;     }
+         /* chem boundary conditions */
+         {
+          char chemboundarymapping[PETSC_MAX_PATH_LEN];
+          sprintf(chemboundarymapping,"%s/chem",boundarymapping);
+          /* boundary type */
+          currentboundary->chem_bctype = NONE_BC;
+          ierr = GetProperty(propval, &propsize, chemboundarymapping, "type", buffer, filesize);
+          if (propsize) {
+              assert(propsize == 1); 
+              if      (!strcmp(propval[0], "neumann"  )) {currentboundary->chem_bctype = NEUMANN_BC;  }
+              else if (!strcmp(propval[0], "dirichlet")) {currentboundary->chem_bctype = DIRICHLET_BC;}
+              else                                       {currentboundary->chem_bctype = NONE_BC;     }
+          }
+          /* boundary val */
+          ierr = GetProperty(propval, &propsize, chemboundarymapping, "value", buffer, filesize);
+          if (!(currentboundary->chem_bctype == NONE_BC)) {
+              assert(propsize == user->ndp); 
+              currentboundary->chem_bcval = malloc(user->ndp*sizeof(PetscReal));
+              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->chem_bcval[propctr] = atof(propval[propctr]);
+          }    
          }
-         /* boundary val */
-         ierr = GetProperty(propval, &propsize, boundarymapping, "value", buffer, filesize);
-         assert(propsize == user->ndp); 
-         for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->val[propctr] = atof(propval[propctr]);
+         /* thermal boundary conditions */
+         {
+          char thermalboundarymapping[PETSC_MAX_PATH_LEN];
+          sprintf(thermalboundarymapping,"%s/thermal",boundarymapping);
+          /* boundary type */
+          currentboundary->thermal_bctype = NONE_BC;
+          ierr = GetProperty(propval, &propsize, thermalboundarymapping, "type", buffer, filesize);
+          if (propsize) {
+              assert(propsize == 1); 
+              if      (!strcmp(propval[0], "neumann"  )) {currentboundary->thermal_bctype = NEUMANN_BC;  }
+              else if (!strcmp(propval[0], "dirichlet")) {currentboundary->thermal_bctype = DIRICHLET_BC;}
+              else                                       {currentboundary->thermal_bctype = NONE_BC;     }
+          }
+          /* boundary val */
+          ierr = GetProperty(propval, &propsize, thermalboundarymapping, "value", buffer, filesize);
+          if (!(currentboundary->thermal_bctype == NONE_BC)) {
+              assert(propsize == 1); currentboundary->thermal_bcval = atof(propval[0]);
+          }    
+         } 
      }
     }
 
@@ -920,13 +976,17 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
      assert(user->solparams.interpolation != NONE_INTERPOLATION);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "time", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize > 1); user->solparams.nloadcases = propsize; user->solparams.currentloadcase = 0; 
+     assert(propsize > 0); user->solparams.nloadcases = propsize; 
      user->solparams.time = malloc(user->solparams.nloadcases*sizeof(PetscReal));
      for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.time[propctr] = atof(propval[propctr]);
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == user->solparams.nloadcases);
-     user->solparams.temperature = malloc(user->solparams.nloadcases*sizeof(PetscReal));
-     for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature[propctr] = atof(propval[propctr]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "temperature_rate", buffer, filesize);
+     if (propsize) {
+         assert(propsize == user->solparams.nloadcases);
+         user->solparams.temperature_rate = malloc(user->solparams.nloadcases*sizeof(PetscReal));
+         for (PetscInt propctr = 0; propctr < propsize; propctr++) user->solparams.temperature_rate[propctr] = atof(propval[propctr]);
+     } else {
+         user->solparams.temperature_rate = NULL;
+     }
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestep0", buffer, filesize); 
      if (propsize) {assert(propsize == 1); user->solparams.timestep = atof(propval[0]);} 
      else {user->solparams.timestep = 1.0e-18;}
@@ -935,7 +995,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      else {user->solparams.mintimestep = 1.0e-18;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
-     else {user->solparams.maxtimestep = user->solparams.time[user->solparams.nloadcases-1];}
+     else {user->solparams.maxtimestep = user->solparams.time[0];}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
@@ -1248,7 +1308,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
     const PetscInt    *cone, *scells;
     DMLabel           plabel = NULL;
     uint16_t          gslist[AS_SIZE], nalist[AS_SIZE];
-    PetscScalar       *pcell, *dcell, *ccell;
+    PetscScalar       *pcell, *dcell, *ccell, *tcell;
     uint16_t          setunion[AS_SIZE], injectionL[AS_SIZE], injectionR[AS_SIZE];
     MATERIAL          *currentmaterial;
     PetscReal         sitepot[SP_SIZE];
@@ -1307,7 +1367,6 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
 
     /* Set initial phase field values */
     ierr = VecGetArray(solution, &fdof);
-    PetscReal temperature = Interpolate(0.0,user->solparams.temperature,user->solparams.time,user->solparams.currentloadcase);
     for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
         cell = user->localcells[localcell];
 
@@ -1318,16 +1377,23 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         pcell  = &offset[PF_OFFSET];
         dcell  = &offset[DP_OFFSET];
         ccell  = &offset[EX_OFFSET];
+        tcell  = &offset[TM_OFFSET];
         PetscInt phase;
         ierr = DMLabelGetValue(plabel, cell, &phase);
     
         /* set initial conditions */
         for (g=0; g<gslist[0]; g++) {
+            if (gslist[g+1] == phase) {
+                currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
+                *tcell = currentmaterial->temperature0;
+            }
+        }        
+        for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-            SitepotentialExplicit(&ccell[g*SP_SIZE],currentmaterial->c0,temperature,gslist[g+1],user);
+            SitepotentialExplicit(&ccell[g*SP_SIZE],currentmaterial->c0,(*tcell),gslist[g+1],user);
             if (gslist[g+1] == phase) {
                 pcell[g] = 1.0;
-                Sitepotential(sitepot,currentmaterial->c0,temperature,gslist[g+1],user);
+                Sitepotential(sitepot,currentmaterial->c0,(*tcell),gslist[g+1],user);
                 memset(dcell,0,user->ndp*sizeof(PetscReal));
                 for (s=0; s<currentmaterial->nsites; s++) {
                     for (c=0; c<user->ndp; c++) {

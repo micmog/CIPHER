@@ -6,12 +6,11 @@ header:
   materials : [solid]
   interfaces : [solid-liquid]
   components : [cr, ti, v]
-  boundaries : influx
-  outputs : [cr_c, ti_c, v_c] 
+  boundaries : [fixed, influx]
+  outputs : [cr_c, ti_c, v_c, temperature] 
 
 solution_parameters:
-  temperature : [1557.0, 1557.0]
-  time : [0.0, 1000.0]
+  time : 10000.0
   mintimestep: 1e-4
   interfacewidth : 4
   initblocksize : [1, 128]
@@ -29,6 +28,9 @@ solution_parameters:
 
 material:
   solid:
+    temperature0: 1557.0
+    specific_heat: 2331509.0
+    tconductivity: 6.7e+6
     chemicalenergy : calphaddis
     molarvolume : 1e-0
     chempot_ex_kineticcoeff : 1.0
@@ -106,16 +108,21 @@ material:
 
 interface :
   solid-liquid :
-    energy : 
-      e0: 0.5e+3
+    energy : 0.5e+3
     mobility : 
       m0: 1.2e-5
 
 boundary: 
+  fixed: 
+    boundary_id: 4
+    thermal:
+      type: dirichlet
+      value: 1557.0
   influx: 
-    id: 3
-    type: [neumann, neumann]
-    value: [1.0e+3, 0.0]
+    boundary_id: 3
+    thermal:
+      type: neumann
+      value: 155.7
 
 mappings:
   phase_material_mapping : |-

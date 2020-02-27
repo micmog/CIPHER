@@ -9,8 +9,7 @@ header:
   outputs : [cr_c, ti_c, matid, phaseid, 0_phi]
 
 solution_parameters:
-  time : [0.0, 100.0]
-  temperature : [1609.000000, 1609.000000]
+  time : 100.0
   interfacewidth : 10
   initblocksize : [2, 2]
   initrefine : 9
@@ -31,6 +30,7 @@ material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1609.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.067970, 0.932030]
     mobilityc :
@@ -61,6 +61,7 @@ material:
   liquid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1609.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.100640, 0.899360]
     mobilityc :

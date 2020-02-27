@@ -7,39 +7,41 @@ header:
   materials : [solid, liquid]
   nuclei : [solid]
   interfaces : [solid-liquid]
+  boundaries : [influx, outflux]
   components : [cr, ti]
-  outputs : [cr_c, ti_c, matid, phaseid]
+  outputs : [cr_c, ti_c, matid, temperature]
 
 solution_parameters:
-  time : [0.0, 100.0]
-  temperature : [1609.000000, 1609.000000]
-  interfacewidth : 4
-  initblocksize : [2, 2]
-  initrefine : 7
-  maxnrefine : 7
-  minnrefine : 6
-  initcoarsen : 1
-  amrinterval : 100
-  reltol : 1e-4
-  abstol : 1e-4
-  outputfreq : 10000
-  outfile : Cr10-Ti-2dGrowthNuc
-  interpolation: cubic
-  gradient_calculation: 1
-  petscoptions : -ts_adapt_monitor -ts_rk_type 2a
-  random_seed : 1579993586
+    time : 10000.0
+    interfacewidth : 4
+    initblocksize : [2, 2]
+    initrefine : 7
+    maxnrefine : 7
+    minnrefine : 0
+    initcoarsen : 7
+    amrinterval : 50
+    reltol : 1e-4
+    abstol : 1e-4
+    outputfreq : 1000
+    outfile : Cr10-Ti-2dGrowthNuc
+    interpolation: cubic
+    petscoptions : -ts_adapt_monitor -ts_rk_type 2a
+    random_seed : 1579993586
   
 material:
   solid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1800.0   # initial temperature Ti
+    specific_heat: 2.6e+9
+    tconductivity: 7.0e+12
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.067970, 0.932030]
     mobilityc :
       cr :
-        mobility0 : 0.0
+        mobility0 : 1.0e-0
       ti :
-        mobility0 : 0.0
+        mobility0 : 1.0e-0
     unary_enthalpy :
       cr :
         t_coefficient : [-8856.94, 157.48, 0.00189435, -1.47721e-06, 139250]
@@ -63,13 +65,16 @@ material:
   liquid:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0: 1800.0   # initial temperature Ti
+    specific_heat: 2.6e+9
+    tconductivity: 7.0e+12
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.100640, 0.899360]
     mobilityc :
       cr :
-        mobility0 : 1.0e+12
+        mobility0 : 1e+2
       ti :
-        mobility0 : 1.0e+12
+        mobility0 : 1e+2
     unary_enthalpy :
       cr :
         t_coefficient : [15483.015, 146.059775, 0.00189435, -1.47721e-06, 2.37615e-21, 139250]
@@ -96,15 +101,40 @@ material:
 nucleus:
   solid :
     matrix : [8]
-    nucleation_model: constant
-    nucleation_rate: 1e-3
+    nucleation_model: cnt
+    length_scale : 1.0e+4
+    minsize : 1.0
+    atomic_volume : 16.0
+    gamma : 0.1
+    shape_factor : 0.1
+    migration : 1.0e+4
+    D0: 1.0e+10
     
 interface :
   solid-liquid :
     energy : 
       e0: 0.5e+6
     mobility : 
-      m0: 1.0-11
+      m0: 1e-6
+
+boundary: 
+  # fix initial temperature Ti on the top surface
+  influx: 
+    boundary_id: 4
+    thermal:
+      type: dirichlet
+      value: 1800.0   
+  
+  # thermal gradient, G, on bottom surface. 
+  # G = (Tb - Ti)/L, where Tb is the temperature at the bottom surface and 
+  # L is the length of the box (256 in this case).
+  # (Tb - Tm) and G are the two axes in the solidification diagram. 
+  # Tm is the melting temp.
+  outflux: 
+    boundary_id: 3
+    thermal:
+      type: neumann
+      value: -2.0   
 
 mappings:
   phase_material_mapping : |-

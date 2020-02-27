@@ -31,8 +31,8 @@
 
 /* field offsets */
 PetscInt MAXSITES, SP_SIZE, SF_SIZE;
-PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE;
-PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET;
+PetscInt AS_SIZE,   PF_SIZE,   DP_SIZE,   EX_SIZE,   TM_SIZE;
+PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET, TM_OFFSET;
 
 /* Types declarations */
 
@@ -159,6 +159,7 @@ typedef struct MATERIAL {
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
+    PetscReal temperature0, specific_heat, latent_heat, tconductivity;
 } MATERIAL;
 
 /* Interface energy parameters */
@@ -185,8 +186,8 @@ typedef struct INTERFACE {
 /* boundary conditions */
 typedef struct BOUNDARYCONDITIONS {
     PetscInt boundaryid;
-    boundary_t *type;
-    PetscReal *val;
+    boundary_t chem_bctype, thermal_bctype;
+    PetscReal *chem_bcval, thermal_bcval;
 } BOUNDARYCONDITIONS;
 
 /* AMR solparams */
@@ -197,7 +198,7 @@ typedef struct AMRPARAMS {
 /* solution solparams */
 typedef struct SOLUTIONPARAMS {
     /* load case parameters */
-    PetscReal *time, *temperature, timestep, mintimestep, maxtimestep;
+    PetscReal *time, *temperature_rate, timestep, mintimestep, maxtimestep;
     PetscInt  nloadcases, currentloadcase;
     PetscInt  step;
     /* phase field parameters */
