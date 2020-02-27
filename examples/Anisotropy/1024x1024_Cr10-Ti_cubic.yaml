@@ -35,9 +35,9 @@ material:
     c0 : [0.067970, 0.932030]
     mobilityc :
       cr :
-        mobility0 : 1.0e+8
+        mobility0 : 1.0e+6
       ti :
-        mobility0 : 1.0e+8
+        mobility0 : 1.0e+6
     unary_enthalpy :
       cr :
         t_coefficient : [-8856.94, 157.48, 0.00189435, -1.47721e-06, 139250]
@@ -66,9 +66,9 @@ material:
     c0 : [0.100640, 0.899360]
     mobilityc :
       cr :
-        mobility0 : 1.0e+12
+        mobility0 : 1.0e+10
       ti :
-        mobility0 : 1.0e+12
+        mobility0 : 1.0e+10
     unary_enthalpy :
       cr :
         t_coefficient : [15483.015, 146.059775, 0.00189435, -1.47721e-06, 2.37615e-21, 139250]

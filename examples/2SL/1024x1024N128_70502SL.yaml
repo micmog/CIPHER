@@ -11,8 +11,7 @@ header:
   outputs : [al_c, cu_c, mg_c, zn_c, 0_phi, 1_phi, phaseid, matid] 
 
 solution_parameters:
-  time : [0.0, 10.0]
-  temperature : [493.0, 493.0]
+  time : 10.0
   interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9
@@ -29,6 +28,7 @@ material:
   matrix:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
+    temperature0 : 493.0
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.9418, 0.0072, 0.0180, 0.0330]
     mobilityc :
@@ -269,6 +269,7 @@ material:
   precipitate :
     chemicalenergy : calphad2sl
     molarvolume : 3e-5
+    temperature0 : 493.0
     chempot_ex_kineticcoeff : 1.0
     stochiometry : [0.666666666666, 0.333333333333]
     c0_p : [0.0, 0.0, 0.0, 1.0]
