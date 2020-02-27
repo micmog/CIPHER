@@ -1,34 +1,34 @@
 ---
 header:
-  grid : [64, 64, 64]
-  size : [64, 64, 64]
-  n_phases : 3
-  materials : [matrix, precipitate]
-  interfaces : [grainboundary, pptboundary]
+  grid : [1024, 1024]
+  size : [1024, 1024]
+  n_phases : 2
+  materials : matrix
+  interfaces : grainboundary
   components : [al, cu, mg, zn]
-  outputs : [al_c, cu_c, mg_c, zn_c, phaseid] 
+  outputs : [al_c, cu_c, mg_c, zn_c, al_chempot, cu_chempot, mg_chempot, phaseid] 
 
 solution_parameters:
-  time : 72000.0
+  time : 1.0e+6
   interfacewidth : 4
-  initblocksize : [2, 2, 2]
-  initrefine : 5
-  maxnrefine : 5
-  minnrefine : 3
-  initcoarsen : 3
+  initblocksize : [2, 2]
+  initrefine : 9
+  maxnrefine : 9
+  minnrefine : 1
+  initcoarsen : 9
   amrinterval : 200 
   outputfreq : 5000
-  outfile : GBP
   interpolation: cubic
   petscoptions : -ts_adapt_monitor
+  random_seed : 1579993586
 
 material:
   matrix:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
-    temperature0: 393.0
+    temperature0 : 393.0
     chempot_ex_kineticcoeff : 1.0
-    c0 : [0.90, 0.02, 0.04, 0.04]
+    c0 : [0.9418, 0.0072, 0.0180, 0.0330]
     mobilityc :
       al :
         mobility0 : 1.0e+18
@@ -264,58 +264,14 @@ material:
               index : 3
               t_coefficient : 5.9580949e+4
               t_exponent: 0
-  precipitate :
-    chemicalenergy : quadratic
-    molarvolume : 1e-5
-    temperature0: 393.0
-    chempot_ex_kineticcoeff : 1.0
-    c0 : [0.16757, 0.04471, 0.33333, 0.45439]
-    mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
-    ceq : 
-      al :
-        t_coefficient : 0.16757
-        t_exponent : 0
-      cu :  
-        t_coefficient : 0.04471
-        t_exponent: 0
-      mg :  
-        t_coefficient : 0.33333
-        t_exponent: 0
-      zn :  
-        t_coefficient : 0.45439
-        t_exponent: 0
-    ref_enthalpy :
-      t_coefficient : -2.6605e+04
-      t_exponent: 0
-    binary_enthalpy:
-      al :
-        t_coefficient : 1.0e+6
-        t_exponent : 0
-      cu :  
-        t_coefficient : 1.0e+6
-        t_exponent: 0
-      mg :  
-        t_coefficient : 1.0e+6
-        t_exponent: 0
-      zn :  
-        t_coefficient : 0.0e+6
-        t_exponent: 0
 
 interface :
   grainboundary :
+    potential : [1.7e+7, -1.8e+7, -2.3e+7]
     energy : 
-      e0: 5.0e+8
+      e0: 2.0e+8
     mobility : 
-      m0: 2.0e+2
-      activation_energy:
-        t_coefficient : -1.0e+5
-        t_exponent: 0
-    potential : [0.175e+4, -0.180e+4, -0.235e+4]  
-  pptboundary :
-    energy : 
-      e0: 5.0e+8
-    mobility : 
-      m0: 2.0e+2
+      m0: 1.0e+2
       activation_energy:
         t_coefficient : -1.0e+5
         t_exponent: 0
@@ -323,210 +279,8 @@ interface :
 mappings:
   phase_material_mapping : |-
     2 of 1
-    2
   voxel_phase_mapping: |-
-    116510 of 1
-    4 of 3
-    59 of 1
-    6 of 3
-    57 of 1
-    8 of 3
-    56 of 1
-    8 of 3
-    56 of 1
-    8 of 3
-    56 of 1
-    8 of 3
-    57 of 1
-    6 of 3
-    59 of 1
-    4 of 3
-    3515 of 1
-    6 of 3
-    57 of 1
-    8 of 3
-    55 of 1
-    10 of 3
-    53 of 1
-    12 of 3
-    52 of 1
-    12 of 3
-    52 of 1
-    12 of 3
-    52 of 1
-    12 of 3
-    52 of 1
-    12 of 3
-    52 of 1
-    12 of 3
-    53 of 1
-    10 of 3
-    55 of 1
-    8 of 3
-    57 of 1
-    6 of 3
-    3321 of 1
-    8 of 3
-    55 of 1
-    10 of 3
-    53 of 1
-    12 of 3
-    51 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    51 of 1
-    12 of 3
-    53 of 1
-    10 of 3
-    55 of 1
-    8 of 3
-    3193 of 1
-    6 of 3
-    56 of 1
-    10 of 3
-    53 of 1
-    12 of 3
-    51 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    49 of 1
-    16 of 3
-    48 of 1
-    16 of 3
-    48 of 1
-    16 of 3
-    48 of 1
-    16 of 3
-    48 of 1
-    16 of 3
-    48 of 1
-    16 of 3
-    49 of 1
-    14 of 3
-    50 of 1
-    14 of 3
-    51 of 1
-    12 of 3
-    53 of 1
-    10 of 3
-    56 of 1
-    6 of 3
-    1565 of 1
-    1565 of 2
-    6 of 3
-    56 of 2
-    10 of 3
-    53 of 2
-    12 of 3
-    51 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    49 of 2
-    16 of 3
-    48 of 2
-    16 of 3
-    48 of 2
-    16 of 3
-    48 of 2
-    16 of 3
-    48 of 2
-    16 of 3
-    48 of 2
-    16 of 3
-    49 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    51 of 2
-    12 of 3
-    53 of 2
-    10 of 3
-    56 of 2
-    6 of 3
-    3193 of 2
-    8 of 3
-    55 of 2
-    10 of 3
-    53 of 2
-    12 of 3
-    51 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    50 of 2
-    14 of 3
-    51 of 2
-    12 of 3
-    53 of 2
-    10 of 3
-    55 of 2
-    8 of 3
-    3321 of 2
-    6 of 3
-    57 of 2
-    8 of 3
-    55 of 2
-    10 of 3
-    53 of 2
-    12 of 3
-    52 of 2
-    12 of 3
-    52 of 2
-    12 of 3
-    52 of 2
-    12 of 3
-    52 of 2
-    12 of 3
-    52 of 2
-    12 of 3
-    53 of 2
-    10 of 3
-    55 of 2
-    8 of 3
-    57 of 2
-    6 of 3
-    3515 of 2
-    4 of 3
-    59 of 2
-    6 of 3
-    57 of 2
-    8 of 3
-    56 of 2
-    8 of 3
-    56 of 2
-    8 of 3
-    56 of 2
-    8 of 3
-    57 of 2
-    6 of 3
-    59 of 2
-    4 of 3
-    116510 of 2
+    524288 of 1
+    524288 of 2
   interface_mapping: |-
-    2 of 1
-    7 of 2
+    4 of 1

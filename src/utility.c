@@ -39,18 +39,7 @@ void I2FFUNC(PetscScalar *FARRAY,uint16_t *IARRAY) {
  */
 PetscReal Interpolate(const PetscReal x, const PetscReal *y_i, const PetscReal *x_i, const PetscInt n)
 {
-    if        (x <= x_i[0]) {
-        return y_i[0] + (x - x_i[0])*(y_i[1] - y_i[0])/(x_i[1] - x_i[0]);
-    } else if (x >= x_i[n-1]) {
-        return y_i[n-2] + (x - x_i[n-2])*(y_i[n-2] - y_i[n-1])/(x_i[n-2] - x_i[n-1]);
-    } else {
-        for (PetscInt i=0; i<n-1; i++) {
-            if (x >= x_i[i] && x <= x_i[i+1]) {
-                return y_i[i] + (x - x_i[i])*(y_i[i+1] - y_i[i])/(x_i[i+1] - x_i[i]);
-            }    
-        }
-    }
-    return 0.0;    
+    return y_i[n] + (x - x_i[n])*(y_i[n+1] - y_i[n])/(x_i[n+1] - x_i[n]);
 } 
 
 /*
@@ -601,13 +590,13 @@ void SimplexProjection(PetscReal *out, PetscReal *in, int size)
  */
 void utility_init(const AppCtx *user)
 {
-    if        (user->interpolation == LINEAR_INTERPOLATION) {
+    if        (user->solparams.interpolation == LINEAR_INTERPOLATION) {
         Interpolant = &Interpolant_linear;
         InterpolantDerivative = &InterpolantDerivative_linear;
-    } else if (user->interpolation == QUADRATIC_INTERPOLATION ) {
+    } else if (user->solparams.interpolation == QUADRATIC_INTERPOLATION ) {
         Interpolant = &Interpolant_quad;
         InterpolantDerivative = &InterpolantDerivative_quad;
-    } else if (user->interpolation == CUBIC_INTERPOLATION ) {
+    } else if (user->solparams.interpolation == CUBIC_INTERPOLATION ) {
         Interpolant = &Interpolant_cubic;
         InterpolantDerivative = &InterpolantDerivative_cubic;
     }

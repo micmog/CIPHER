@@ -112,7 +112,7 @@ export PATH=CIPHER_DIR/bin:$PATH
 # navigate to examples folder
 cd $CIPHER_DIR/examples/GrainBoundaryPrecipitate
 # run example
-mpiexec -n 4 cipher.exe -geomfile GrainBoundaryPrecipitate.geom -interfacefile N3.interface
+mpiexec -n 4 cipher.exe --config GrainBoundaryPrecipitate.yaml
 ```
 
 ## Contact
