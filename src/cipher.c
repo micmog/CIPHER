@@ -56,7 +56,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells], interface_mobility; 
-    PetscReal         pgrad[user->dim*PF_SIZE], *gradient_matrix;
+    PetscReal         pgrad[user->dim*PF_SIZE], interface_anisotropy[PF_SIZE*PF_SIZE];
+    PetscReal         *currentanisotropy, *gradient_matrix;
     PetscInt          conesize, nsupp, supp, dim, nleastsq;
 
     
@@ -310,8 +311,26 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         }
                     }
                 }
-                for (g=0; g<slist[0]; g++) {
-                    printf("cell %d phase %d grad %e %e\n",cell,g,pgrad[user->dim*g+0],pgrad[user->dim*g+1]);
+            }
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
+                    *currentanisotropy = 1.0;
+                    if (user->gradient_calculation) {
+                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) 
+                            rhsval += (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim])
+                                    * (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim]);
+                        rhsval = sqrt(rhsval);
+                        if (rhsval > 1e-16) {
+                            *currentanisotropy -= 3.0*currentinterface->anisotropy;
+                            for (dim=0; dim<user->dim; dim++) *currentanisotropy += 4.0*currentinterface->anisotropy
+                                                                                  * FastPow( (  pgrad[user->dim*gk+dim] 
+                                                                                              - pgrad[user->dim*gj+dim])
+                                                                                            / rhsval, 4);
+                        }
+                    }
                 }
             }
         
@@ -322,10 +341,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    caplflux  [gk] -= currentinterface->energy*plapl[gj];
-                    caplflux  [gj] -= currentinterface->energy*plapl[gk];
-                    caplsource[gk] -= currentinterface->energy*pcell[gj];
-                    caplsource[gj] -= currentinterface->energy*pcell[gk];
+                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
+                    caplflux  [gk] -= (*currentanisotropy)*currentinterface->energy*plapl[gj];
+                    caplflux  [gj] -= (*currentanisotropy)*currentinterface->energy*plapl[gk];
+                    caplsource[gk] -= (*currentanisotropy)*currentinterface->energy*pcell[gj];
+                    caplsource[gj] -= (*currentanisotropy)*currentinterface->energy*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
                         triplejunctionenergy = currentinterface->energy;
                         interfaceji = user->interfacelist[slist[gj+1]*user->npf + slist[gi+1]];
@@ -378,7 +398,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                     currentinterface = &user->interface[interfacekj];
-                    interface_mobility = currentinterface->mobility->m0
+                    currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
+                    interface_mobility = (*currentanisotropy)
+                                       * currentinterface->mobility->m0
                                        * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
                                              / R_GAS_CONST/temperature);
                     rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
@@ -400,7 +422,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         if (active[gj]) {
                             interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                             currentinterface = &user->interface[interfacekj];
-                            interface_mobility = currentinterface->mobility->m0
+                            currentanisotropy = &interface_anisotropy[gk*slist[0]+gj];
+                            interface_mobility = (*currentanisotropy)
+                                               * currentinterface->mobility->m0
                                                * exp(  SumTSeries(temperature, currentinterface->mobility->unary[0])
                                                      / R_GAS_CONST/temperature);
                             rhsval = interface_mobility*(  (caplflux  [gk] - caplflux  [gj])
@@ -934,7 +958,6 @@ int main(int argc,char **args)
   VecTagger      refineTag = NULL, coarsenTag = NULL;
   /* numerical parameters */
   PetscErrorCode ierr;
-  PetscFV        solution_fv;
       
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Initialize program
@@ -969,29 +992,30 @@ int main(int argc,char **args)
   ierr = DMConvert(ctx.da_solforest,DMPLEX,&ctx.da_solution);CHKERRQ(ierr);
   ierr = DMLocalizeCoordinates(ctx.da_solution);CHKERRQ(ierr);
   
-  /* Create finite volume discretisation for solution */
+  /* Create discretisation for solution */
   {
-    ierr = PetscFVCreate(PETSC_COMM_WORLD, &solution_fv);CHKERRQ(ierr);
-    ierr = PetscFVSetFromOptions(solution_fv);CHKERRQ(ierr);
-    ierr = PetscFVSetNumComponents(solution_fv, AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE);CHKERRQ(ierr);
-    ierr = PetscFVSetSpatialDimension(solution_fv, ctx.dim);CHKERRQ(ierr);
-    ierr = PetscObjectSetName((PetscObject) solution_fv,"solution");CHKERRQ(ierr);
-    ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fv);CHKERRQ(ierr);
+    PetscFE solution_fe;
+    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                AS_SIZE+PF_SIZE+DP_SIZE+EX_SIZE,
+                                PETSC_FALSE,NULL,PETSC_DEFAULT,&solution_fe);CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) solution_fe, "solution");CHKERRQ(ierr);
+    ierr = DMSetField(ctx.da_solution,0, NULL, (PetscObject) solution_fe);CHKERRQ(ierr);
     ierr = DMCreateDS(ctx.da_solution);CHKERRQ(ierr);
+    ierr = PetscFEDestroy(&solution_fe);CHKERRQ(ierr);
     ierr = DMCopyDisc(ctx.da_solution,ctx.da_solforest);CHKERRQ(ierr);
   }
   
-  /* Create finite volume discretisation for output */
+  /* Create discretisation for output */
   {
-    PetscFV output_fv;
+    PetscFE output_fe;
     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-    ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
-    ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
-    ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
-    ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
-    ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
-    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
-    ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
+    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                ctx.noutputs,
+                                PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
+    ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
+    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+    ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
+    ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
   }
 
   /* Pre-calculate local cells and geometry */
@@ -1368,16 +1392,16 @@ int main(int argc,char **args)
           }
 
           {
-            PetscFV output_fv;
-            ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
-            ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-            ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
-            ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
-            ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
-            ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
-            ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
-            ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
-            ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
+             PetscFE output_fe;
+             ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
+             ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
+             ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                         ctx.noutputs,
+                                         PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
+             ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
+             ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+             ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
+             ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
           }
       }
   }    
@@ -1586,16 +1610,16 @@ int main(int argc,char **args)
                   }
               
                   {
-                    PetscFV output_fv;
+                    PetscFE output_fe;
                     ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
                     ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
-                    ierr = PetscFVCreate(PETSC_COMM_WORLD, &output_fv);CHKERRQ(ierr);
-                    ierr = PetscFVSetFromOptions(output_fv);CHKERRQ(ierr);
-                    ierr = PetscFVSetNumComponents(output_fv,ctx.noutputs);CHKERRQ(ierr);
-                    ierr = PetscFVSetSpatialDimension(output_fv, ctx.dim);CHKERRQ(ierr);
-                    ierr = PetscObjectSetName((PetscObject) output_fv,"output");CHKERRQ(ierr);
-                    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fv);CHKERRQ(ierr);
-                    ierr = PetscFVDestroy(&output_fv);CHKERRQ(ierr);
+                    ierr = PetscFECreateDefault(PETSC_COMM_WORLD,ctx.dim,
+                                                ctx.noutputs,
+                                                PETSC_FALSE,NULL,PETSC_DEFAULT,&output_fe);CHKERRQ(ierr);
+                    ierr = PetscObjectSetName((PetscObject) output_fe, " output");CHKERRQ(ierr);
+                    ierr = DMSetField(ctx.da_output, 0, NULL, (PetscObject) output_fe);CHKERRQ(ierr);
+                    ierr = DMCreateDS(ctx.da_output);CHKERRQ(ierr);
+                    ierr = PetscFEDestroy(&output_fe);CHKERRQ(ierr);
                   }
                   ierr = TSDestroy(&ts);CHKERRQ(ierr);
                   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);

@@ -776,6 +776,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
          char interfacemapping[PETSC_MAX_PATH_LEN];
          sprintf(interfacemapping,"interface/%s",user->interfacename[interface]);
+         /* interface anisotropy */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "anisotropy", buffer, filesize);
+         if (propsize) {assert(propsize == 1); currentinterface->anisotropy = atof(propval[0]);}
+         else {currentinterface->anisotropy = 0.0;}
          /* interface energy */
          ierr = GetProperty(propval, &propsize, interfacemapping, "energy", buffer, filesize); CHKERRQ(ierr);
          assert(propsize == 1);
