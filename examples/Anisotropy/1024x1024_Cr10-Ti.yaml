@@ -1,0 +1,175 @@
+---
+header:
+  grid : [1024, 1024]
+  size : [1024, 1024]
+  n_phases : 2
+  materials : [solid, liquid]
+  interfaces : [solid-liquid]
+  components : [cr, ti]
+  outputs : [cr_c, ti_c, matid, phaseid, 0_phi]
+
+solution_parameters:
+  time : [0.0, 100.0]
+  temperature : [1609.000000, 1609.000000]
+  interfacewidth : 10
+  initblocksize : [2, 2]
+  initrefine : 9
+  maxnrefine : 9
+  minnrefine : 0
+  initcoarsen : 9
+  amrinterval : 100
+  reltol : 1e-4
+  abstol : 1e-4
+  outputfreq : 10000
+  outfile : Cr10-Ti-dendrite
+  interpolation: cubic
+  gradient_calculation: 1
+  petscoptions : -ts_adapt_monitor -ts_rk_type 2a
+  random_seed : 1579993586
+  
+material:
+  solid:
+    chemicalenergy : calphaddis
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
+    c0 : [0.067970, 0.932030]
+    mobilityc :
+      cr :
+        mobility0 : 1.0e+8
+      ti :
+        mobility0 : 1.0e+8
+    unary_enthalpy :
+      cr :
+        t_coefficient : [-8856.94, 157.48, 0.00189435, -1.47721e-06, 139250]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -26.908
+      ti :
+        t_coefficient : [6667.385, 105.438379, 0.00121707, -8.4534e-07, -2002750]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : -22.3771
+    binary_enthalpy :
+      cr :
+        ti :
+          nrk : 2
+          rk_0 :
+            t_coefficient : [-2247.87, 9.14144]
+            t_exponent : [0, 1]
+          rk_1 :
+            t_coefficient : [198.73]
+            t_exponent : [0]
+
+  liquid:
+    chemicalenergy : calphaddis
+    molarvolume : 1e-5
+    chempot_ex_kineticcoeff : 1.0
+    c0 : [0.100640, 0.899360]
+    mobilityc :
+      cr :
+        mobility0 : 1.0e+12
+      ti :
+        mobility0 : 1.0e+12
+    unary_enthalpy :
+      cr :
+        t_coefficient : [15483.015, 146.059775, 0.00189435, -1.47721e-06, 2.37615e-21, 139250]
+        t_exponent : [0, 1, 2, 3, 7, -1]
+        tlnt_coefficient : -26.908
+      ti :
+        t_coefficient : [369519.198, -2553.9505, -0.163409355, 1.2457117e-05, -67034516]
+        t_exponent : [0, 1, 2, 3, -1]
+        tlnt_coefficient : 342.059267
+    binary_enthalpy :
+      cr :
+        ti :
+          nrk : 3
+          rk_0 :
+            t_coefficient : [-365.81]
+            t_exponent : [0]
+          rk_1 :
+            t_coefficient : [-3030.23]
+            t_exponent : [0]
+          rk_2 :
+            t_coefficient : [1549.08]
+            t_exponent : [0]
+
+interface :
+  solid-liquid :
+    energy : 
+      e0: 0.5e+6
+    mobility : 
+      m0: 1.0e+2
+      anisotropy_values: [-0.5, 0.5]
+      anisotropy_directions: [1.0, 0.0,
+                              0.0, 1.0 ]
+
+mappings:
+  phase_material_mapping : |-
+    2
+    1
+  voxel_phase_mapping : |-
+    508412 of 1
+    8 of 2
+    1013 of 1
+    14 of 2
+    1008 of 1
+    18 of 2
+    1005 of 1
+    20 of 2
+    1003 of 1
+    22 of 2
+    1001 of 1
+    24 of 2
+    999 of 1
+    26 of 2
+    997 of 1
+    28 of 2
+    996 of 1
+    28 of 2
+    995 of 1
+    30 of 2
+    994 of 1
+    30 of 2
+    994 of 1
+    30 of 2
+    993 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    992 of 1
+    32 of 2
+    993 of 1
+    30 of 2
+    994 of 1
+    30 of 2
+    994 of 1
+    30 of 2
+    995 of 1
+    28 of 2
+    996 of 1
+    28 of 2
+    997 of 1
+    26 of 2
+    999 of 1
+    24 of 2
+    1001 of 1
+    22 of 2
+    1003 of 1
+    20 of 2
+    1005 of 1
+    18 of 2
+    1008 of 1
+    14 of 2
+    1013 of 1
+    8 of 2
+    508412 of 1
+  interface_mapping : |-
+    4 of 1
