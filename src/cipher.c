@@ -60,7 +60,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         specific_heat, tconductivity[user->ninteriorcells];
     PetscReal         *temperature, *temperatureL, *temperatureR, temperatureavg;
     PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
-    PetscReal         *currenteval, *currentmval, *gradient_matrix, dot_product;
+    PetscReal         *gradient_matrix, dot_product;
     PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
     Vec               gradient_global[user->dim], gradient_local[user->dim];
     PetscScalar       *grad[user->dim], *grad_cell[user->dim], unitvec[user->dim];
@@ -236,9 +236,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         SetIntersection(setintersect,injectionL,injectionR,slistL,slistR);
 
         /* get fluxes on cell faces */
-        for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
-            for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
-                (*currenteval) = 1.0;
+        for (gk=0; gk<setintersect[0]; gk++) {
+            for (gj=gk+1; gj<setintersect[0]; gj++) {
+                interface_energy[gk*setintersect[0]+gj] = 1.0;
             }
         }    
         if (user->gradient_calculation) {
@@ -252,8 +252,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 for (g=0; g<setintersect[0]; g++)
                     grad_cellavg[dim][g] = (grad_cellL[dim][injectionL[g]] + grad_cellR[dim][injectionR[g]])/2.0;
             }        
-            for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
-                for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
+            for (gk=0; gk<setintersect[0]; gk++) {
+                for (gj=gk+1; gj<setintersect[0]; gj++) {
                     for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
                         unitvec[dim] = grad_cellavg[dim][gk] - grad_cellavg[dim][gj];
                         rhsval += unitvec[dim]*unitvec[dim];
@@ -262,25 +262,27 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
                     currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
                                                                             + setintersect[gj+1]          ]];
+                    interfacekj = gk*setintersect[0]+gj;
                     for (dir=0; dir<currentinterface->ienergy->n; dir++) {
                         for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
                             dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
-                        (*currenteval) += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
+                        interface_energy[interfacekj] += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
                     }
                 }
             }
         }    
         memset(fluxp,0,setintersect[0]*sizeof(PetscReal));
-        for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
-            for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
+        for (gk=0; gk<setintersect[0]; gk++) {
+            for (gj=gk+1; gj<setintersect[0]; gj++) {
                 currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
                                                                         + setintersect[gj+1]          ]];
-                (*currenteval) *= currentinterface->ienergy->e->m0;
+                interfacekj = gk*setintersect[0]+gj;
+                interface_energy[interfacekj] *= currentinterface->ienergy->e->m0;
                 if (currentinterface->ienergy->e->unary->nTser)
-                    (*currenteval) *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
-                                          / R_GAS_CONST/temperatureavg);
-                fluxp[gk] -= (*currenteval)*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
-                fluxp[gj] -= (*currenteval)*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
+                    interface_energy[interfacekj] *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
+                                                         / R_GAS_CONST/temperatureavg);
+                fluxp[gk] -= interface_energy[interfacekj]*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
+                fluxp[gj] -= interface_energy[interfacekj]*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
             }
             fluxp[gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
         }    
@@ -428,9 +430,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 
         if (slist[0] > 1) {
             /* calculate interface quantities */ 
-            for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
-                    (*currenteval) = 1.0; (*currentmval) = 1.0;
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = gk*slist[0]+gj;
+                    interface_energy  [interfacekj] = 1.0; 
+                    interface_mobility[interfacekj] = 1.0;
                 }
             }    
             if (user->gradient_calculation) {
@@ -439,8 +443,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     ierr = DMPlexPointLocalRef(user->da_solution, cell, grad[dim], &offset);
                     grad_cell[dim] = &offset[PF_OFFSET];
                 }    
-                for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
-                    for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
+                for (gk=0; gk<slist[0]; gk++) {
+                    for (gj=gk+1; gj<slist[0]; gj++) {
                         for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
                             unitvec[dim] = grad_cell[dim][gk] - grad_cell[dim][gj];
                             rhsval += unitvec[dim]*unitvec[dim];
@@ -448,50 +452,50 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         rhsval = sqrt(rhsval);
                         if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
                         currentinterface = &user->interface[user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]]];
+                        interfacekj = gk*slist[0]+gj;
                         for (dir=0; dir<currentinterface->ienergy->n; dir++) {
                             for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
                                 dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
-                            (*currenteval) += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
+                            interface_energy[interfacekj] += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
                         }
                         for (dir=0; dir<currentinterface->imobility->n; dir++) {
                             for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
                                 dot_product += unitvec[dim]*currentinterface->imobility->dir[user->dim*dir+dim];
-                            (*currentmval) += FastPow(dot_product,4)*currentinterface->imobility->val[dir];
+                            interface_mobility[interfacekj] += FastPow(dot_product,4)*currentinterface->imobility->val[dir];
                         }
                     }
                 }
             }
-            for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
                     currentinterface = &user->interface[user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]]];
-                    (*currenteval) *= currentinterface->ienergy->e->m0;
+                    interfacekj = gk*slist[0]+gj;
+                    interface_energy[interfacekj] *= currentinterface->ienergy->e->m0;
                     if (currentinterface->ienergy->e->unary->nTser)
-                    (*currenteval) *= exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
-                                          / R_GAS_CONST/(*temperature));
-                    (*currentmval) *= currentinterface->imobility->m->m0;
+                    interface_energy[interfacekj] *= exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
+                                                         / R_GAS_CONST/(*temperature));
+                    interface_mobility[interfacekj] *= currentinterface->imobility->m->m0;
                     if (currentinterface->imobility->m->unary->nTser)
-                    (*currentmval) *= exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
-                                          / R_GAS_CONST/(*temperature));
+                    interface_mobility[interfacekj] *= exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
+                                                           / R_GAS_CONST/(*temperature));
                 }
             }    
 
             /* phase capillary driving force */ 
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
-            for (gk=0, currenteval=&interface_energy[0]; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++, currenteval++) {
-                    caplsource[gk] -= (*currenteval)*pcell[gj];
-                    caplsource[gj] -= (*currenteval)*pcell[gk];
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = gk*slist[0]+gj;
+                    caplsource[gk] -= interface_energy[interfacekj]*pcell[gj];
+                    caplsource[gj] -= interface_energy[interfacekj]*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
-                        triplejunctionenergy = 2.0e+8;
-                        currenteval = &interface_energy[gk*slist[0]+gj];
-                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
-                                               triplejunctionenergy : (*currenteval);
-                        currenteval = &interface_energy[gj*slist[0]+gi];
-                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
-                                               triplejunctionenergy : (*currenteval);
-                        currenteval = &interface_energy[gk*slist[0]+gi];
-                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
-                                               triplejunctionenergy : (*currenteval);
+                        triplejunctionenergy = 0.0;
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gj] ?
+                                               triplejunctionenergy : interface_energy[gk*slist[0]+gj];
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gi] ?
+                                               triplejunctionenergy : interface_energy[gk*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gj*slist[0]+gi] ?
+                                               triplejunctionenergy : interface_energy[gj*slist[0]+gi];
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
@@ -516,8 +520,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
+                    currentinterface = &user->interface[user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]]];
                     if (currentinterface->potential) {
                         rhsval = 0.0;
                         for (c=0; c<user->ndp; c++) rhsval += currentinterface->potential[c]*work_vec_DP[c];
@@ -530,11 +533,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             /* build unconstrained RHS to calculate active set */ 
             nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
-            for (gk=0, currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
-                    rhsval = (*currentmval)*(  (caplsource[gk] - caplsource[gj])
-                                             - (chemsource[gk] - chemsource[gj])
-                                             * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = gk*slist[0]+gj;
+                    rhsval = interface_mobility[interfacekj]*(  (caplsource[gk] - caplsource[gj])
+                                                              - (chemsource[gk] - chemsource[gj])
+                                                              * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
                 }
                 active[gk] =    (pcell[gk] >       TOL && pcell            [gk] < 1.0 - TOL)
@@ -544,18 +548,19 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
 
             /* build constrained RHS from active set*/ 
-            for (gk=0, currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
+            for (gk=0; gk<slist[0]; gk++) {
                 if (active[gk]) {
-                    for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
+                    for (gj=gk+1; gj<slist[0]; gj++) {
                         if (active[gj]) {
-                            rhsval = (*currentmval)*(  (caplsource[gk] - caplsource[gj])
-                                                     - (chemsource[gk] - chemsource[gj])
-                                                     * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
+                            interfacekj = gk*slist[0]+gj;
+                            rhsval = interface_mobility[interfacekj]*(  (caplsource[gk] - caplsource[gj])
+                                                                      - (chemsource[gk] - chemsource[gj])
+                                                                      * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
                         }
                     }
                     pfrhs[gk] /= nactivephases;
-                } else {currentmval += slist[0] - (gk+1);}        
+                }        
             }
         }    
         
