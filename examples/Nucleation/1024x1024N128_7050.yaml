@@ -8,7 +8,7 @@ header:
   nuclei : [precipitate]
   interfaces : [grainboundary, pptboundary]
   components : [al, cu, mg, zn]
-  outputs : [al_c, cu_c, mg_c, zn_c, 0_phi, 1_phi, temperature] 
+  outputs : [al_c, cu_c, mg_c, zn_c, matid, temperature] 
 
 solution_parameters:
   time : [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 1.0]
@@ -309,14 +309,16 @@ material:
 nucleus:
   precipitate :
     matrix : [0, 1]
-    nucleation_model: cnt
+    nucleation_model: thermal
+    solvus_temperature_0: 750.0
+    enthalpy_fusion: 5.0e+10
     length_scale : 10.0
     minsize : 1.0
     atomic_volume : 16.0
     gamma : 0.5
     shape_factor : 0.1
     migration : 1.0e+4
-    D0: 1.0e+10
+    D0: 1.0e+6
   
 interface :
   grainboundary :
