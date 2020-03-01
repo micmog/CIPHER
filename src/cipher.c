@@ -57,11 +57,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
-    PetscReal         specific_heat, tconductivity[user->ninteriorcells], *temperature, *temperatureL, *temperatureR;
+    PetscReal         specific_heat, tconductivity[user->ninteriorcells];
+    PetscReal         *temperature, *temperatureL, *temperatureR, temperatureavg;
     PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
-    PetscReal         pgrad[user->dim*PF_SIZE], interface_normals[user->dim*PF_SIZE*PF_SIZE];
-    PetscReal         *currentinormal, *currentival, *gradient_matrix, dot_product;
+    PetscReal         *currenteval, *currentmval, *gradient_matrix, dot_product;
     PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
+    Vec               gradient_global[user->dim], gradient_local[user->dim];
+    PetscScalar       *grad[user->dim], *grad_cell[user->dim], unitvec[user->dim];
+    PetscScalar       *grad_cellL[user->dim], *grad_cellR[user->dim], grad_cellavg[user->dim][PF_SIZE];
 
     /* Gather FVM residuals */
     ierr = DMGetLocalVector(user->da_solution,&localX); CHKERRQ(ierr);
@@ -74,9 +77,77 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     ierr = VecZeroEntries(laplacian); CHKERRQ(ierr);
     ierr = VecGetArray(laplacian,&lap); CHKERRQ(ierr);
 
+    /* Precalculate gradient quantities */
+    if (user->gradient_calculation) {
+        for (dim=0; dim<user->dim; dim++) {
+            ierr = DMGetGlobalVector(user->da_solution,&gradient_global[dim]); CHKERRQ(ierr);
+            ierr = VecZeroEntries(gradient_global[dim]); CHKERRQ(ierr);
+            ierr = VecGetArray(gradient_global[dim],&grad[dim]); CHKERRQ(ierr);
+        }    
+        for (localcell = 0; localcell < user->nlocalcells; ++localcell) {
+            cell = user->localcells[localcell];
+
+            /* get fields */
+            offset = NULL;
+            ierr = DMPlexPointLocalRef(user->da_solution, cell, fdof, &offset);
+            F2IFUNC(slist,&offset[AS_OFFSET]);
+            pcell = &offset[PF_OFFSET];
+            for (dim=0; dim<user->dim; dim++) {
+                offset = NULL;
+                ierr = DMPlexPointGlobalRef(user->da_solution, cell, grad[dim], &offset);
+                grad_cell[dim] = &offset[PF_OFFSET];
+            }    
+
+            /* calculate phase interpolants */
+            EvalInterpolant(interpolant,pcell,slist[0]);
+
+            /* pre-calculate calculate phase field gradients */
+            gradient_matrix = &user->gradient_matrix[24*user->dim*localcell];
+            for (g=0; g<slist[0]; g++) {
+                for (dim=0; dim<user->dim; dim++) {
+                    grad_cell[dim][g] = 0.0;
+                    for (nleastsq=0; nleastsq<user->gradient_nleastsq[localcell]; nleastsq++)
+                        grad_cell[dim][g] -= gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*pcell[g];
+                }
+            }        
+            ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
+            ierr = DMPlexGetCone(user->da_solution,cell,&cone);
+            nleastsq=0;
+            for (face=0; face<conesize; face++) {
+                ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
+                ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
+                for (supp=0; supp<nsupp; supp++) {
+                    if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
+                        offset = NULL;
+                        ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdof, &offset);
+                        F2IFUNC(nlist,&offset[AS_OFFSET]);
+                        ncell = &offset[PF_OFFSET];
+                        SetIntersection(setintersection,slistL,slistR,slist,nlist);
+                        for (g=0; g<setintersection[0]; g++) {
+                            for (dim=0; dim<user->dim; dim++) {
+                                grad_cell[dim][slistL[g]] += gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]
+                                                           * ncell[slistR[g]];
+                            }
+                        }        
+                        nleastsq++;
+                    }
+                }
+            }
+        }
+        for (dim=0; dim<user->dim; dim++) {
+            ierr = VecRestoreArray(gradient_global[dim],&grad[dim]); CHKERRQ(ierr);
+            ierr = DMGetLocalVector(user->da_solution,&gradient_local[dim]); CHKERRQ(ierr);
+            ierr = DMGlobalToLocalBegin(user->da_solution,gradient_global[dim],INSERT_VALUES,gradient_local[dim]); CHKERRQ(ierr);
+            ierr = DMGlobalToLocalEnd(user->da_solution,gradient_global[dim],INSERT_VALUES,gradient_local[dim]); CHKERRQ(ierr);
+            ierr = DMRestoreGlobalVector(user->da_solution,&gradient_global[dim]); CHKERRQ(ierr);
+            ierr = VecGetArray(gradient_local[dim],&grad[dim]); CHKERRQ(ierr);
+        }    
+    }
+
     /* Precalculate cell quantities */
     if (user->ndp) {
         for (cell = 0; cell < user->ninteriorcells; ++cell) {
+            /* get fields */
             offset = NULL;
             ierr = DMPlexPointLocalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
             F2IFUNC(slist,&offset[AS_OFFSET]);
@@ -88,7 +159,10 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             composition = &composition_global[cell*user->ncp];
             mobilitycv = &mobilitycv_global[cell*user->ncp];
 
+            /* calculate phase interpolants */
             EvalInterpolant(interpolant,pcell,slist[0]);
+
+            /* calculate cell quantities */
             memset(mobilitycv,0,user->ncp*sizeof(PetscReal));
             memset(composition,0,user->ncp*sizeof(PetscReal));
             memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
@@ -152,6 +226,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         mobilitycvR = &mobilitycv_global[scells[1]*user->ncp];
         compositionR = &composition_global[scells[1]*user->ncp];
         if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
+        temperatureavg = ((*temperatureL) + (*temperatureL))/2.0;
 
         /* get geometric data */
         deltaL = user->cellgeom[scells[0]]; deltaR = user->cellgeom[scells[1]];
@@ -159,9 +234,56 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         
         /* get common active phases */
         SetIntersection(setintersect,injectionL,injectionR,slistL,slistR);
-        for (g=0; g<setintersect[0]; g++) {
-            fluxp[g] = (pcellR[injectionR[g]] - pcellL[injectionL[g]]);
-        }        
+
+        /* get fluxes on cell faces */
+        for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
+            for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
+                (*currenteval) = 1.0;
+            }
+        }    
+        if (user->gradient_calculation) {
+            for (dim=0; dim<user->dim; dim++) {
+                offset = NULL;
+                ierr = DMPlexPointLocalRef(user->da_solution, scells[0], grad[dim], &offset);
+                grad_cellL[dim] = &offset[PF_OFFSET];
+                offset = NULL;
+                ierr = DMPlexPointLocalRef(user->da_solution, scells[1], grad[dim], &offset);
+                grad_cellR[dim] = &offset[PF_OFFSET];
+                for (g=0; g<setintersect[0]; g++)
+                    grad_cellavg[dim][g] = (grad_cellL[dim][injectionL[g]] + grad_cellR[dim][injectionR[g]])/2.0;
+            }        
+            for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
+                for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
+                    for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
+                        unitvec[dim] = grad_cellavg[dim][gk] - grad_cellavg[dim][gj];
+                        rhsval += unitvec[dim]*unitvec[dim];
+                    }    
+                    rhsval = sqrt(rhsval);
+                    if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
+                    currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
+                                                                            + setintersect[gj+1]          ]];
+                    for (dir=0; dir<currentinterface->ienergy->n; dir++) {
+                        for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
+                            dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
+                        (*currenteval) += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
+                    }
+                }
+            }
+        }    
+        memset(fluxp,0,setintersect[0]*sizeof(PetscReal));
+        for (gk=0, currenteval=&interface_energy[0]; gk<setintersect[0]; gk++) {
+            for (gj=gk+1; gj<setintersect[0]; gj++, currenteval++) {
+                currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
+                                                                        + setintersect[gj+1]          ]];
+                (*currenteval) *= currentinterface->ienergy->e->m0;
+                if (currentinterface->ienergy->e->unary->nTser)
+                    (*currenteval) *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
+                                          / R_GAS_CONST/temperatureavg);
+                fluxp[gk] -= (*currenteval)*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
+                fluxp[gj] -= (*currenteval)*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
+            }
+            fluxp[gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
+        }    
         for (c=0; c<user->ncp; c++) {
             if (fabs(mobilitycvL[c]) > 1e-32 && fabs(mobilitycvR[c]) > 1e-32) {
                 mobility_elem[c] = 2.0*mobilitycvL[c]*mobilitycvR[c]/(mobilitycvL[c] + mobilitycvR[c]);
@@ -179,9 +301,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             fluxt = 2.0*tconductivity[scells[0]]*tconductivity[scells[1]]
                   / (tconductivity[scells[0]] + tconductivity[scells[1]])
                   * ((*temperatureR) - (*temperatureL));
-        } else {
-            fluxt = 0.0;
-        }    
+        } else {fluxt = 0.0;}    
 
         {
             offset = NULL;
@@ -307,107 +427,78 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         EvalInterpolant(interpolant,pcell,slist[0]);
                 
         if (slist[0] > 1) {
-            /* calculate phase field gradients */
+            /* calculate interface quantities */ 
+            for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
+                    (*currenteval) = 1.0; (*currentmval) = 1.0;
+                }
+            }    
             if (user->gradient_calculation) {
-                gradient_matrix = &user->gradient_matrix[24*user->dim*localcell];
-                for (g=0; g<slist[0]; g++) {
-                    for (dim=0; dim<user->dim; dim++) {
-                        pgrad[user->dim*g+dim] = 0.0;
-                        for (nleastsq=0; nleastsq<user->gradient_nleastsq[localcell]; nleastsq++)
-                            pgrad[user->dim*g+dim] -= gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*pcell[g];
-                    }
-                }        
-                ierr = DMPlexGetConeSize(user->da_solution,cell,&conesize);
-                ierr = DMPlexGetCone(user->da_solution,cell,&cone);
-                nleastsq=0;
-                for (face=0; face<conesize; face++) {
-                    ierr = DMPlexGetSupportSize(user->da_solution, cone[face], &nsupp);
-                    ierr = DMPlexGetSupport(user->da_solution, cone[face], &scells);
-                    for (supp=0; supp<nsupp; supp++) {
-                        if (scells[supp] != cell && scells[supp] < user->ninteriorcells) {
-                            offset = NULL;
-                            ierr = DMPlexPointLocalRef(user->da_solution, scells[supp], fdof, &offset);
-                            F2IFUNC(nlist,&offset[AS_OFFSET]);
-                            ncell = &offset[PF_OFFSET];
-                            SetIntersection(setintersection,slistL,slistR,slist,nlist);
-                            for (g=0; g<setintersection[0]; g++) {
-                                for (dim=0; dim<user->dim; dim++) {
-                                    pgrad[user->dim*slistL[g]+dim] += gradient_matrix[dim*user->gradient_nleastsq[localcell]+nleastsq]*ncell[slistR[g]];
-                                }
-                            }        
-                            nleastsq++;
-                        }
-                    }
-                }
-            }
-            memset(interface_normals,0,user->dim*slist[0]*slist[0]*sizeof(PetscReal));
-            for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                    if (user->gradient_calculation) {
-                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) 
-                            rhsval += (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim])
-                                    * (pgrad[user->dim*gk+dim] - pgrad[user->dim*gj+dim]);
+                for (dim=0; dim<user->dim; dim++) {
+                    offset = NULL;
+                    ierr = DMPlexPointLocalRef(user->da_solution, cell, grad[dim], &offset);
+                    grad_cell[dim] = &offset[PF_OFFSET];
+                }    
+                for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
+                    for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
+                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
+                            unitvec[dim] = grad_cell[dim][gk] - grad_cell[dim][gj];
+                            rhsval += unitvec[dim]*unitvec[dim];
+                        }    
                         rhsval = sqrt(rhsval);
-                        if (rhsval > 1e-16) {
-                            for (dim=0; dim<user->dim; dim++) currentinormal[dim] = (  pgrad[user->dim*gk+dim] 
-                                                                                     - pgrad[user->dim*gj+dim])
-                                                                                   /( rhsval);
+                        if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
+                        currentinterface = &user->interface[user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]]];
+                        for (dir=0; dir<currentinterface->ienergy->n; dir++) {
+                            for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
+                                dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
+                            (*currenteval) += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
+                        }
+                        for (dir=0; dir<currentinterface->imobility->n; dir++) {
+                            for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
+                                dot_product += unitvec[dim]*currentinterface->imobility->dir[user->dim*dir+dim];
+                            (*currentmval) += FastPow(dot_product,4)*currentinterface->imobility->val[dir];
                         }
                     }
                 }
             }
-        
-            /* phase capillary driving force */ 
-            memset(interface_energy,0,slist[0]*slist[0]*sizeof(PetscReal));
-            for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                    currentival = &interface_energy[gk*slist[0]+gj];
-                    (*currentival) = 1.0;
-                    for (dir=0; dir<currentinterface->ienergy->n; dir++) {
-                        dot_product = 0.0;
-                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
-                                                                       * currentinterface->ienergy->dir[user->dim*dir+dim];
-                        (*currentival) += dot_product*dot_product*currentinterface->ienergy->val[dir];
-                    }
-                    (*currentival) *= currentinterface->ienergy->e->m0
-                                    * exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
+            for (gk=0, currenteval=&interface_energy[0], currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++, currenteval++, currentmval++) {
+                    currentinterface = &user->interface[user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]]];
+                    (*currenteval) *= currentinterface->ienergy->e->m0;
+                    if (currentinterface->ienergy->e->unary->nTser)
+                    (*currenteval) *= exp(  SumTSeries((*temperature), currentinterface->ienergy->e->unary[0])
+                                          / R_GAS_CONST/(*temperature));
+                    (*currentmval) *= currentinterface->imobility->m->m0;
+                    if (currentinterface->imobility->m->unary->nTser)
+                    (*currentmval) *= exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
                                           / R_GAS_CONST/(*temperature));
                 }
-            }   
-            memset(caplflux  ,0,slist[0]*sizeof(PetscReal));
+            }    
+
+            /* phase capillary driving force */ 
             memset(caplsource,0,slist[0]*sizeof(PetscReal));
-            for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                    currentival = &interface_energy[gk*slist[0]+gj];
-                    caplflux  [gk] -= (*currentival)*plapl[gj];
-                    caplflux  [gj] -= (*currentival)*plapl[gk];
-                    caplsource[gk] -= (*currentival)*pcell[gj];
-                    caplsource[gj] -= (*currentival)*pcell[gk];
+            for (gk=0, currenteval=&interface_energy[0]; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++, currenteval++) {
+                    caplsource[gk] -= (*currenteval)*pcell[gj];
+                    caplsource[gj] -= (*currenteval)*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
                         triplejunctionenergy = 0.0;
-                        currentival = &interface_energy[gk*slist[0]+gj];
-                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
-                                               triplejunctionenergy : (*currentival);
-                        currentival = &interface_energy[gj*slist[0]+gi];
-                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
-                                               triplejunctionenergy : (*currentival);
-                        currentival = &interface_energy[gk*slist[0]+gi];
-                        triplejunctionenergy = triplejunctionenergy > (*currentival) ?
-                                               triplejunctionenergy : (*currentival);
+                        currenteval = &interface_energy[gk*slist[0]+gj];
+                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
+                                               triplejunctionenergy : (*currenteval);
+                        currenteval = &interface_energy[gj*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
+                                               triplejunctionenergy : (*currenteval);
+                        currenteval = &interface_energy[gk*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
+                                               triplejunctionenergy : (*currenteval);
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
                     }
                 }
-                caplflux  [gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
                 caplsource[gk] *= 8.0/user->solparams.interfacewidth;
+                caplsource[gk] += plapl[gk];
             }   
 
             /* phase chemical driving force */ 
@@ -437,34 +528,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             MatMulInterpolantDerivative(chemsource,pcell,slist[0]);
 
             /* build unconstrained RHS to calculate active set */ 
-            memset(interface_mobility,0,slist[0]*slist[0]*sizeof(PetscReal));
-            for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                    currentival = &interface_mobility[gk*slist[0]+gj];
-                    (*currentival) = 1.0;
-                    for (dir=0; dir<currentinterface->imobility->n; dir++) {
-                        dot_product = 0.0;
-                        for (dim=0; dim<user->dim; dim++) dot_product += currentinormal[dim]
-                                                                       * currentinterface->imobility->dir[user->dim*dir+dim];
-                        (*currentival) += dot_product*dot_product*currentinterface->imobility->val[dir];
-                    }
-                    (*currentival) *= currentinterface->imobility->m->m0
-                                    * exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
-                                          / R_GAS_CONST/(*temperature));
-                }
-            }   
             nactivephases = 0.0;
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
-            for (gk=0; gk<slist[0]; gk++) {
-                for (gj=gk+1; gj<slist[0]; gj++) {
-                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                    currentinterface = &user->interface[interfacekj];
-                    currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                    currentival = &interface_mobility[gk*slist[0]+gj];
-                    rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+            for (gk=0, currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
+                    rhsval = (*currentmval)*(  (caplflux  [gk] - caplflux  [gj])
                                              + (caplsource[gk] - caplsource[gj])
                                              - (chemsource[gk] - chemsource[gj])
                                              * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
@@ -477,15 +545,11 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
 
             /* build constrained RHS from active set*/ 
-            for (gk=0; gk<slist[0]; gk++) {
+            for (gk=0, currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
                 if (active[gk]) {
-                    for (gj=gk+1; gj<slist[0]; gj++) {
+                    for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
                         if (active[gj]) {
-                            interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                            currentinterface = &user->interface[interfacekj];
-                            currentinormal = &interface_normals[user->dim*(gk*slist[0]+gj)];
-                            currentival = &interface_mobility[gk*slist[0]+gj];
-                            rhsval = (*currentival)*(  (caplflux  [gk] - caplflux  [gj])
+                            rhsval = (*currentmval)*(  (caplflux  [gk] - caplflux  [gj])
                                                      + (caplsource[gk] - caplsource[gj])
                                                      - (chemsource[gk] - chemsource[gj])
                                                      * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
@@ -493,7 +557,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                         }
                     }
                     pfrhs[gk] /= nactivephases;
-                }        
+                } else {currentmval += slist[0] - (gk+1);}        
             }
         }    
         
@@ -589,6 +653,14 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             Invertmatrix(dmdc,dcdm,DP_SIZE);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,DP_SIZE);  
         }
+    }
+
+    /* Restore precalculated gradient quantities */
+    if (user->gradient_calculation) {
+        for (dim=0; dim<user->dim; dim++) {
+            ierr = VecRestoreArray(gradient_local[dim],&grad[dim]); CHKERRQ(ierr);
+            ierr = DMRestoreLocalVector(user->da_solution,&gradient_local[dim]); CHKERRQ(ierr);
+        }    
     }
 
     /* Restore FVM residuals */
