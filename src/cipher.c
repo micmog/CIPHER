@@ -482,7 +482,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     caplsource[gk] -= (*currenteval)*pcell[gj];
                     caplsource[gj] -= (*currenteval)*pcell[gk];
                     for (gi=gj+1; gi<slist[0]; gi++) {
-                        triplejunctionenergy = 0.0;
+                        triplejunctionenergy = 2.0e+8;
                         currenteval = &interface_energy[gk*slist[0]+gj];
                         triplejunctionenergy = triplejunctionenergy > (*currenteval) ?
                                                triplejunctionenergy : (*currenteval);
@@ -691,7 +691,7 @@ PetscErrorCode PostStep(TS ts)
     PetscReal      currenttime, currenttimestep, *temperature;
     DMLabel        slabel;
     IS             siteIS;
-    PetscReal      cellvolume, interpolant[PF_SIZE], chemsource[PF_SIZE];
+    PetscReal      cellvolume, interpolant[PF_SIZE];
     PetscInt       site, site_phase, nsitecells, ngdof, interfacekj;
     NUCLEUS        *currentnucleus;
     PetscSection   gsection;
@@ -705,7 +705,6 @@ PetscErrorCode PostStep(TS ts)
     
     /* Update nucleation events */
     if (user->nsites) {
-        PetscReal sitefrac[PF_SIZE*SF_SIZE];
         PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
         PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
         PetscReal temperature_leaf[user->nsites], temperature_root[user->nsites_local];
@@ -747,34 +746,13 @@ PetscErrorCode PostStep(TS ts)
                         /* calculate phase interpolants */
                         EvalInterpolant(interpolant,pcell,slist[0]);
                 
-                        memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-                        for (gk=0; gk<slist[0]; gk++) {
-                            for (gj=gk+1; gj<slist[0]; gj++) {
-                                interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
-                                currentinterface = &user->interface[interfacekj];
-                                if (currentinterface->potential) {
-                                    for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
-                                                                                      * currentinterface->potential[c];
-                                }    
-                            }
-                        }    
-                        slist[++slist[0]] = site_phase;
-                        SitepotentialExplicit(&ccell[(slist[0]-1)*SP_SIZE],sitematerial->c0,(*temperature),site_phase,user);
-                        for (g =0; g<slist[0];  g++) {
-                            currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                            for (s=0; s<currentmaterial->nsites; s++) {
-                                for (c=0; c<user->ndp; c++) {
-                                    sitepot_im[s*user->ndp+c] = currentmaterial->stochiometry[s]*(dcell[c] - chempot_interface[c]) 
-                                                              - ccell[g*SP_SIZE+s*user->ndp+c];
-                                }
-                            }
-                            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
-                        }
-                        memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
-                        Chemenergy(chemsource,sitefrac,chempot_interface,(*temperature),slist,user);
-                        cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); volume_leaf[site] += cellvolume;
-                        for (g =0; g<slist[0]-1;  g++) gv_leaf[site] += cellvolume*interpolant[g]*(chemsource[g]-chemsource[slist[0]-1]);
-                        temperature_leaf[site] += cellvolume*(*temperature);
+                        /* calculate nucleation barrier */
+                        cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); 
+                        volume_leaf[site] += cellvolume;
+                        temperature_leaf[site] += cellvolume
+                                                * (*temperature);
+                        gv_leaf[site] += cellvolume
+                                       * NucleationBarrier(dcell,ccell,(*temperature),interpolant,site,slist,user);
                     }
                 }    
                 if (siteIS) {
@@ -803,9 +781,9 @@ PetscErrorCode PostStep(TS ts)
             if (user->siteactivity_local[site]) {
                 gv_root[site] /= volume_root[site];
                 temperature_root[site] /= volume_root[site];
-                deactive_root[site] = Nucleation(currenttime,currenttimestep,
-                                                 temperature_root[site],volume_root[site],gv_root[site],
-                                                 user->siteoffset+site,user);
+                deactive_root[site] = NucleationEvent(currenttime,currenttimestep,
+                                                      temperature_root[site],volume_root[site],gv_root[site],
+                                                      user->siteoffset+site,user);
             }    
         }  
         memset(deactive_leaf,0,user->nsites*sizeof(char));

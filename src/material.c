@@ -17,7 +17,8 @@
 
 /* nucleation functions */
 typedef struct NUCFUNC {
-    char (*Nucleation) (const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+    char (*NucleationEvent) (const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+    PetscReal (*NucleationBarrier) (const PetscReal *, const PetscReal *, const PetscReal, const PetscReal *, const uint16_t, const uint16_t *, const AppCtx *);
 } NUCFUNC;
 
 /* constitutive functions */
@@ -36,9 +37,9 @@ static NUCFUNC *Nucfunc;
 /*
  Classical nucleation theory model for new phases
  */
-char Nucleation_cnt(const PetscReal current_time, const PetscReal current_timestep, 
-                    const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                    const PetscInt siteID, const AppCtx *user)
+char NucleationEvent_cnt(const PetscReal current_time, const PetscReal current_timestep, 
+                         const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                         const PetscInt siteID, const AppCtx *user)
 {
     CNT_NUC *currentcntnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.cnt;
     PetscReal KbT = KBANGST2*temperature;
@@ -66,9 +67,9 @@ char Nucleation_cnt(const PetscReal current_time, const PetscReal current_timest
 /*
  Constant nucleation rate model for new phases
  */
-char Nucleation_constant(const PetscReal current_time, const PetscReal current_timestep, 
-                         const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                         const PetscInt siteID, const AppCtx *user)
+char NucleationEvent_constant(const PetscReal current_time, const PetscReal current_timestep, 
+                              const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                              const PetscInt siteID, const AppCtx *user)
 {
     CONST_NUC *currentconstnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.constant;
     PetscReal random_number = (rand()/(double)RAND_MAX);
@@ -78,14 +79,13 @@ char Nucleation_constant(const PetscReal current_time, const PetscReal current_t
 /*
  Thermal nucleation rate model for new phases
  */
-char Nucleation_thermal(const PetscReal current_time, const PetscReal current_timestep, 
-                        const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                        const PetscInt siteID, const AppCtx *user)
+char NucleationEvent_thermal(const PetscReal current_time, const PetscReal current_timestep, 
+                             const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                             const PetscInt siteID, const AppCtx *user)
 {
     THERMAL_NUC *currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
     PetscReal KbT = KBANGST2*temperature;
-    PetscReal thermal_gv = currentthermalnuc->enthalpy_fusion*(1.0 - temperature/currentthermalnuc->solvus_temperature);
-    PetscReal radius_c = 2.0*currentthermalnuc->gamma/thermal_gv/ANGSTROM;
+    PetscReal radius_c = 2.0*currentthermalnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentthermalnuc->lengthscale*pow(volume,1.0/user->dim)
         && radius_c > currentthermalnuc->minsize) {
         PetscReal zeldovich = currentthermalnuc->atomicvolume
@@ -109,21 +109,153 @@ char Nucleation_thermal(const PetscReal current_time, const PetscReal current_ti
 /*
  None nucleation model for new phases
  */
-char Nucleation_none(const PetscReal current_time, const PetscReal current_timestep, 
-                     const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                     const PetscInt siteID, const AppCtx *user)
+char NucleationEvent_none(const PetscReal current_time, const PetscReal current_timestep, 
+                          const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                          const PetscInt siteID, const AppCtx *user)
 {
     return 0;
 }
 
 /*
- Nucleation model for new phases
+ NucleationEvent model for new phases
  */
-char Nucleation(const PetscReal current_time, const PetscReal current_timestep, 
-                const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
-                const PetscInt siteID, const AppCtx *user)
+char NucleationEvent(const PetscReal current_time, const PetscReal current_timestep, 
+                     const PetscReal temperature, const PetscReal volume, const PetscReal gv, 
+                     const PetscInt siteID, const AppCtx *user)
 {
-    return Nucfunc[user->sitenucleusmapping[siteID]].Nucleation(current_time,current_timestep,temperature,volume,gv,siteID,user);
+    return Nucfunc[user->sitenucleusmapping[siteID]].NucleationEvent(current_time,current_timestep,temperature,volume,gv,siteID,user);
+}
+
+/*
+ Classical nucleation theory model for new phases
+ */
+PetscReal NucleationBarrier_cnt(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
+                                const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
+{
+    PetscReal phaseenergy, matrixenergy;
+    PetscReal sitefrac[PF_SIZE*SF_SIZE], sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
+    PetscInt g, gk, gj, c, s, site_phase = user->sitephasemapping[siteID];
+    MATERIAL *currentmaterial;
+    INTERFACE *currentinterface;
+    
+    memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
+    for (gk=0; gk<phaseID[0]; gk++) {
+        for (gj=gk+1; gj<phaseID[0]; gj++) {
+            currentinterface = &user->interface[user->interfacelist[phaseID[gk+1]*user->npf+phaseID[gj+1]]];
+            if (currentinterface->potential) {
+                for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
+                                                                  * currentinterface->potential[c];
+            }    
+        }
+    }    
+    for (g =0; g<phaseID[0];  g++) {
+        currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
+        for (s=0; s<currentmaterial->nsites; s++) {
+            for (c=0; c<user->ndp; c++) {
+                sitepot_im[s*user->ndp+c] = currentmaterial->stochiometry[s]*(chempot[c] - chempot_interface[c]) 
+                                          - sitepot_ex[g*SP_SIZE+s*user->ndp+c];
+            }
+        }
+        Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,phaseID[g+1],user);
+    }
+
+    for (g=0, matrixenergy=0.0; g<phaseID[0]; g++) {
+        currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
+        Matfunc[user->phasematerialmapping[phaseID[g+1]]].Chemenergy(&phaseenergy,&sitefrac[g*SF_SIZE],temperature,currentmaterial->energy,user->ncp);
+        matrixenergy += interpolant[g]*phaseenergy/currentmaterial->molarvolume;    
+    }
+    
+    currentmaterial = &user->material[user->phasematerialmapping[site_phase]];
+    SitepotentialExplicit(sitepot_im,currentmaterial->c0,temperature,site_phase,user);
+    for (s=0; s<currentmaterial->nsites; s++) {
+        for (c=0; c<user->ndp; c++) {
+            sitepot_im[s*user->ndp+c] = currentmaterial->stochiometry[s]*(chempot[c] - chempot_interface[c]) 
+                                      - sitepot_im[s*user->ndp+c];
+        }
+    }
+    Sitefrac(sitefrac,sitepot_im,temperature,site_phase,user);
+    Matfunc[user->phasematerialmapping[site_phase]].Chemenergy(&phaseenergy,sitefrac,temperature,currentmaterial->energy,user->ncp);
+    phaseenergy /= currentmaterial->molarvolume;
+    return (matrixenergy - phaseenergy);
+}
+
+/*
+ Constant nucleation rate model for new phases
+ */
+PetscReal NucleationBarrier_constant(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
+                                     const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
+{
+    return 0.0;
+}
+
+/*
+ Thermal nucleation rate model for new phases
+ */
+PetscReal NucleationBarrier_thermal(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
+                                    const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
+{
+    PetscReal solvus_temperature, composition_avg, sitefrac_avg;
+    PetscReal sitefrac[PF_SIZE*SF_SIZE], sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
+    PetscInt g, gk, gj, c, s;
+    MATERIAL *currentmaterial;
+    INTERFACE *currentinterface;
+    THERMAL_NUC *currentthermalnuc;
+    
+    currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
+    solvus_temperature = currentthermalnuc->solvus_temperature_0;
+    if (currentthermalnuc->solvus_temperature_c) {
+        memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
+        for (gk=0; gk<phaseID[0]; gk++) {
+            for (gj=gk+1; gj<phaseID[0]; gj++) {
+                currentinterface = &user->interface[user->interfacelist[phaseID[gk+1]*user->npf+phaseID[gj+1]]];
+                if (currentinterface->potential) {
+                    for (c=0; c<user->ndp; c++) chempot_interface[c] += interpolant[gk]*interpolant[gj]
+                                                                      * currentinterface->potential[c];
+                }    
+            }
+        }    
+        for (g =0; g<phaseID[0];  g++) {
+            currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
+            for (s=0; s<currentmaterial->nsites; s++) {
+                for (c=0; c<user->ndp; c++) {
+                    sitepot_im[s*user->ndp+c] = currentmaterial->stochiometry[s]*(chempot[c] - chempot_interface[c]) 
+                                              - sitepot_ex[g*SP_SIZE+s*user->ndp+c];
+                }
+            }
+            Sitefrac(&sitefrac[g*SF_SIZE],sitepot_im,temperature,phaseID[g+1],user);
+        }
+
+        for (c=0; c<user->ncp; c++) {
+            for (g=0, composition_avg=0.0; g<phaseID[0]; g++) {
+                currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
+                for (s=0, sitefrac_avg=0.0; s<currentmaterial->nsites; s++) {
+                    sitefrac_avg += currentmaterial->stochiometry[s]*sitefrac[s*user->ncp+c];
+                }
+                composition_avg += interpolant[g]*sitefrac_avg;
+            }
+            solvus_temperature += composition_avg*currentthermalnuc->solvus_temperature_c[c];
+        }
+    }       
+    
+    return currentthermalnuc->enthalpy_fusion*(1.0 - temperature/solvus_temperature);
+}
+
+/*
+ None nucleation model for new phases
+ */
+PetscReal NucleationBarrier_none(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
+                                 const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
+{
+    return 0.0;
+}
+
+/*
+ NucleationEvent model for new phases
+ */
+PetscReal NucleationBarrier(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
+                            const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
+{
+    return Nucfunc[user->sitenucleusmapping[siteID]].NucleationBarrier(chempot,sitepot_ex,temperature,interpolant,siteID,phaseID,user);
 }
 
 /*
@@ -778,13 +910,17 @@ void material_init(const AppCtx *user)
     NUCLEUS *currentnucleus = &user->nucleus[0];
     for (PetscInt nuc=0; nuc<user->nnuclei; nuc++,currentnucleus++) {
         if (currentnucleus->nuc_model == CNT_NUCLEATION) {
-            Nucfunc[nuc].Nucleation = &Nucleation_cnt;
+            Nucfunc[nuc].NucleationEvent = &NucleationEvent_cnt;
+            Nucfunc[nuc].NucleationBarrier = &NucleationBarrier_cnt;
         } else if (currentnucleus->nuc_model == CONST_NUCLEATION) {
-            Nucfunc[nuc].Nucleation = &Nucleation_constant;
+            Nucfunc[nuc].NucleationEvent = &NucleationEvent_constant;
+            Nucfunc[nuc].NucleationBarrier = &NucleationBarrier_constant;
         } else if (currentnucleus->nuc_model == THERMAL_NUCLEATION) {
-            Nucfunc[nuc].Nucleation = &Nucleation_thermal;
+            Nucfunc[nuc].NucleationEvent = &NucleationEvent_thermal;
+            Nucfunc[nuc].NucleationBarrier = &NucleationBarrier_thermal;
         } else if (currentnucleus->nuc_model == NONE_NUCLEATION) {
-            Nucfunc[nuc].Nucleation = &Nucleation_none;
+            Nucfunc[nuc].NucleationEvent = &NucleationEvent_none;
+            Nucfunc[nuc].NucleationBarrier = &NucleationBarrier_none;
         }
     }
 }

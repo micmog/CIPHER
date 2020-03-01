@@ -764,8 +764,15 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              currentnucleus->nuc_model = THERMAL_NUCLEATION;
              THERMAL_NUC *currentthermalnuc = &currentnucleus->nucleation.thermal;
              /* solvus temperature */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "solvus_temperature", buffer, filesize);
-             assert(propsize == 1); currentthermalnuc->solvus_temperature = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "solvus_temperature_0", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->solvus_temperature_0 = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "solvus_temperature_c", buffer, filesize);
+             if (propsize) {
+                 assert(propsize == user->ncp); currentthermalnuc->solvus_temperature_c = malloc(user->ncp*sizeof(PetscReal));
+                 for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermalnuc->solvus_temperature_c[propctr] = atof(propval[propctr]);
+             } else {
+                 currentthermalnuc->solvus_temperature_c = NULL;
+             }    
              /* enthalpy of fusion */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion", buffer, filesize);
              assert(propsize == 1); currentthermalnuc->enthalpy_fusion = atof(propval[0]);

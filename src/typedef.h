@@ -82,7 +82,8 @@ typedef struct CONST_NUC {
 typedef struct THERMAL_NUC {
     PetscReal D0, migration, gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
-    PetscReal solvus_temperature, enthalpy_fusion;
+    PetscReal solvus_temperature_0, *solvus_temperature_c; 
+    PetscReal enthalpy_fusion;
 } THERMAL_NUC;
 
 /* nucleation model */
