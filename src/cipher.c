@@ -42,7 +42,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     const PetscInt    *scells, *cone;
     PetscReal         ffactor, cfactor, deltaL, deltaR;
     PetscInt          localcell, cell, localface, face; 
-    PetscReal         interpolant[PF_SIZE], caplflux[PF_SIZE], caplsource[PF_SIZE];
+    PetscReal         interpolant[PF_SIZE], caplsource[PF_SIZE];
     PetscReal         chemsource[PF_SIZE], rhs_unconstrained[PF_SIZE];
     PetscBool         active[PF_SIZE];
     PetscReal         dmdc[user->ndp*user->ndp], dcdm[user->ndp*user->ndp];
@@ -532,8 +532,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             memset(rhs_unconstrained,0,slist[0]*sizeof(PetscReal));
             for (gk=0, currentmval=&interface_mobility[0]; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
-                    rhsval = (*currentmval)*(  (caplflux  [gk] - caplflux  [gj])
-                                             + (caplsource[gk] - caplsource[gj])
+                    rhsval = (*currentmval)*(  (caplsource[gk] - caplsource[gj])
                                              - (chemsource[gk] - chemsource[gj])
                                              * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                     rhs_unconstrained[gk] += rhsval; rhs_unconstrained[gj] -= rhsval;
@@ -549,8 +548,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 if (active[gk]) {
                     for (gj=gk+1; gj<slist[0]; gj++, currentmval++) {
                         if (active[gj]) {
-                            rhsval = (*currentmval)*(  (caplflux  [gk] - caplflux  [gj])
-                                                     + (caplsource[gk] - caplsource[gj])
+                            rhsval = (*currentmval)*(  (caplsource[gk] - caplsource[gj])
                                                      - (chemsource[gk] - chemsource[gj])
                                                      * 8.0*sqrt(interpolant[gk]*interpolant[gj])/PETSC_PI);
                             pfrhs[gk] += rhsval; pfrhs[gj] -= rhsval;
