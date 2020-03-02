@@ -14,13 +14,14 @@ solution_parameters:
   time : [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 1.0]
   temperature_rate: [-3.418, -2.724, -2.293, -2.003, -1.84, -1.595, -1.411, -1.386, -1.229, -1.234, -1.056, -1.073, -1.123, -0.742, -1.02, -0.82, -0.752, -0.814, -0.632, -0.662, -0.724, -0.465, -0.56, -0.542, -0.287, -0.604, -0.39, -0.274, -0.182, -0.151, -0.107, -0.088, -0.072, -0.01, 0.0]
   interfacewidth : 4
-  initblocksize : [2, 2]
-  initrefine : 9
-  maxnrefine : 9
-  minnrefine : 1
-  initcoarsen : 9
+  initblocksize : [1, 1]
+  initrefine : 10
+  maxnrefine : 10
+  minnrefine : 0
+  initcoarsen : 10
   amrinterval : 200 
   outputfreq : 5000
+  outfile: 7085
   interpolation: cubic
   petscoptions : -ts_adapt_monitor
   random_seed : 1579993586
@@ -308,7 +309,8 @@ nucleus:
   precipitate :
     matrix : [0, 1]
     nucleation_model: thermal
-    solvus_temperature_0: 700.0
+    solvus_temperature_0: 546.569
+    solvus_temperature_c: [0.0, 6500.0, 4400.0, 690.0]
     enthalpy_fusion: 5.0e+10
     length_scale : 10.0
     minsize : 1.0
@@ -329,7 +331,7 @@ interface :
         t_exponent: 0
   pptboundary :
     energy : 
-      e0: 1.0e+8
+      e0: 1.5e+8
     mobility : 
       m0: 1.0e+2
       activation_energy:
