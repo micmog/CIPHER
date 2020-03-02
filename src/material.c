@@ -229,7 +229,7 @@ PetscReal NucleationBarrier_thermal(const PetscReal *chempot, const PetscReal *s
             for (g=0, composition_avg=0.0; g<phaseID[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
                 for (s=0, sitefrac_avg=0.0; s<currentmaterial->nsites; s++) {
-                    sitefrac_avg += currentmaterial->stochiometry[s]*sitefrac[s*user->ncp+c];
+                    sitefrac_avg += currentmaterial->stochiometry[s]*sitefrac[g*SF_SIZE+s*user->ncp+c];
                 }
                 composition_avg += interpolant[g]*sitefrac_avg;
             }
