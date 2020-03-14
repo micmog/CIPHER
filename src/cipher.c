@@ -40,7 +40,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscScalar       *tlapl, *tlaplL, *tlaplR, *tmrhs, fluxt;
     uint16_t          slist[AS_SIZE], slistL[AS_SIZE], slistR[AS_SIZE], nlist[AS_SIZE], setintersection[AS_SIZE];
     const PetscInt    *scells, *cone;
-    PetscReal         ffactor, cfactor, deltaL, deltaR;
+    PetscReal         ffactor, cfactor, deltaL, deltaR, volL, volR;
     PetscInt          localcell, cell, localface, face; 
     PetscReal         interpolant[PF_SIZE], caplsource[PF_SIZE];
     PetscReal         chemsource[PF_SIZE], rhs_unconstrained[PF_SIZE];
@@ -198,6 +198,24 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
             }
         }
+    } else {
+        for (cell = 0; cell < user->ninteriorcells; ++cell) {
+            /* get fields */
+            offset = NULL;
+            ierr = DMPlexPointLocalRef(user->da_solution, cell, fdof, &offset); CHKERRQ(ierr);
+            F2IFUNC(slist,&offset[AS_OFFSET]);
+            pcell = &offset[PF_OFFSET];
+
+            /* calculate phase interpolants */
+            EvalInterpolant(interpolant,pcell,slist[0]);
+
+            /* calculate cell quantities */
+            tconductivity[cell] = 0.0;
+            for (g =0; g<slist[0];  g++) {
+                currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+                tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
+            }
+        }    
     }
 
     /* Loop over faces and compute flux contribution to the RHS */
@@ -225,116 +243,109 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         temperatureR = &offset[TM_OFFSET];
         mobilitycvR = &mobilitycv_global[scells[1]*user->ncp];
         compositionR = &composition_global[scells[1]*user->ncp];
-        if (slistL[0] <= 1 && slistR[0] <= 1 && user->ncp <= 1) continue;
+        offset = NULL;
+        ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
+        plaplL = &offset[PF_OFFSET];
+        dlaplL = &offset[DP_OFFSET];
+        tlaplL = &offset[TM_OFFSET];
+        offset = NULL;
+        ierr = DMPlexPointLocalRef(user->da_solution, scells[1], lap,  &offset); CHKERRQ(ierr);
+        plaplR = &offset[PF_OFFSET];
+        dlaplR = &offset[DP_OFFSET];
+        tlaplR = &offset[TM_OFFSET];
         temperatureavg = ((*temperatureL) + (*temperatureL))/2.0;
 
         /* get geometric data */
         deltaL = user->cellgeom[scells[0]]; deltaR = user->cellgeom[scells[1]];
-        ffactor = 2.0*(deltaL < deltaR ? FastPow(deltaL,user->dim-1) : FastPow(deltaR,user->dim-1))/(deltaL + deltaR);
+        volL = FastPow(deltaL,user->dim-1); volR = FastPow(deltaR,user->dim-1); 
+        ffactor = 2.0*(deltaL < deltaR ? volL/deltaL : volR/deltaR)/(deltaL + deltaR);
         
-        /* get common active phases */
-        SetIntersection(setintersect,injectionL,injectionR,slistL,slistR);
+        if (slistL[0] > 1 || slistL[1] > 1) {
+            /* get common active phases */
+            SetIntersection(setintersect,injectionL,injectionR,slistL,slistR);
 
-        /* get fluxes on cell faces */
-        for (gk=0; gk<setintersect[0]; gk++) {
-            for (gj=gk+1; gj<setintersect[0]; gj++) {
-                interface_energy[gk*setintersect[0]+gj] = 1.0;
-            }
-        }    
-        if (user->gradient_calculation) {
-            for (dim=0; dim<user->dim; dim++) {
-                offset = NULL;
-                ierr = DMPlexPointLocalRef(user->da_solution, scells[0], grad[dim], &offset);
-                grad_cellL[dim] = &offset[PF_OFFSET];
-                offset = NULL;
-                ierr = DMPlexPointLocalRef(user->da_solution, scells[1], grad[dim], &offset);
-                grad_cellR[dim] = &offset[PF_OFFSET];
-                for (g=0; g<setintersect[0]; g++)
-                    grad_cellavg[dim][g] = (grad_cellL[dim][injectionL[g]] + grad_cellR[dim][injectionR[g]])/2.0;
-            }        
+            /* get fluxes on cell faces */
             for (gk=0; gk<setintersect[0]; gk++) {
                 for (gj=gk+1; gj<setintersect[0]; gj++) {
-                    for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
-                        unitvec[dim] = grad_cellavg[dim][gk] - grad_cellavg[dim][gj];
-                        rhsval += unitvec[dim]*unitvec[dim];
-                    }    
-                    rhsval = sqrt(rhsval);
-                    if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
+                    interface_energy[gk*setintersect[0]+gj] = 1.0;
+                }
+            }    
+            if (user->gradient_calculation) {
+                for (dim=0; dim<user->dim; dim++) {
+                    offset = NULL;
+                    ierr = DMPlexPointLocalRef(user->da_solution, scells[0], grad[dim], &offset);
+                    grad_cellL[dim] = &offset[PF_OFFSET];
+                    offset = NULL;
+                    ierr = DMPlexPointLocalRef(user->da_solution, scells[1], grad[dim], &offset);
+                    grad_cellR[dim] = &offset[PF_OFFSET];
+                    for (g=0; g<setintersect[0]; g++)
+                        grad_cellavg[dim][g] = (grad_cellL[dim][injectionL[g]] + grad_cellR[dim][injectionR[g]])/2.0;
+                }        
+                for (gk=0; gk<setintersect[0]; gk++) {
+                    for (gj=gk+1; gj<setintersect[0]; gj++) {
+                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
+                            unitvec[dim] = grad_cellavg[dim][gk] - grad_cellavg[dim][gj];
+                            rhsval += unitvec[dim]*unitvec[dim];
+                        }    
+                        rhsval = sqrt(rhsval);
+                        if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
+                        currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
+                                                                                + setintersect[gj+1]          ]];
+                        interfacekj = gk*setintersect[0]+gj;
+                        for (dir=0; dir<currentinterface->ienergy->n; dir++) {
+                            for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
+                                dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
+                            interface_energy[interfacekj] += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
+                        }
+                    }
+                }
+            }    
+            memset(fluxp,0,setintersect[0]*sizeof(PetscReal));
+            for (gk=0; gk<setintersect[0]; gk++) {
+                for (gj=gk+1; gj<setintersect[0]; gj++) {
                     currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
                                                                             + setintersect[gj+1]          ]];
                     interfacekj = gk*setintersect[0]+gj;
-                    for (dir=0; dir<currentinterface->ienergy->n; dir++) {
-                        for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
-                            dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
-                        interface_energy[interfacekj] += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
-                    }
+                    interface_energy[interfacekj] *= currentinterface->ienergy->e->m0;
+                    if (currentinterface->ienergy->e->unary->nTser)
+                        interface_energy[interfacekj] *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
+                                                             / R_GAS_CONST/temperatureavg);
+                    fluxp[gk] -= interface_energy[interfacekj]*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
+                    fluxp[gj] -= interface_energy[interfacekj]*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
                 }
+                fluxp[gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
+                plaplL[injectionL[gk]] += ffactor*fluxp[gk]/volL;
+                plaplR[injectionR[gk]] -= ffactor*fluxp[gk]/volR;
             }
         }    
-        memset(fluxp,0,setintersect[0]*sizeof(PetscReal));
-        for (gk=0; gk<setintersect[0]; gk++) {
-            for (gj=gk+1; gj<setintersect[0]; gj++) {
-                currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
-                                                                        + setintersect[gj+1]          ]];
-                interfacekj = gk*setintersect[0]+gj;
-                interface_energy[interfacekj] *= currentinterface->ienergy->e->m0;
-                if (currentinterface->ienergy->e->unary->nTser)
-                    interface_energy[interfacekj] *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
-                                                         / R_GAS_CONST/temperatureavg);
-                fluxp[gk] -= interface_energy[interfacekj]*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
-                fluxp[gj] -= interface_energy[interfacekj]*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
+        
+        if (user->ndp) {
+            for (c=0; c<user->ncp; c++) {
+                if (fabs(mobilitycvL[c]) > 1e-32 && fabs(mobilitycvR[c]) > 1e-32) {
+                    mobility_elem[c] = 2.0*mobilitycvL[c]*mobilitycvR[c]/(mobilitycvL[c] + mobilitycvR[c]);
+                } else {
+                    mobility_elem[c] = 0.0;
+                }    
+                composition_avg[c] = 2.0*compositionL[c]*compositionR[c]/(compositionL[c] + compositionR[c]);
             }
-            fluxp[gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
-        }    
-        for (c=0; c<user->ncp; c++) {
-            if (fabs(mobilitycvL[c]) > 1e-32 && fabs(mobilitycvR[c]) > 1e-32) {
-                mobility_elem[c] = 2.0*mobilitycvL[c]*mobilitycvR[c]/(mobilitycvL[c] + mobilitycvR[c]);
-            } else {
-                mobility_elem[c] = 0.0;
-            }    
-            composition_avg[c] = 2.0*compositionL[c]*compositionR[c]/(compositionL[c] + compositionR[c]);
+            CompositionMobilityVolumeRef(work_vec_MB,mobility_elem,composition_avg,user);
+            for (c=0; c<user->ndp; c++) {
+                work_vec_DP[c] = (chempotR[c] - chempotL[c]);
+            }
+            MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+            for (c=0; c<user->ndp; c++) {
+                dlaplL[c] += ffactor*fluxd[c]/volL;
+                dlaplR[c] -= ffactor*fluxd[c]/volR;
+            }
         }
-        CompositionMobilityVolumeRef(work_vec_MB,mobility_elem,composition_avg,user);
-        for (c=0; c<user->ndp; c++) {
-            work_vec_DP[c] = (chempotR[c] - chempotL[c]);
-        }
-        MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
+        
         if (fabs(tconductivity[scells[0]]) > 1e-32 && fabs(tconductivity[scells[1]]) > 1e-32) {
             fluxt = 2.0*tconductivity[scells[0]]*tconductivity[scells[1]]
                   / (tconductivity[scells[0]] + tconductivity[scells[1]])
                   * ((*temperatureR) - (*temperatureL));
-        } else {fluxt = 0.0;}    
-
-        {
-            offset = NULL;
-            ierr = DMPlexPointLocalRef(user->da_solution, scells[0], lap,  &offset); CHKERRQ(ierr);
-            plaplL = &offset[PF_OFFSET];
-            dlaplL = &offset[DP_OFFSET];
-            tlaplL = &offset[TM_OFFSET];
-            cfactor = ffactor/FastPow(deltaL,user->dim);
-            for (g=0; g<setintersect[0]; g++) {
-                plaplL[injectionL[g]] += cfactor*fluxp[g];
-            }    
-            for (c=0; c<user->ndp; c++) {
-                dlaplL[c] += cfactor*fluxd[c];
-            }
-            *tlaplL += cfactor*fluxt;
-        }
-        {
-            offset = NULL;
-            ierr = DMPlexPointLocalRef(user->da_solution, scells[1], lap,  &offset); CHKERRQ(ierr);
-            plaplR = &offset[PF_OFFSET];
-            dlaplR = &offset[DP_OFFSET];
-            tlaplR = &offset[TM_OFFSET];
-            cfactor = ffactor/FastPow(deltaR,user->dim);
-            for (g=0; g<setintersect[0]; g++) {
-                plaplR[injectionR[g]] -= cfactor*fluxp[g];
-            }    
-            for (c=0; c<user->ndp; c++) {
-                dlaplR[c] -= cfactor*fluxd[c];
-            }
-            *tlaplR -= cfactor*fluxt;
-        }
+            *tlaplL += ffactor*fluxt/volL;
+            *tlaplR -= ffactor*fluxt/volR;
+        }   
     }    
 
     /* Loop over boundary faces and add boundary conditions */
