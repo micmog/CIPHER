@@ -278,7 +278,23 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          {
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
           assert(propsize == 1);
-          if        (!strcmp(propval[0], "quadratic" )) {
+          if        (!strcmp(propval[0], "none" )) {
+              currentmaterial->chemfe_model = NONE_CHEMENERGY;
+              currentmaterial->nsites = 0;
+              CHEMNONE *currentnone = &currentmaterial->energy.none;
+              /* reference enthalpy */
+              {
+               char refmapping[PETSC_MAX_PATH_LEN];
+               sprintf(refmapping, "%s/ref_enthalpy",materialmapping);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_coefficient", buffer, filesize);
+               currentnone->ref.nTser = propsize;
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentnone->ref.coeff[propctr] = atof(propval[propctr]);
+               ierr = GetProperty(propval, &propsize, refmapping, "t_exponent", buffer, filesize);
+               assert(propsize == currentnone->ref.nTser);
+               for (PetscInt propctr = 0; propctr < propsize; propctr++) currentnone->ref.exp[propctr] = atoi(propval[propctr]);
+               currentnone->ref.logCoeff = 0.0;
+              } 
+          } else if (!strcmp(propval[0], "quadratic")) {
               currentmaterial->chemfe_model = QUADRATIC_CHEMENERGY;
               currentmaterial->nsites = 1;
               QUAD *currentquad = &currentmaterial->energy.quad;

@@ -378,7 +378,8 @@ static void Chemenergy_quad(PetscReal *chemenergy, const PetscReal *sitefrac, co
  */
 static void Chemenergy_none(PetscReal *chemenergy, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    *chemenergy = 0.0;
+    const CHEMNONE *currentnone = &energy.none;
+    *chemenergy = SumTSeries(temperature,currentnone->ref);
 }
 
 /*

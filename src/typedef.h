@@ -146,8 +146,14 @@ typedef struct QUAD {
     PetscReal *mobilityc;
 } QUAD;
 
+/* None energy parameters container */
+typedef struct CHEMNONE {
+    TSeries ref;
+} CHEMNONE;
+
 /* Energy container */
 typedef union CHEMFE {
+    CHEMNONE none;
     QUAD    quad;
     CALPHADDIS calphaddis;
     CALPHAD2SL calphad2sl;
