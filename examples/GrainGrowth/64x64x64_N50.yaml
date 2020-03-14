@@ -16,8 +16,8 @@ solution_parameters:
   maxnrefine : 6
   minnrefine : 0
   initcoarsen : 6
-  amrinterval : 100 
-  outputfreq : 500
+  amrinterval : 25 
+  outputfreq : 100
   outfile: 64x64x64_N50
   interpolation: cubic
   reltol: 1e-4
