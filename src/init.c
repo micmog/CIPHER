@@ -137,7 +137,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     PetscInt propsize, ierr, maxprops = 100;
 
     propval = malloc(maxprops*sizeof(char *));
-    for (PetscInt propctr = 0; propctr < maxprops; propctr++) propval[propctr] = malloc(PETSC_MAX_PATH_LEN);
+    for (PetscInt propctr = 0; propctr < maxprops; propctr++) propval[propctr] = malloc(filesize);
 
     /* Parsing config file header */
     {
