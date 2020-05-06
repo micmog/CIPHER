@@ -1007,6 +1007,13 @@ PetscErrorCode PostStep(TS ts)
                           *offset = (PetscScalar) user->phasematerialmapping[slist[g+1]];
                        }
                    }
+               } else if (!strcmp(name,"interfaceid")) {
+                   *offset = -1.0;
+                   for (gk=0; gk<slist[0]; gk++) {
+                       for (gj=gk+1; gj<slist[0]; gj++) {
+                           *offset = (PetscScalar) user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                       }
+                   }        
                } else if (strstr(name,"_c")) {
                    memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
                    for (gk=0; gk<slist[0]; gk++) {
