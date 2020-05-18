@@ -162,9 +162,10 @@ typedef union CHEMFE {
 /* Phase container */
 typedef struct MATERIAL {
     chemfe_model_t chemfe_model;
-    PetscInt nsites;
+    PetscInt nsites, *nsubcomponents, **subcomponent_injection;
+    char ***subcomponentname;
     PetscReal molarvolume, chempot_ex_kineticcoeff;
-    PetscReal *c0, *stochiometry;
+    PetscReal **c0, *stochiometry;
     CHEMFE energy;
     PetscReal temperature0, specific_heat, latent_heat, tconductivity;
 } MATERIAL;
