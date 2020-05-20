@@ -71,6 +71,7 @@ typedef enum {
 typedef struct CNT_NUC {
     PetscReal D0, migration, gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
+    PetscReal incubationtimemin;
 } CNT_NUC;
 
 /* constant nucleation model container */
@@ -84,6 +85,7 @@ typedef struct THERMAL_NUC {
     PetscReal minsize, atomicvolume, lengthscale;
     PetscReal solvus_temperature_0, *solvus_temperature_c; 
     PetscReal enthalpy_fusion;
+    PetscReal incubationtimemin;
 } THERMAL_NUC;
 
 /* nucleation model */

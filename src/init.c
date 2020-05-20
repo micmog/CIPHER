@@ -770,6 +770,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              /* normalization length scale */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
              assert(propsize == 1); currentcntnuc->lengthscale = atof(propval[0]);
+             /* min incubation time */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "incubation_time", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentcntnuc->incubationtimemin = atof(propval[0]);} 
+             else {currentcntnuc->incubationtimemin = 0.0;}
          } else if (!strcmp(propval[0], "constant" )) {
              currentnucleus->nuc_model = CONST_NUCLEATION;
              CONST_NUC *currentconstnuc = &currentnucleus->nucleation.constant;
@@ -815,6 +819,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              /* normalization length scale */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "length_scale", buffer, filesize);
              assert(propsize == 1); currentthermalnuc->lengthscale = atof(propval[0]);
+             /* min incubation time */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "incubation_time", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentthermalnuc->incubationtimemin = atof(propval[0]);} 
+             else {currentthermalnuc->incubationtimemin = 0.0;}
          } else {
              currentnucleus->nuc_model = NONE_NUCLEATION;
          }

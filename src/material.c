@@ -52,7 +52,8 @@ char NucleationEvent_cnt(const PetscReal current_time, const PetscReal current_t
         PetscReal beta = 4.0*PETSC_PI
                        * currentcntnuc->D0*exp(-currentcntnuc->migration/temperature)
                        * radius_c/currentcntnuc->atomicvolume;
-        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta);
+        PetscReal incubation_time = currentcntnuc->incubationtimemin > 1.0/(2.0*zeldovich*zeldovich*beta) ?
+                                    currentcntnuc->incubationtimemin : 1.0/(2.0*zeldovich*zeldovich*beta);
         PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentcntnuc->gamma*radius_c*radius_c)
                                                * currentcntnuc->shapefactor
                                                / (3.0*KbT));
@@ -94,7 +95,8 @@ char NucleationEvent_thermal(const PetscReal current_time, const PetscReal curre
         PetscReal beta = 4.0*PETSC_PI
                        * currentthermalnuc->D0*exp(-currentthermalnuc->migration/temperature)
                        * radius_c/currentthermalnuc->atomicvolume;
-        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta);
+        PetscReal incubation_time = currentthermalnuc->incubationtimemin > 1.0/(2.0*zeldovich*zeldovich*beta) ?
+                                    currentthermalnuc->incubationtimemin : 1.0/(2.0*zeldovich*zeldovich*beta);
         PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentthermalnuc->gamma*radius_c*radius_c)
                                                * currentthermalnuc->shapefactor
                                                / (3.0*KbT));
