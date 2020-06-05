@@ -75,7 +75,8 @@ char NucleationEvent_constant(const PetscReal current_time, const PetscReal curr
 {
     CONST_NUC *currentconstnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.constant;
     PetscReal random_number = (rand()/(double)RAND_MAX);
-    if (random_number < current_timestep*currentconstnuc->nucleation_rate) {return 1;} else {return 0;}
+    if (   random_number < current_timestep*currentconstnuc->nucleation_rate
+        && current_time > currentconstnuc->incubationtimemin) {return 1;} else {return 0;}
 }
 
 /*

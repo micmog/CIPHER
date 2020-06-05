@@ -780,6 +780,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              /* nucleation rate */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "nucleation_rate", buffer, filesize);
              assert(propsize == 1); currentconstnuc->nucleation_rate = atof(propval[0]);
+             /* min incubation time */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "incubation_time", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentconstnuc->incubationtimemin = atof(propval[0]);} 
+             else {currentconstnuc->incubationtimemin = 0.0;}
          } else if (!strcmp(propval[0], "thermal" )) {
              currentnucleus->nuc_model = THERMAL_NUCLEATION;
              THERMAL_NUC *currentthermalnuc = &currentnucleus->nucleation.thermal;

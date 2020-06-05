@@ -77,6 +77,7 @@ typedef struct CNT_NUC {
 /* constant nucleation model container */
 typedef struct CONST_NUC {
     PetscReal nucleation_rate;
+    PetscReal incubationtimemin;
 } CONST_NUC;
 
 /* thermal nucleation model container */
