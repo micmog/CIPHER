@@ -53,7 +53,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_MB[DP_SIZE*DP_SIZE];
     PetscReal         mobility_elem[user->ncp], composition_avg[user->ncp], work_vec_SP[SP_SIZE];
-    PetscReal         work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CT[PF_SIZE*MAXSITES*DP_SIZE*DP_SIZE];
+    PetscReal         work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CTT[PF_SIZE*SP_SIZE];
+    PetscReal         work_vec_CTPot[PF_SIZE*SP_SIZE*DP_SIZE], work_vec_CTEx[PF_SIZE*SP_SIZE*DP_SIZE];
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
@@ -599,20 +600,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             }
 
             /* calculate composition rate */
-            memset(dcdm,0,DP_SIZE*DP_SIZE*sizeof(PetscReal));
-            for (g =0; g<slist[0];  g++) {
-                currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                SitefracTangent(&work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE],&sitefrac[g*SF_SIZE],(*temperature),slist[g+1],user);
-                for (s=0; s<currentmaterial->nsites; s++) {
-                    for (c=0; c<user->ndp*user->ndp; c++) {
-                        dcdm[c] += interpolant[g]
-                                 * currentmaterial->stochiometry[s]
-                                 * currentmaterial->stochiometry[s]
-                                 * work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE+c];
-                    }
-                }        
-            }
-            
+            memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
             memset(work_vec_CP,0,PF_SIZE*DP_SIZE*sizeof(PetscReal));
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
@@ -620,12 +608,38 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     currentinterface = &user->interface[interfacekj];
                     if (currentinterface->potential) {
                         for (c=0; c<user->ndp; c++) {
+                            chempot_interface[c] += interpolant[gk]*interpolant[gj]*currentinterface->potential[c];
                             work_vec_CP[gk*DP_SIZE+c] += currentinterface->potential[c]*interpolant[gj];
                             work_vec_CP[gj*DP_SIZE+c] += currentinterface->potential[c]*interpolant[gk];
                         }
                     }
                 }
             }
+
+            memset(dcdm,0,DP_SIZE*DP_SIZE*sizeof(PetscReal));
+            for (g =0; g<slist[0];  g++) {
+                currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
+                for (s=0; s<currentmaterial->nsites; s++) {
+                    for (c=0; c<user->ndp; c++) {
+                        sitepot_im[s*user->ndp+c] = currentmaterial->stochiometry[s]
+                                                  * (chempot[c] - chempot_interface[c]) 
+                                                  - sitepot_ex[g*SP_SIZE+s*user->ndp+c];
+                    }
+                }
+                SitefracTangent(&work_vec_CTPot[g*SP_SIZE*DP_SIZE], 
+                                &work_vec_CTEx [g*SP_SIZE*DP_SIZE],
+                                &work_vec_CTT  [g*SP_SIZE        ],
+                                &sitefrac[g*SF_SIZE],sitepot_im,(*temperature),slist[g+1],user);
+                for (s=0; s<currentmaterial->nsites; s++) {
+                    for (c=0; c<user->ndp*user->ndp; c++) {
+                        dcdm[c] += interpolant[g]
+                                 * currentmaterial->stochiometry[s]
+                                 * currentmaterial->stochiometry[s]
+                                 * work_vec_CTPot[g*SP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE+c];
+                    }
+                }        
+            }
+            
             for (g=0; g<slist[0]; g++) {
                 memcpy(work_vec_DP,&work_vec_CP[g*DP_SIZE],DP_SIZE*sizeof(PetscReal));
                 MatVecMult_CIPHER(&work_vec_CP[g*DP_SIZE],dcdm,work_vec_DP,DP_SIZE); 
@@ -652,17 +666,15 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
                 for (s=0; s<currentmaterial->nsites; s++) {
-                    memcpy(work_vec_MB,&cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE*sizeof(PetscReal));
-                    for (c=0; c<user->ndp; c++) work_vec_MB[c] += (*tmrhs)/(*temperature);
                     MatVecMult_CIPHER(&work_vec_CP[g*DP_SIZE],
-                                      &work_vec_CT[g*MAXSITES*DP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE],
-                                      work_vec_MB,DP_SIZE);
+                                      &work_vec_CTEx[g*SP_SIZE*DP_SIZE+s*DP_SIZE*DP_SIZE],
+                                      &cprhs[g*SP_SIZE+s*DP_SIZE],DP_SIZE);
                     for (c=0; c<user->ndp; c++) {
-                        work_vec_DP[c] += interpolant[g]
+                        work_vec_DP[c] -= interpolant[g]
                                         * currentmaterial->stochiometry[s]
-                                        * work_vec_CP[g*DP_SIZE+c];
+                                        * (work_vec_CP[g*DP_SIZE+c] + work_vec_CTT[g*SP_SIZE+s*DP_SIZE+c]*(*tmrhs));
                     }
-                }        
+                }
             }
             Invertmatrix(dmdc,dcdm,DP_SIZE);  
             MatVecMult_CIPHER(dprhs,dmdc,work_vec_DP,DP_SIZE);  

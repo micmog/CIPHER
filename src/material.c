@@ -27,7 +27,7 @@ typedef struct MATFUNC {
     void (*SitepotentialExplicit) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*SitepotentialImplicit) (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*Sitefrac)              (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
-    void (*SitefracTangent)       (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
+    void (*SitefracTangent)       (PetscReal *, PetscReal *, PetscReal *, const PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*CompositionMobility)   (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
 } MATFUNC;
 
@@ -498,6 +498,9 @@ static void SitepotentialExplicit_calphaddis(PetscReal *sitepot, const PetscReal
     PetscReal workval_a, workval_b, workval_c;
     
     memset(sitepot,0,numcomps*sizeof(PetscReal));
+    for (PetscInt ci=0; ci<numcomps; ci++) {  
+        sitepot[ci] = SumTSeries(temperature,currentcalphaddis->unary[ci]);
+    }
     currentbinary = &currentcalphaddis->binary[0];
     for (PetscInt ci=0; ci<numcomps; ci++) {
         for (PetscInt cj=ci+1; cj<numcomps; cj++, currentbinary++) {
@@ -581,7 +584,7 @@ static void SitepotentialImplicit_calphaddis(PetscReal *sitepot, const PetscReal
 {
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     for (PetscInt ck=0; ck<numcomps; ck++) {  
-        sitepot[ck] = SumTSeries(temperature,currentcalphaddis->unary[ck]) + R_GAS_CONST*temperature*log(sitefrac[ck]);
+        sitepot[ck] = R_GAS_CONST*temperature*log(sitefrac[ck]);
     }
 }
 
@@ -664,9 +667,7 @@ static void Sitefrac_calphaddis(PetscReal *sitefrac, const PetscReal *sitepot_im
     const CALPHADDIS *currentcalphaddis = &energy.calphaddis;
     PetscReal RT = R_GAS_CONST*temperature, sum = 1.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
-        sitefrac[c] = exp((   sitepot_im[c] 
-                            - SumTSeries(temperature,currentcalphaddis->unary[c         ]) 
-                            + SumTSeries(temperature,currentcalphaddis->unary[numcomps-1]))/RT);
+        sitefrac[c] = exp(sitepot_im[c]/RT);
         sum += sitefrac[c];
     }
     sitefrac[numcomps-1] = 1.0;
@@ -717,73 +718,169 @@ void Sitefrac(PetscReal *sitefrac, const PetscReal *sitepot_im, const PetscReal 
 /*
  Composition tangent wrt chemical potential
  */
-static void SitefracTangent_calphad2sl(PetscReal *sitefractangent, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void SitefracTangent_calphad2sl(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_ex, PetscReal *sitefractangent_T, 
+                                       const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const CALPHAD2SL *currentcalphad2sl = &energy.calphad2sl;
-    PetscReal *sitefractangent_p = &sitefractangent[0];
-    PetscReal *sitefractangent_q = &sitefractangent[(numcomps-1)*(numcomps-1)];
+    PetscReal tangent_p[(numcomps-1)*(numcomps-1)], tangent_q[(numcomps-1)*(numcomps-1)];
     const PetscReal *sitefrac_p = &sitefrac[0], *sitefrac_q = &sitefrac[numcomps];
+    const PetscReal *sitepot_p = &sitepot[0], *sitepot_q = &sitepot[numcomps-1];
     
     PetscReal RT = R_GAS_CONST*temperature;
-    memset(sitefractangent_p,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
-    memset(sitefractangent_q,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(tangent_p,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(tangent_q,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     for (PetscInt cj=0; cj<numcomps-1; cj++) {
-        sitefractangent_p[cj*(numcomps-1)+cj] += sitefrac_p[cj]/currentcalphad2sl->p/RT;
-        sitefractangent_q[cj*(numcomps-1)+cj] += sitefrac_q[cj]/currentcalphad2sl->q/RT;
+        tangent_p[cj*(numcomps-1)+cj] += sitefrac_p[cj]/currentcalphad2sl->p/RT;
+        tangent_q[cj*(numcomps-1)+cj] += sitefrac_q[cj]/currentcalphad2sl->q/RT;
         for (PetscInt ci=0; ci<numcomps-1; ci++) {
-            sitefractangent_p[cj*(numcomps-1)+ci] -= sitefrac_p[cj]*sitefrac_p[ci]/currentcalphad2sl->p/RT;
-            sitefractangent_q[cj*(numcomps-1)+ci] -= sitefrac_q[cj]*sitefrac_q[ci]/currentcalphad2sl->q/RT;
+            tangent_p[cj*(numcomps-1)+ci] -= sitefrac_p[cj]*sitefrac_p[ci]/currentcalphad2sl->p/RT;
+            tangent_q[cj*(numcomps-1)+ci] -= sitefrac_q[cj]*sitefrac_q[ci]/currentcalphad2sl->q/RT;
         }
+    }
+    
+    if (sitefractangent_pot) {
+        PetscReal *sitefractangent_pot_p = &sitefractangent_pot[0];
+        PetscReal *sitefractangent_pot_q = &sitefractangent_pot[(numcomps-1)*(numcomps-1)];
+    
+        for (PetscInt c=0; c<(numcomps-1)*(numcomps-1); c++) {
+            sitefractangent_pot_p[c] = tangent_p[c];
+            sitefractangent_pot_q[c] = tangent_q[c];
+        }    
+    }        
+    
+    if (sitefractangent_ex) {
+        PetscReal *sitefractangent_ex_p = &sitefractangent_ex[0];
+        PetscReal *sitefractangent_ex_q = &sitefractangent_ex[(numcomps-1)*(numcomps-1)];
+    
+        for (PetscInt c=0; c<(numcomps-1)*(numcomps-1); c++) {
+            sitefractangent_ex_p[c] = -tangent_p[c];
+            sitefractangent_ex_q[c] = -tangent_q[c];
+        }    
+    }        
+    
+    if (sitefractangent_T) {
+        PetscReal *sitefractangent_T_p = &sitefractangent_T[0];
+        PetscReal *sitefractangent_T_q = &sitefractangent_T[numcomps-1];
+    
+        memset(sitefractangent_T_p,0,(numcomps-1)*sizeof(PetscReal));
+        memset(sitefractangent_T_q,0,(numcomps-1)*sizeof(PetscReal));
+        for (PetscInt cj=0; cj<numcomps-1; cj++) {
+            for (PetscInt ci=0; ci<numcomps-1; ci++) {
+                sitefractangent_T_p[cj] -= tangent_p[cj*(numcomps-1)+ci]*sitepot_p[ci]/temperature;
+                sitefractangent_T_q[cj] -= tangent_q[cj*(numcomps-1)+ci]*sitepot_q[ci]/temperature;
+            }
+        }        
     }        
 }
 
 /*
  Composition tangent wrt chemical potential
  */
-static void SitefracTangent_calphaddis(PetscReal *sitefractangent, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void SitefracTangent_calphaddis(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_ex, PetscReal *sitefractangent_T, 
+                                       const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     PetscReal RT = R_GAS_CONST*temperature;
-    memset(sitefractangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    PetscReal tangent[(numcomps-1)*(numcomps-1)];
+
+    memset(tangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
     for (PetscInt cj=0; cj<numcomps-1; cj++) {
-        sitefractangent[cj*(numcomps-1)+cj] += sitefrac[cj]/RT;
+        tangent[cj*(numcomps-1)+cj] += sitefrac[cj]/RT;
         for (PetscInt ci=0; ci<numcomps-1; ci++) {
-            sitefractangent[cj*(numcomps-1)+ci] -= sitefrac[cj]*sitefrac[ci]/RT;
+            tangent[cj*(numcomps-1)+ci] -= sitefrac[cj]*sitefrac[ci]/RT;
         }
     }        
-}
-
-/*
- Composition tangent wrt chemical potential
- */
-static void SitefracTangent_quad(PetscReal *sitefractangent, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
-{
-    memset(sitefractangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
-    const QUAD *currentquad = &energy.quad;
-    for (PetscInt cj=0; cj<numcomps-1; cj++) {
-        sitefractangent[cj*(numcomps-1)+cj] = 0.5/SumTSeries(temperature,currentquad->binary[cj]);
+    
+    if (sitefractangent_pot) {
+        for (PetscInt c=0; c<(numcomps-1)*(numcomps-1); c++) {
+            sitefractangent_pot[c] = tangent[c];
+        }    
+    }        
+    
+    if (sitefractangent_ex) {
+        for (PetscInt c=0; c<(numcomps-1)*(numcomps-1); c++) {
+            sitefractangent_ex[c] = -tangent[c];
+        }    
+    }        
+    
+    if (sitefractangent_T) {
+        memset(sitefractangent_T,0,(numcomps-1)*sizeof(PetscReal));
+        for (PetscInt cj=0; cj<numcomps-1; cj++) {
+            for (PetscInt ci=0; ci<numcomps-1; ci++) {
+                sitefractangent_T[cj] -= tangent[cj*(numcomps-1)+ci]*sitepot[ci]/temperature;
+            }
+        }        
     }        
 }
 
 /*
  Composition tangent wrt chemical potential
  */
-static void SitefracTangent_none(PetscReal *sitefractangent, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+static void SitefracTangent_quad(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_ex, PetscReal *sitefractangent_T, 
+                                 const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(sitefractangent,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    const QUAD *currentquad = &energy.quad;
+
+    if (sitefractangent_pot) {
+        memset(sitefractangent_pot,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+        for (PetscInt cj=0; cj<numcomps-1; cj++) {
+            sitefractangent_pot[cj*(numcomps-1)+cj] = 0.5/SumTSeries(temperature,currentquad->binary[cj]);
+        }        
+    }        
+    
+    if (sitefractangent_ex) {
+        memset(sitefractangent_ex,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    }        
+    
+    if (sitefractangent_T) {
+        memset(sitefractangent_T ,0,(numcomps-1)             *sizeof(PetscReal));
+    }        
 }
 
 /*
  Composition tangent wrt chemical potential
  */
-void SitefracTangent(PetscReal *sitefractangent, const PetscReal *sitefrac, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
+static void SitefracTangent_none(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_ex, PetscReal *sitefractangent_T, 
+                                 const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
+{
+    if (sitefractangent_pot) {
+        memset(sitefractangent_pot,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    }        
+    
+    if (sitefractangent_ex) {
+        memset(sitefractangent_ex ,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    }        
+    
+    if (sitefractangent_T) {
+        memset(sitefractangent_T  ,0,(numcomps-1)             *sizeof(PetscReal));
+    }        
+}
+
+/*
+ Composition tangent wrt chemical potential
+ */
+void SitefracTangent(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_ex, PetscReal *sitefractangent_T, 
+                     const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const uint16_t phaseID, const AppCtx *user)
 {
     const MATERIAL *currentmaterial = &user->material[user->phasematerialmapping[phaseID]];
-    Matfunc[user->phasematerialmapping[phaseID]].SitefracTangent(sitefractangent,sitefrac,temperature,currentmaterial->energy,user->ncp);
-    for (PetscInt site=0; site<currentmaterial->nsites; site++) {  
-        for (PetscInt c=0; c<user->ndp*user->ndp; c++) {  
-            sitefractangent[site*user->ndp*user->ndp+c] *= currentmaterial->molarvolume;
-        } 
-    }                             
+    Matfunc[user->phasematerialmapping[phaseID]].SitefracTangent(sitefractangent_pot,sitefractangent_ex,sitefractangent_T,
+                                                                        sitefrac,sitepot,temperature,currentmaterial->energy,user->ncp);
+    if (sitefractangent_pot) {
+        for (PetscInt c=0; c<currentmaterial->nsites*user->ndp*user->ndp; c++) {  
+            sitefractangent_pot[c] *= currentmaterial->molarvolume;
+        }                             
+    }        
+    
+    if (sitefractangent_ex) {
+        for (PetscInt c=0; c<currentmaterial->nsites*user->ndp*user->ndp; c++) {  
+            sitefractangent_ex[c] *= currentmaterial->molarvolume;
+        }                             
+    }        
+    
+    if (sitefractangent_T) {
+        for (PetscInt c=0; c<currentmaterial->nsites*user->ndp          ; c++) {  
+            sitefractangent_T[c] *= currentmaterial->molarvolume;
+        }                             
+    }        
 }
 
 /*

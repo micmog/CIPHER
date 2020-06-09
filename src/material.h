@@ -35,7 +35,7 @@ EXTERN void SitepotentialExplicit(PetscReal *, const PetscReal *, const PetscRea
 EXTERN void SitepotentialImplicit(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void Sitepotential(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void Sitefrac(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
-EXTERN void SitefracTangent(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
+EXTERN void SitefracTangent(PetscReal *, PetscReal *, PetscReal *, const PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void CompositionMobilityComponent(PetscReal *, const PetscReal *, const PetscReal, const uint16_t, const AppCtx *);
 EXTERN void CompositionMobilityVolumeRef(PetscReal *, const PetscReal *, const PetscReal *, const AppCtx *);
 EXTERN void material_init(const AppCtx *);
