@@ -1026,6 +1026,12 @@ PetscErrorCode PostStep(TS ts)
                            *offset = (PetscScalar) user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
                        }
                    }        
+               } else if (strstr(name,"_chempot")) {
+                   char *tok, *savetok;
+                   tok = strtok_r(name, "_", &savetok);
+                   for (c=0; c<user->ndp; c++) {
+                       if (!strcmp(user->componentname[c],tok)) *offset = dcell[c];
+                   }
                } else if (strstr(name,"_c")) {
                    memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
                    for (gk=0; gk<slist[0]; gk++) {
@@ -1067,12 +1073,6 @@ PetscErrorCode PostStep(TS ts)
                    *offset = 0.0;
                    for (g=0; g<slist[0]; g++) {
                        if (slist[g+1] == atoi(tok)) *offset = pcell[g];
-                   }
-               } else if (strstr(name,"_chempot")) {
-                   char *tok, *savetok;
-                   tok = strtok_r(name, "_", &savetok);
-                   for (c=0; c<user->ndp; c++) {
-                       if (!strcmp(user->componentname[c],tok)) *offset = dcell[c];
                    }
                } else if (!strcmp(name,"temperature")) {
                    *offset = (*temperature);
