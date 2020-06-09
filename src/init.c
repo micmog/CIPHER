@@ -67,7 +67,7 @@ PetscErrorCode GetProperty(char **propval, PetscInt *propsize,
 
     /* Parsing config file */
     PetscInt mappinglevel = 0;
-    while (yaml_parser_parse(&parser, &event) && !(event.type == YAML_MAPPING_END_EVENT && !mappinglevel)) {
+    while (yaml_parser_parse(&parser, &event)) {
         if (event.type == YAML_MAPPING_START_EVENT) mappinglevel++;
         if (event.type == YAML_MAPPING_END_EVENT) mappinglevel--;
         if (event.type == YAML_SCALAR_EVENT && !strcmp((char *) event.data.scalar.value, propname)) {
@@ -85,6 +85,7 @@ PetscErrorCode GetProperty(char **propval, PetscInt *propsize,
             }
             break;
         }
+        if (event.type == YAML_MAPPING_END_EVENT && !mappinglevel) break;
     }    
 
     /* Cleanup */
