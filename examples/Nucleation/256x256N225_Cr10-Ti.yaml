@@ -33,8 +33,12 @@ material:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
     temperature0: 1800.0   # initial temperature Ti
-    specific_heat: 2.6e+9
-    tconductivity: 7.0e+12
+    specific_heat: 
+      t_coefficient : [2.6e+9]
+      t_exponent: [0]
+    tconductivity: 
+      t_coefficient : [7.0e+12]
+      t_exponent: [0]
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.067970, 0.932030]
     mobilityc :
@@ -66,8 +70,12 @@ material:
     chemicalenergy : calphaddis
     molarvolume : 1e-5
     temperature0: 1800.0   # initial temperature Ti
-    specific_heat: 2.6e+9
-    tconductivity: 7.0e+12
+    specific_heat: 
+      t_coefficient : [2.6e+9]
+      t_exponent: [0]
+    tconductivity: 
+      t_coefficient : [7.0e+12]
+      t_exponent: [0]
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.100640, 0.899360]
     mobilityc :

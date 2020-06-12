@@ -313,7 +313,7 @@ nucleus:
     nucleation_model: thermal
     solvus_temperature_0: 546.569
     solvus_temperature_c: [0.0, 6500.0, 4400.0, 690.0]
-    enthalpy_fusion: 5.0e+10
+    enthalpy_fusion_0: 5.0e+10
     length_scale : 10.0
     minsize : 1.0
     atomic_volume : 16.0

@@ -415,7 +415,7 @@ nucleus:
   precipitate :
     nucleation_model: thermal
     solvus_temperature: 680.0
-    enthalpy_fusion: 4500.0
+    enthalpy_fusion_0: 4500.0
     matrix : [0, 1]
     length_scale : 10.0
     minsize : 1.0

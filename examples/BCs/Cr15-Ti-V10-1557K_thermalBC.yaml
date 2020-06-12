@@ -29,8 +29,12 @@ solution_parameters:
 material:
   solid:
     temperature0: 1557.0
-    specific_heat: 2331509.0
-    tconductivity: 6.7e+6
+    specific_heat: 
+      t_coefficient : [2331509.0]
+      t_exponent: [0]
+    tconductivity: 
+      t_coefficient : [6.7e+6]
+      t_exponent: [0]
     chemicalenergy : calphaddis
     molarvolume : 1e-0
     chempot_ex_kineticcoeff : 1.0
