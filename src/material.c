@@ -199,7 +199,7 @@ PetscReal NucleationBarrier_constant(const PetscReal *chempot, const PetscReal *
 PetscReal NucleationBarrier_thermal(const PetscReal *chempot, const PetscReal *sitepot_ex, const PetscReal temperature, 
                                     const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
 {
-    PetscReal solvus_temperature, composition_avg, sitefrac_avg;
+    PetscReal solvus_temperature, enthalpy_fusion, composition_avg[user->ncp], sitefrac_avg;
     PetscReal sitefrac[PF_SIZE*SF_SIZE], sitepot_im[SP_SIZE], chempot_interface[DP_SIZE];
     PetscInt g, gk, gj, c, s;
     MATERIAL *currentmaterial;
@@ -208,7 +208,8 @@ PetscReal NucleationBarrier_thermal(const PetscReal *chempot, const PetscReal *s
     
     currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
     solvus_temperature = currentthermalnuc->solvus_temperature_0;
-    if (currentthermalnuc->solvus_temperature_c) {
+    enthalpy_fusion = currentthermalnuc->enthalpy_fusion_0;
+    if (currentthermalnuc->solvus_temperature_c || currentthermalnuc->enthalpy_fusion_c) {
         memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
         for (gk=0; gk<phaseID[0]; gk++) {
             for (gj=gk+1; gj<phaseID[0]; gj++) {
@@ -231,18 +232,27 @@ PetscReal NucleationBarrier_thermal(const PetscReal *chempot, const PetscReal *s
         }
 
         for (c=0; c<user->ncp; c++) {
-            for (g=0, composition_avg=0.0; g<phaseID[0]; g++) {
+            for (g=0, composition_avg[c]=0.0; g<phaseID[0]; g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[phaseID[g+1]]];
                 for (s=0, sitefrac_avg=0.0; s<currentmaterial->nsites; s++) {
                     sitefrac_avg += currentmaterial->stochiometry[s]*sitefrac[g*SF_SIZE+s*user->ncp+c];
                 }
-                composition_avg += interpolant[g]*sitefrac_avg;
+                composition_avg[c] += interpolant[g]*sitefrac_avg;
             }
-            solvus_temperature += composition_avg*currentthermalnuc->solvus_temperature_c[c];
+        }
+        if (currentthermalnuc->solvus_temperature_c) {
+            for (c=0; c<user->ncp; c++) {
+                solvus_temperature += composition_avg[c]*currentthermalnuc->solvus_temperature_c[c];
+            }
+        }
+        if (currentthermalnuc->enthalpy_fusion_c) {
+            for (c=0; c<user->ncp; c++) {
+                enthalpy_fusion += composition_avg[c]*currentthermalnuc->enthalpy_fusion_c[c];
+            }
         }
     }       
     
-    return currentthermalnuc->enthalpy_fusion*(1.0 - temperature/solvus_temperature);
+    return enthalpy_fusion*(1.0 - temperature/solvus_temperature);
 }
 
 /*

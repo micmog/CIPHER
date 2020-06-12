@@ -196,7 +196,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                         * sitefrac[g*SF_SIZE+s*user->ncp+c];
                     }
                 }
-                tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
+                if (currentmaterial->thermal.tconductivity.nTser) 
+                  tconductivity[cell] += interpolant[g]*SumTSeries(*temperature,currentmaterial->thermal.tconductivity);
             }
         }
     } else {
@@ -214,7 +215,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             tconductivity[cell] = 0.0;
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-                tconductivity[cell] += interpolant[g]*currentmaterial->tconductivity;
+                if (currentmaterial->thermal.tconductivity.nTser) 
+                  tconductivity[cell] += interpolant[g]*SumTSeries(*temperature,currentmaterial->thermal.tconductivity);
             }
         }    
     }
@@ -580,10 +582,12 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         specific_heat = 0.0; *tmrhs = *tlapl;
         for (g =0; g<slist[0];  g++) {
             currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];
-            specific_heat += interpolant[g]*currentmaterial->specific_heat;
-            if (currentmaterial->latent_heat) *tmrhs += pfrhs[g]*currentmaterial->latent_heat;
+            if (currentmaterial->thermal.specific_heat.nTser) 
+              specific_heat += interpolant[g]*SumTSeries(*temperature,currentmaterial->thermal.specific_heat);
+            if (currentmaterial->thermal.latent_heat.nTser) 
+              *tmrhs += pfrhs[g]*SumTSeries(*temperature,currentmaterial->thermal.latent_heat);
         }
-        *tmrhs /= specific_heat;
+        if (specific_heat) *tmrhs /= specific_heat;
         if (user->solparams.temperature_rate) *tmrhs += user->solparams.temperature_rate[user->solparams.currentloadcase];    
             
         if (user->ndp) {

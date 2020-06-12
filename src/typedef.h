@@ -85,7 +85,7 @@ typedef struct THERMAL_NUC {
     PetscReal D0, migration, gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
     PetscReal solvus_temperature_0, *solvus_temperature_c; 
-    PetscReal enthalpy_fusion;
+    PetscReal enthalpy_fusion_0, *enthalpy_fusion_c;
     PetscReal incubationtimemin;
 } THERMAL_NUC;
 
@@ -162,6 +162,12 @@ typedef union CHEMFE {
     CALPHAD2SL calphad2sl;
 } CHEMFE;
 
+/* Thermal parameters container */
+typedef struct THERMAL {
+    PetscReal temperature0;
+    TSeries specific_heat, latent_heat, tconductivity;
+} THERMAL;
+
 /* Phase container */
 typedef struct MATERIAL {
     chemfe_model_t chemfe_model;
@@ -169,7 +175,7 @@ typedef struct MATERIAL {
     PetscReal molarvolume, chempot_ex_kineticcoeff;
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
-    PetscReal temperature0, specific_heat, latent_heat, tconductivity;
+    THERMAL thermal;
 } MATERIAL;
 
 /* Interface energy parameters */

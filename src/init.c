@@ -690,29 +690,46 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 
          /* thermal transport */
          {
+          char thermalmapping[PETSC_MAX_PATH_LEN];
+          THERMAL *currentthermal = &currentmaterial->thermal;
           /* initial temperature */
           {
            ierr = GetProperty(propval, &propsize, materialmapping, "temperature0", buffer, filesize);
            assert(propsize == 1);
-           currentmaterial->temperature0 = atof(propval[0]);
+           currentthermal->temperature0 = atof(propval[0]);
           }
           /* thermal specific heat */
           {
-           ierr = GetProperty(propval, &propsize, materialmapping, "specific_heat", buffer, filesize);
-           if (propsize) {assert(propsize == 1); currentmaterial->specific_heat = atof(propval[0]);}
-           else {currentmaterial->specific_heat = 1.0;}
+           sprintf(thermalmapping, "%s/specific_heat",materialmapping);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_coefficient", buffer, filesize);
+           currentthermal->specific_heat.nTser = propsize;
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->specific_heat.coeff[propctr] = atof(propval[propctr]);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_exponent", buffer, filesize);
+           assert(propsize == currentthermal->specific_heat.nTser);
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->specific_heat.exp[propctr] = atoi(propval[propctr]);
+           currentthermal->specific_heat.logCoeff = 0.0;
           }
           /* thermal latent heat */
           {
-           ierr = GetProperty(propval, &propsize, materialmapping, "latent_heat", buffer, filesize);
-           if (propsize) {assert(propsize == 1); currentmaterial->latent_heat = atof(propval[0]);}
-           else {currentmaterial->latent_heat = 0.0;}
+           sprintf(thermalmapping, "%s/latent_heat",materialmapping);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_coefficient", buffer, filesize);
+           currentthermal->latent_heat.nTser = propsize;
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->latent_heat.coeff[propctr] = atof(propval[propctr]);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_exponent", buffer, filesize);
+           assert(propsize == currentthermal->latent_heat.nTser);
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->latent_heat.exp[propctr] = atoi(propval[propctr]);
+           currentthermal->latent_heat.logCoeff = 0.0;
           }
           /* thermal conductivity */
           {
-           ierr = GetProperty(propval, &propsize, materialmapping, "tconductivity", buffer, filesize);
-           if (propsize) {assert(propsize == 1); currentmaterial->tconductivity = atof(propval[0]);}
-           else {currentmaterial->tconductivity = 0.0;}
+           sprintf(thermalmapping, "%s/tconductivity",materialmapping);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_coefficient", buffer, filesize);
+           currentthermal->tconductivity.nTser = propsize;
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->tconductivity.coeff[propctr] = atof(propval[propctr]);
+           ierr = GetProperty(propval, &propsize, thermalmapping, "t_exponent", buffer, filesize);
+           assert(propsize == currentthermal->tconductivity.nTser);
+           for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermal->tconductivity.exp[propctr] = atoi(propval[propctr]);
+           currentthermal->tconductivity.logCoeff = 0.0;
           }
          }
      }
@@ -799,8 +816,15 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                  currentthermalnuc->solvus_temperature_c = NULL;
              }    
              /* enthalpy of fusion */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion", buffer, filesize);
-             assert(propsize == 1); currentthermalnuc->enthalpy_fusion = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion_0", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->enthalpy_fusion_0 = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion_c", buffer, filesize);
+             if (propsize) {
+                 assert(propsize == user->ncp); currentthermalnuc->enthalpy_fusion_c = malloc(user->ncp*sizeof(PetscReal));
+                 for (PetscInt propctr = 0; propctr < propsize; propctr++) currentthermalnuc->enthalpy_fusion_c[propctr] = atof(propval[propctr]);
+             } else {
+                 currentthermalnuc->enthalpy_fusion_c = NULL;
+             }    
              /* surface energy */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "gamma", buffer, filesize);
              assert(propsize == 1); currentthermalnuc->gamma = atof(propval[0]);
@@ -1421,7 +1445,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
         for (g=0; g<gslist[0]; g++) {
             if (gslist[g+1] == phase) {
                 currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
-                *tcell = currentmaterial->temperature0;
+                *tcell = currentmaterial->thermal.temperature0;
             }
         }        
         for (g=0; g<gslist[0]; g++) {
