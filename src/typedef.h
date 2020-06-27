@@ -72,6 +72,7 @@ typedef struct CNT_NUC {
     PetscReal D0, migration, gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
     PetscReal incubationtimemin;
+    PetscReal liquidus;
 } CNT_NUC;
 
 /* constant nucleation model container */
@@ -87,6 +88,7 @@ typedef struct THERMAL_NUC {
     PetscReal solvus_temperature_0, *solvus_temperature_c; 
     PetscReal enthalpy_fusion_0, *enthalpy_fusion_c;
     PetscReal incubationtimemin;
+    PetscReal liquidus;
 } THERMAL_NUC;
 
 /* nucleation model */

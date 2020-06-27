@@ -792,6 +792,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              ierr = GetProperty(propval, &propsize, nucleusmapping, "incubation_time", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentcntnuc->incubationtimemin = atof(propval[0]);} 
              else {currentcntnuc->incubationtimemin = 0.0;}
+             /* liquidus temperature */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "liquidus_temperature", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentcntnuc->liquidus = atof(propval[0]);} 
+             else {currentcntnuc->liquidus = LARGE;}                
          } else if (!strcmp(propval[0], "constant" )) {
              currentnucleus->nuc_model = CONST_NUCLEATION;
              CONST_NUC *currentconstnuc = &currentnucleus->nucleation.constant;
@@ -852,6 +856,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              ierr = GetProperty(propval, &propsize, nucleusmapping, "incubation_time", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentthermalnuc->incubationtimemin = atof(propval[0]);} 
              else {currentthermalnuc->incubationtimemin = 0.0;}
+             /* liquidus temperature */
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "liquidus_temperature", buffer, filesize);
+             if (propsize) {assert(propsize == 1); currentthermalnuc->liquidus = atof(propval[0]);} 
+             else {currentthermalnuc->liquidus = LARGE;}                 
          } else {
              currentnucleus->nuc_model = NONE_NUCLEATION;
          }

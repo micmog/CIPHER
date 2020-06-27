@@ -45,7 +45,7 @@ PetscReal Interpolate(const PetscReal x, const PetscReal *y_i, const PetscReal *
 /*
  PetscReal to power of unsigned int
  */
-PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)//*tseries or tseries ? arg is not being changed in funct
+PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)
 {
     PetscReal result = 0.0;
     for (PetscInt i=0; i<tseries.nTser; i++) {

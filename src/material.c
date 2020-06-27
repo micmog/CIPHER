@@ -42,6 +42,7 @@ char NucleationEvent_cnt(const PetscReal current_time, const PetscReal current_t
                          const PetscInt siteID, const AppCtx *user)
 {
     CNT_NUC *currentcntnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.cnt;
+    if (temperature > currentcntnuc->liquidus) return 0;
     PetscReal KbT = KBANGST2*temperature;
     PetscReal radius_c = 2.0*currentcntnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentcntnuc->lengthscale*pow(volume,1.0/user->dim)
@@ -87,6 +88,7 @@ char NucleationEvent_thermal(const PetscReal current_time, const PetscReal curre
                              const PetscInt siteID, const AppCtx *user)
 {
     THERMAL_NUC *currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
+    if (temperature > currentthermalnuc->liquidus) return 0;
     PetscReal KbT = KBANGST2*temperature;
     PetscReal radius_c = 2.0*currentthermalnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentthermalnuc->lengthscale*pow(volume,1.0/user->dim)
