@@ -42,7 +42,7 @@ char NucleationEvent_cnt(const PetscReal current_time, const PetscReal current_t
                          const PetscInt siteID, const AppCtx *user)
 {
     CNT_NUC *currentcntnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.cnt;
-    if (temperature > currentcntnuc->liquidus) return 0;
+    if (current_time < currentcntnuc->incubationtimemin || temperature > currentcntnuc->liquidus) return 0;
     PetscReal KbT = KBANGST2*temperature;
     PetscReal radius_c = 2.0*currentcntnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentcntnuc->lengthscale*pow(volume,1.0/user->dim)
@@ -53,14 +53,10 @@ char NucleationEvent_cnt(const PetscReal current_time, const PetscReal current_t
         PetscReal beta = 4.0*PETSC_PI
                        * currentcntnuc->D0*exp(-currentcntnuc->migration/temperature)
                        * radius_c/currentcntnuc->atomicvolume;
-        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta)
-                                  / (current_time - currentcntnuc->incubationtimemin > 0.0 ? 
-                                     current_time - currentcntnuc->incubationtimemin : 0.0);
         PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentcntnuc->gamma*radius_c*radius_c)
                                                * currentcntnuc->shapefactor
                                                / (3.0*KbT));
-        PetscReal site_probability = current_timestep * zeldovich * beta
-                                   * nucleation_probability * exp(-incubation_time);
+        PetscReal site_probability = current_timestep * zeldovich * beta * nucleation_probability;
         PetscReal random_number = (rand()/(double)RAND_MAX);
         if (random_number < site_probability) return 1;
     }
@@ -88,7 +84,7 @@ char NucleationEvent_thermal(const PetscReal current_time, const PetscReal curre
                              const PetscInt siteID, const AppCtx *user)
 {
     THERMAL_NUC *currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
-    if (temperature > currentthermalnuc->liquidus) return 0;
+    if (current_time < currentthermalnuc->incubationtimemin || temperature > currentthermalnuc->liquidus) return 0;
     PetscReal KbT = KBANGST2*temperature;
     PetscReal radius_c = 2.0*currentthermalnuc->gamma/gv/ANGSTROM;
     if (   radius_c < currentthermalnuc->lengthscale*pow(volume,1.0/user->dim)
@@ -99,14 +95,10 @@ char NucleationEvent_thermal(const PetscReal current_time, const PetscReal curre
         PetscReal beta = 4.0*PETSC_PI
                        * currentthermalnuc->D0*exp(-currentthermalnuc->migration/temperature)
                        * radius_c/currentthermalnuc->atomicvolume;
-        PetscReal incubation_time = 1.0/(2.0*zeldovich*zeldovich*beta)
-                                  / (current_time - currentthermalnuc->incubationtimemin > 0.0 ? 
-                                     current_time - currentthermalnuc->incubationtimemin : 0.0);
         PetscReal nucleation_probability = exp(- (4.0*PETSC_PI*currentthermalnuc->gamma*radius_c*radius_c)
                                                * currentthermalnuc->shapefactor
                                                / (3.0*KbT));
-        PetscReal site_probability = current_timestep * zeldovich * beta
-                                   * nucleation_probability * exp(-incubation_time);
+        PetscReal site_probability = current_timestep * zeldovich * beta * nucleation_probability;
         PetscReal random_number = (rand()/(double)RAND_MAX);
         if (random_number < site_probability) return 1;
     }
