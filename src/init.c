@@ -177,10 +177,17 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       } else {
           user->nsites = 0;
       }
-      user->siteoffset = user->worldrank*(1 + ((user->nsites - 1)/user->worldsize));
-      user->nsites_local = (  user->siteoffset + (1 + ((user->nsites - 1)/user->worldsize)) < user->nsites
-                            ? user->siteoffset + (1 + ((user->nsites - 1)/user->worldsize)) : user->nsites)
-                         - user->siteoffset;
+      PetscInt sitesperprocctr[user->worldsize];
+      PetscReal sitesperproc = ((PetscReal) user->nsites)/((PetscReal) user->worldsize);
+      memset(sitesperprocctr,0,user->worldsize*sizeof(PetscInt));
+      for (PetscInt site = 0; site<user->nsites; site++) {
+          sitesperprocctr[(PetscInt) (((PetscReal) site)/sitesperproc)]++;
+      }
+      user->nsites_local = sitesperprocctr[user->worldrank];
+      user->siteoffset = 0;
+      for (PetscInt rank = 0; rank<user->worldrank; rank++) {
+          user->siteoffset += sitesperprocctr[rank];
+      }
       user->siteactivity_global = malloc(user->nsites*sizeof(char));
       user->siteactivity_local = malloc(user->nsites_local*sizeof(char));
       for (PetscInt site=0;site<user->nsites_local;site++) user->siteactivity_local[site] = 1;
