@@ -199,6 +199,17 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                 if (currentmaterial->thermal.tconductivity.nTser) 
                   tconductivity[cell] += interpolant[g]*SumTSeries(*temperature,currentmaterial->thermal.tconductivity);
             }
+            for (gk=0; gk<slist[0]; gk++) {
+                for (gj=gk+1; gj<slist[0]; gj++) {
+                    interfacekj = user->interfacelist[slist[gk+1]*user->npf+slist[gj+1]];
+                    currentinterface = &user->interface[interfacekj];
+                    if (currentinterface->mobilityc) {
+                        for (c=0; c<user->ncp; c++) {
+                            mobilitycv[c] *= exp(currentinterface->mobilityc[c]/R_GAS_CONST/(*temperature));
+                        }
+                    }    
+                }
+            }    
         }
     } else {
         for (cell = 0; cell < user->ninteriorcells; ++cell) {
