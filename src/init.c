@@ -1009,9 +1009,18 @@ PetscErrorCode SetUpConfig(AppCtx *user)
           /* boundary val */
           ierr = GetProperty(propval, &propsize, chemboundarymapping, "value", buffer, filesize);
           if (!(currentboundary->chem_bctype == NONE_BC)) {
-              assert(propsize == user->ndp); 
-              currentboundary->chem_bcval = malloc(user->ndp*sizeof(PetscReal));
-              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentboundary->chem_bcval[propctr] = atof(propval[propctr]);
+              assert(propsize == user->ncp); 
+              currentboundary->chem_bcval = malloc(user->ncp*sizeof(PetscReal));
+              currentboundary->chem_bcbool = malloc(user->ncp*sizeof(char));
+              for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                  if (!strcmp(propval[propctr], "*" )) {
+                      currentboundary->chem_bcbool[propctr] = 0;
+                      currentboundary->chem_bcval[propctr] = 0.0;
+                  } else {
+                      currentboundary->chem_bcbool[propctr] = 1;
+                      currentboundary->chem_bcval[propctr] = atof(propval[propctr]);
+                  }
+              }    
           }    
          }
          /* thermal boundary conditions */

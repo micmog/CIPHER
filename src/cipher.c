@@ -392,14 +392,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         
                     /* get common active phases */
                     if (!(currentboundary->chem_bctype == NONE_BC)) {
-                        memset(work_vec_DP,0,user->ndp*sizeof(PetscReal));
+                        memset(fluxd,0,user->ndp*sizeof(PetscReal));
                         if (currentboundary->chem_bctype == NEUMANN_BC) {
-                            for (c=0; c<user->ndp; c++) work_vec_DP[c] =  currentboundary->chem_bcval[c] * deltaL;
+                            for (c=0; c<user->ndp; c++) {
+                                if (currentboundary->chem_bcbool[c]) {
+                                    fluxd[c] =  currentboundary->chem_bcval[c] * deltaL;
+                                }
+                            }
                         } else {
-                            for (c=0; c<user->ndp; c++) work_vec_DP[c] = (currentboundary->chem_bcval[c] - chempotL[c]);
+                            for (c=0; c<user->ndp; c++) {
+                                if (currentboundary->chem_bcbool[c]) {
+                                    fluxd[c] = mobilitycvL[c]*(currentboundary->chem_bcval[c] - chempotL[c]);
+                                }
+                            }
                         }
-                        CompositionMobilityVolumeRef(work_vec_MB,mobilitycvL,compositionL,user);
-                        MatVecMult_CIPHER(fluxd,work_vec_MB,work_vec_DP,user->ndp);
                     }
                     if        (currentboundary->thermal_bctype == NEUMANN_BC  ) {
                         fluxt = tconductivity[scells[0]]* currentboundary->thermal_bcval * deltaL;

@@ -206,6 +206,7 @@ typedef struct BOUNDARYCONDITIONS {
     PetscInt boundaryid;
     boundary_t chem_bctype, thermal_bctype;
     PetscReal *chem_bcval, thermal_bcval;
+    char *chem_bcbool;
 } BOUNDARYCONDITIONS;
 
 /* AMR solparams */
