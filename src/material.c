@@ -837,6 +837,11 @@ static void SitefracTangent_quad(PetscReal *sitefractangent_pot, PetscReal *site
     
     if (sitefractangent_T) {
         memset(sitefractangent_T ,0,(numcomps-1)             *sizeof(PetscReal));
+        for (PetscInt cj=0; cj<numcomps-1; cj++) {
+            sitefractangent_T[cj] = SumTSeries_derivative(temperature,currentquad->ceq   [cj]) 
+                                  - SumTSeries_derivative(temperature,currentquad->unary [cj])
+                                  / SumTSeries           (temperature,currentquad->binary[cj])/2.0;
+        }
     }        
 }
 
