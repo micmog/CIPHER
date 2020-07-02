@@ -62,6 +62,23 @@ PetscReal SumTSeries(const PetscReal temperature, const TSeries tseries)
 } 
 
 /*
+ PetscReal to power of unsigned int
+ */
+PetscReal SumTSeries_derivative(const PetscReal temperature, const TSeries tseries)
+{
+    PetscReal result = 0.0;
+    for (PetscInt i=0; i<tseries.nTser; i++) {
+        if        (tseries.exp[i] > 0) {
+            result += tseries.exp[i]*tseries.coeff[i]*FastPow(temperature, tseries.exp[i]-1);
+        } else if (tseries.exp[i] < 0) {
+            result += tseries.exp[i]*tseries.coeff[i]/FastPow(temperature,-tseries.exp[i]+1);
+        }   
+    }
+    if (fabs(tseries.logCoeff) > 0.0) result += tseries.logCoeff*(1.0 + log(temperature));
+    return result;
+} 
+
+/*
  Extract string between tags
  */
 char *Extract(const char *const string, const char *const left, const char *const right)
