@@ -262,7 +262,7 @@ typedef struct AppCtx {
     PetscInt *voxelphasemapping, *phasematerialmapping;
     PetscInt *voxelsitemapping, *sitenucleusmapping, *sitephasemapping;
     /* nucleation parameters */
-    PetscInt nsites, nsites_local, siteoffset, nnuclei;
+    PetscInt nsites, nsites_local, *siteoffset, nnuclei;
     NUCLEUS *nucleus;
     char *siteactivity_local, *siteactivity_global;
     PetscSF nucleation_sf;

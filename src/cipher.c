@@ -832,7 +832,7 @@ PetscErrorCode PostStep(TS ts)
                 temperature_root[site] /= volume_root[site];
                 deactive_root[site] = NucleationEvent(currenttime,currenttimestep,
                                                       temperature_root[site],volume_root[site],gv_root[site],
-                                                      user->siteoffset+site,user);
+                                                      user->siteoffset[user->worldrank]+site,user);
             }    
         }  
         memset(deactive_leaf,0,user->nsites*sizeof(char));
@@ -1335,7 +1335,7 @@ int main(int argc,char **args)
 
   /* Set up star forest */
   if (ctx.nsites) {
-      PetscInt *roots, sitepresent[ctx.nsites], sitesperprocctr[ctx.worldsize], site, rootctr;
+      PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
       PetscReal sitesperproc;
       PetscSFNode *leaves;
       IS siteIS;
@@ -1351,13 +1351,12 @@ int main(int argc,char **args)
       }
       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-      memset(sitesperprocctr,0,ctx.worldsize*sizeof(PetscInt));
       sitesperproc = ((PetscReal) ctx.nsites)/((PetscReal) ctx.worldsize);
       for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
           if (sitepresent[site]) {
               roots[rootctr] = site;
               leaves[rootctr].rank = (PetscInt) (((PetscReal) site)/sitesperproc);
-              leaves[rootctr].index = sitesperprocctr[leaves[rootctr].rank]++;
+              leaves[rootctr].index = site - ctx.siteoffset[leaves[rootctr].rank];
               rootctr++;
           }
       }
@@ -1544,7 +1543,7 @@ int main(int argc,char **args)
 
           /* Set up star forest */
           if (ctx.nsites) {
-              PetscInt *roots, sitepresent[ctx.nsites], sitesperprocctr[ctx.worldsize], site, rootctr;
+              PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
               PetscReal sitesperproc;
               PetscSFNode *leaves;
               IS siteIS;
@@ -1561,13 +1560,12 @@ int main(int argc,char **args)
               }
               ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
               ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-              memset(sitesperprocctr,0,ctx.worldsize*sizeof(PetscInt));
               sitesperproc = ((PetscReal) ctx.nsites)/((PetscReal) ctx.worldsize);
               for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
                   if (sitepresent[site]) {
                       roots[rootctr] = site;
                       leaves[rootctr].rank = (PetscInt) (((PetscReal) site)/sitesperproc);
-                      leaves[rootctr].index = sitesperprocctr[leaves[rootctr].rank]++;
+                      leaves[rootctr].index = site - ctx.siteoffset[leaves[rootctr].rank];
                       rootctr++;
                   }
               }
@@ -1776,7 +1774,7 @@ int main(int argc,char **args)
 
                   /* Set up star forest */
                   if (ctx.nsites){
-                      PetscInt *roots, sitepresent[ctx.nsites], sitesperprocctr[ctx.worldsize], site, rootctr;
+                      PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
                       PetscReal sitesperproc;
                       PetscSFNode *leaves;
                       IS siteIS;
@@ -1793,13 +1791,12 @@ int main(int argc,char **args)
                       }
                       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
                       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
-                      memset(sitesperprocctr,0,ctx.worldsize*sizeof(PetscInt));
                       sitesperproc = ((PetscReal) ctx.nsites)/((PetscReal) ctx.worldsize);
                       for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
                           if (sitepresent[site]) {
                               roots[rootctr] = site;
                               leaves[rootctr].rank = (PetscInt) (((PetscReal) site)/sitesperproc);
-                              leaves[rootctr].index = sitesperprocctr[leaves[rootctr].rank]++;
+                              leaves[rootctr].index = site - ctx.siteoffset[leaves[rootctr].rank];
                               rootctr++;
                           }
                       }
