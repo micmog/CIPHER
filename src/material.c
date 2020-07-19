@@ -15,11 +15,18 @@
 #define KBANGST2 1.38064852E-3
 #define KRONDELTA(a,b) ((a == b) ?  (1.0) : (0.0))
 
+typedef void (*Chemsource_f)       (PetscReal *, const PetscReal *, const SOURCE_MODEL, const PetscInt);
+
 /* nucleation functions */
 typedef struct NUCFUNC {
-    char (*NucleationEvent) (const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscReal, const PetscInt, const AppCtx *);
+    char      (*NucleationEvent)   (const PetscReal  , const PetscReal  , const PetscReal, const PetscReal  , const PetscReal, const PetscInt, const AppCtx *);
     PetscReal (*NucleationBarrier) (const PetscReal *, const PetscReal *, const PetscReal, const PetscReal *, const uint16_t, const uint16_t *, const AppCtx *);
 } NUCFUNC;
+
+/* interface functions */
+typedef struct INTFUNC {
+    Chemsource_f *Chemsource;
+} INTFUNC;
 
 /* constitutive functions */
 typedef struct MATFUNC {
@@ -29,9 +36,11 @@ typedef struct MATFUNC {
     void (*Sitefrac)              (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*SitefracTangent)       (PetscReal *, PetscReal *, PetscReal *, const PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
     void (*CompositionMobility)   (PetscReal *, const PetscReal *, const PetscReal, const CHEMFE, const PetscInt);
+    Chemsource_f *Chemsource;
 } MATFUNC;
 
 static MATFUNC *Matfunc;
+static INTFUNC *Intfunc;
 static NUCFUNC *Nucfunc;
 
 /*
@@ -265,6 +274,67 @@ PetscReal NucleationBarrier(const PetscReal *chempot, const PetscReal *sitepot_e
                             const PetscReal *interpolant, const uint16_t siteID, const uint16_t *phaseID, const AppCtx *user)
 {
     return Nucfunc[user->sitenucleusmapping[siteID]].NucleationBarrier(chempot,sitepot_ex,temperature,interpolant,siteID,phaseID,user);
+}
+
+/*
+ Chemical source - sink source
+ */
+static void Chemsource_sink(PetscReal *chemsource, const PetscReal *avgcomp, const SOURCE_MODEL source, const PetscInt numcomps)
+{
+    const SOURCE_SINK *currentsinksource = &source.sink;
+    
+    memset(chemsource,0,numcomps*sizeof(PetscReal));
+    for (PetscInt c=0; c<numcomps; c++) { 
+        chemsource[c] = currentsinksource->rate[c]*(currentsinksource->ceq[c] - avgcomp[c]);
+    }
+}    
+
+/*
+ Chemical source - random fluctuation
+ */
+static void Chemsource_rnd(PetscReal *chemsource, const PetscReal *avgcomp, const SOURCE_MODEL source, const PetscInt numcomps)
+{
+    const SOURCE_RND *currentrndsource = &source.rnd;
+    
+    memset(chemsource,0,numcomps*sizeof(PetscReal));
+    for (PetscInt c=0; c<numcomps; c++) { 
+        chemsource[c] = currentrndsource->fluctuation_amplitute[c]*(2.0*rand()/(double)RAND_MAX - 1.0);
+    }
+}
+
+/*
+ Chemsource - solute source/sink term
+ */
+void Chemsource(PetscReal *chemsource, const PetscReal *avgcomp, const PetscReal *phasefrac, const uint16_t *phaseID, const AppCtx *user)
+{
+    PetscReal chemsource_bulk[user->ncp], chemsource_interface[user->ncp];
+    MATERIAL *currentmaterial;
+    INTERFACE *currentinterface;
+    SOURCE *currentsource;
+    
+    memset(chemsource,0,user->ncp*sizeof(PetscReal));
+    for (PetscInt gk=0; gk<phaseID[0]; gk++) {
+        PetscInt matk = user->phasematerialmapping[phaseID[gk+1]];
+        currentmaterial = &user->material[matk];
+        currentsource = &currentmaterial->sources.source[0];
+        for (PetscInt s=0; s<currentmaterial->sources.nsources; s++,currentsource++) {  
+            Matfunc[matk].Chemsource[s](chemsource_bulk,avgcomp,currentsource->source,user->ncp);
+            for (PetscInt c=0; c<user->ncp; c++) { 
+                chemsource[c] += phasefrac[gk]*phasefrac[gk]*chemsource_bulk[c];
+            }
+        }
+        for (PetscInt gj=gk+1; gj<phaseID[0]; gj++) {
+            PetscInt interfacekj = user->interfacelist[phaseID[gk+1]*user->npf+phaseID[gj+1]];
+            currentinterface = &user->interface[interfacekj];
+            currentsource = &currentinterface->isources.source[0];
+            for (PetscInt s=0; s<currentinterface->isources.nsources; s++,currentsource++) {  
+                Intfunc[interfacekj].Chemsource[s](chemsource_interface,avgcomp,currentsource->source,user->ncp);
+                for (PetscInt c=0; c<user->ncp; c++) { 
+                    chemsource[c] += 2.0*phasefrac[gk]*phasefrac[gj]*chemsource_interface[c];
+                }
+            }    
+        } 
+    }
 }
 
 /*
@@ -1016,6 +1086,29 @@ void material_init(const AppCtx *user)
             Matfunc[mat].SitefracTangent = &SitefracTangent_none;
             Matfunc[mat].CompositionMobility = &CompositionMobility_none;
         }
+        Matfunc[mat].Chemsource = malloc(currentmaterial->sources.nsources*sizeof(Chemsource_f));
+        SOURCE *currentsource = &currentmaterial->sources.source[0];
+        for (PetscInt source=0; source<currentmaterial->sources.nsources; source++,currentsource++) {  
+            if (currentsource->source_model == SINK_SOURCE) {
+                Matfunc[mat].Chemsource[source] = &Chemsource_sink;
+            } else if (currentsource->source_model == RND_SOURCE) {
+                Matfunc[mat].Chemsource[source] = &Chemsource_rnd;
+            }
+         }   
+    }    
+    
+    Intfunc = (INTFUNC *) malloc(user->nf*sizeof(struct INTFUNC));
+    INTERFACE *currentinterface = &user->interface[0];
+    for (PetscInt intf=0; intf<user->nf; intf++, currentinterface++) {
+        Intfunc[intf].Chemsource = malloc(currentinterface->isources.nsources*sizeof(Chemsource_f));
+        SOURCE *currentsource = &currentinterface->isources.source[0];
+        for (PetscInt source=0; source<currentinterface->isources.nsources; source++,currentsource++) {  
+            if (currentsource->source_model == SINK_SOURCE) {
+                Intfunc[intf].Chemsource[source] = &Chemsource_sink;
+            } else if (currentsource->source_model == RND_SOURCE) {
+                Intfunc[intf].Chemsource[source] = &Chemsource_rnd;
+            }
+         }   
     }    
     
     Nucfunc = (NUCFUNC *) malloc(user->nnuclei*sizeof(struct NUCFUNC));

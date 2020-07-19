@@ -283,6 +283,68 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          /* chempot explicit kinetic coefficient */
          ierr = GetProperty(propval, &propsize, materialmapping, "chempot_ex_kineticcoeff", buffer, filesize);
          if (propsize) {assert(propsize == 1); currentmaterial->chempot_ex_kineticcoeff = atof(propval[0]);} else {currentmaterial->chempot_ex_kineticcoeff = 0.0;}
+         /* sources */
+         {
+          char sourcemapping[PETSC_MAX_PATH_LEN];
+          sprintf(sourcemapping,"%s/sources",materialmapping);
+          ierr = GetProperty(propval, &propsize, sourcemapping, "activesources", buffer, filesize);
+          currentmaterial->sources.nsources = propsize;
+          currentmaterial->sources.sourcename = malloc(currentmaterial->sources.nsources*sizeof(char *));
+          for (PetscInt s=0; s<currentmaterial->sources.nsources; s++) {
+              currentmaterial->sources.sourcename[s] = malloc(PETSC_MAX_PATH_LEN);
+              strcpy(currentmaterial->sources.sourcename[s],propval[s]);
+          }    
+          currentmaterial->sources.source = (SOURCE *) malloc(currentmaterial->sources.nsources*sizeof(struct SOURCE));
+          SOURCE *currentsource = &currentmaterial->sources.source[0];
+          for (PetscInt s=0; s<currentmaterial->sources.nsources; s++,currentsource++) {
+              char activesourcemapping[PETSC_MAX_PATH_LEN];
+              sprintf(activesourcemapping,"%s/%s",sourcemapping,currentmaterial->sources.sourcename[s]);
+              ierr = GetProperty(propval, &propsize, activesourcemapping, "source", buffer, filesize); CHKERRQ(ierr);
+              assert(propsize == 1);
+              /* equilibration source model */
+              if        (!strcmp(propval[0], "sink"   )) {
+                  currentsource->source_model = SINK_SOURCE;
+                  SOURCE_SINK *currentsinksource = &currentsource->source.sink;
+                  /* equilibration rate */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "rate", buffer, filesize);
+                  currentsinksource->rate = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      assert(propsize == user->ncp);
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentsinksource->rate[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentsinksource->rate,0,user->ncp*sizeof(PetscReal));
+                  }
+                  /* equilibrium composition */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "ceq", buffer, filesize);
+                  currentsinksource->ceq = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      assert(propsize == user->ncp);
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentsinksource->ceq[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentsinksource->ceq,0,user->ncp*sizeof(PetscReal));
+                  }
+              /* random fluctuation source model */
+              } else if (!strcmp(propval[0], "random" )) {
+                  currentsource->source_model = RND_SOURCE;
+                  SOURCE_RND *currentrndsource = &currentsource->source.rnd;
+                  /* fluctuation amplitude */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "fluctuation_amplitute", buffer, filesize);
+                  currentrndsource->fluctuation_amplitute = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      assert(propsize == user->ncp);
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentrndsource->fluctuation_amplitute[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentrndsource->fluctuation_amplitute,0,user->ncp*sizeof(PetscReal));
+                  } 
+              }
+          }
+         } 
          /* chemical energy type */
          {
           ierr = GetProperty(propval, &propsize, materialmapping, "chemicalenergy", buffer, filesize); CHKERRQ(ierr);
@@ -880,6 +942,67 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      for (PetscInt interface=0; interface<user->nf; interface++,currentinterface++) {
          char interfacemapping[PETSC_MAX_PATH_LEN];
          sprintf(interfacemapping,"interface/%s",user->interfacename[interface]);
+         /* sources */
+         {
+          char sourcemapping[PETSC_MAX_PATH_LEN];
+          sprintf(sourcemapping,"%s/sources",interfacemapping);
+          ierr = GetProperty(propval, &propsize, sourcemapping, "activesources", buffer, filesize);
+          currentinterface->isources.nsources = propsize;
+          currentinterface->isources.sourcename = malloc(currentinterface->isources.nsources*sizeof(char *));
+          for (PetscInt s=0; s<currentinterface->isources.nsources; s++) {
+              currentinterface->isources.sourcename[s] = malloc(PETSC_MAX_PATH_LEN);
+              strcpy(currentinterface->isources.sourcename[s],propval[s]);
+          }    
+          currentinterface->isources.source = (SOURCE *) malloc(currentinterface->isources.nsources*sizeof(struct SOURCE));
+          SOURCE *currentsource = &currentinterface->isources.source[0];
+          for (PetscInt s=0; s<currentinterface->isources.nsources; s++,currentsource++) {
+              char activesourcemapping[PETSC_MAX_PATH_LEN];
+              sprintf(activesourcemapping,"%s/%s",sourcemapping,currentinterface->isources.sourcename[s]);
+              ierr = GetProperty(propval, &propsize, activesourcemapping, "source", buffer, filesize); CHKERRQ(ierr);
+              assert(propsize == 1);
+              /* equilibration source model */
+              if        (!strcmp(propval[0], "sink"   )) {
+                  currentsource->source_model = SINK_SOURCE;
+                  SOURCE_SINK *currentsinksource = &currentsource->source.sink;
+                  /* equilibration rate */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "rate", buffer, filesize);
+                  currentsinksource->rate = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      assert(propsize == user->ncp);
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentsinksource->rate[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentsinksource->rate,0,user->ncp*sizeof(PetscReal));
+                  }
+                  /* equilibrium composition */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "ceq", buffer, filesize);
+                  currentsinksource->ceq = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      assert(propsize == user->ncp);
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentsinksource->ceq[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentsinksource->ceq,0,user->ncp*sizeof(PetscReal));
+                  }
+              /* random fluctuation source model */
+              } else if (!strcmp(propval[0], "random" )) {
+                  currentsource->source_model = RND_SOURCE;
+                  SOURCE_RND *currentrndsource = &currentsource->source.rnd;
+                  /* fluctuation amplitude */
+                  ierr = GetProperty(propval, &propsize, activesourcemapping, "fluctuation_amplitute", buffer, filesize);
+                  currentrndsource->fluctuation_amplitute = malloc(user->ncp*sizeof(PetscReal));
+                  if (propsize) {
+                      for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                          currentrndsource->fluctuation_amplitute[propctr] = atof(propval[propctr]);
+                      }    
+                  } else {
+                      memset(currentrndsource->fluctuation_amplitute,0,user->ncp*sizeof(PetscReal));
+                  } 
+              }
+          }
+         } 
          /* interface mobility */
          {
           char mobmapping[PETSC_MAX_PATH_LEN];

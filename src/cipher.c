@@ -52,8 +52,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     MATERIAL          *currentmaterial;
     INTERFACE         *currentinterface;
     PetscReal         work_vec_PF[PF_SIZE], work_vec_DP[DP_SIZE], work_vec_MB[DP_SIZE*DP_SIZE];
-    PetscReal         mobility_elem[user->ncp], composition_avg[user->ncp], work_vec_SP[SP_SIZE];
-    PetscReal         work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CTT[PF_SIZE*SP_SIZE];
+    PetscReal         mobility_elem[user->ncp], composition_avg[user->ncp], compsource[user->ncp];
+    PetscReal         work_vec_SP[SP_SIZE], work_vec_CP[PF_SIZE*DP_SIZE], work_vec_CTT[PF_SIZE*SP_SIZE];
     PetscReal         work_vec_CTPot[PF_SIZE*SP_SIZE*DP_SIZE], work_vec_CTEx[PF_SIZE*SP_SIZE*DP_SIZE];
     PetscReal         sitefrac_global[PF_SIZE*SF_SIZE*user->ninteriorcells]; 
     PetscReal         composition_global[user->ncp*user->ninteriorcells]; 
@@ -444,6 +444,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
         sitepot_ex = &offset[EX_OFFSET];
         temperature =  &offset[TM_OFFSET];
         sitefrac = &sitefrac_global[cell*PF_SIZE*SF_SIZE];
+        composition = &composition_global[cell*user->ncp];
         offset = NULL;
         ierr = DMPlexPointLocalRef(user->da_solution, cell, lap,  &offset); CHKERRQ(ierr);
         plapl = &offset[PF_OFFSET];
@@ -682,7 +683,8 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     }    
                 }
             }
-            for (c=0; c<user->ndp; c++) work_vec_DP[c] += dlapl[c];
+            Chemsource(compsource, composition, interpolant, slist, user);
+            for (c=0; c<user->ndp; c++) work_vec_DP[c] += (dlapl[c] + compsource[c]);
             
             for (g =0; g<slist[0];  g++) {
                 currentmaterial = &user->material[user->phasematerialmapping[slist[g+1]]];

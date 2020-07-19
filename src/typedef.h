@@ -36,6 +36,12 @@ PetscInt AS_OFFSET, PF_OFFSET, DP_OFFSET, EX_OFFSET, TM_OFFSET;
 
 /* Types declarations */
 
+/* source model type */
+typedef enum {
+   SINK_SOURCE,
+   RND_SOURCE
+} source_model_t;
+
 /* nucleation model type */
 typedef enum {
    CNT_NUCLEATION,
@@ -66,6 +72,35 @@ typedef enum {
    CUBIC_INTERPOLATION,
    NONE_INTERPOLATION
 } interpolation_t;
+
+/* sink source model */
+typedef struct SOURCE_SINK {
+    PetscReal *rate, *ceq;
+} SOURCE_SINK;
+
+/* random source model */
+typedef struct SOURCE_RND {
+    PetscReal *fluctuation_amplitute;
+} SOURCE_RND;
+
+/* source model */
+typedef union SOURCE_MODEL {
+    SOURCE_SINK sink;
+    SOURCE_RND  rnd;
+} SOURCE_MODEL;
+
+/* source model */
+typedef struct SOURCE {
+    source_model_t source_model;
+    SOURCE_MODEL source;
+} SOURCE;
+
+/* source model */
+typedef struct SOURCES {
+    PetscInt nsources;
+    char **sourcename;
+    SOURCE *source;
+} SOURCES;
 
 /* CNT nucleation model container */
 typedef struct CNT_NUC {
@@ -178,6 +213,7 @@ typedef struct MATERIAL {
     PetscReal *c0, *stochiometry;
     CHEMFE energy;
     THERMAL thermal;
+    SOURCES sources;
 } MATERIAL;
 
 /* Interface energy parameters */
@@ -199,6 +235,7 @@ typedef struct INTERFACE {
     IENERGY *ienergy;
     IMOBILITY *imobility;
     PetscReal *potential, *mobilityc;
+    SOURCES isources;
 } INTERFACE;
 
 /* boundary conditions */
