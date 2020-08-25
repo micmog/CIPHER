@@ -1608,19 +1608,20 @@ int main(int argc,char **args)
   }    
   ierr = InitializeTS(ctx.da_solution, &ctx, &ts);CHKERRQ(ierr);
 
-  PetscReal currenttime = 0.0, loadcasetime = 0.0;
+  PetscReal currenttime = 0.0, loadcasetime = 0.0, loadcaseendtime = 0.0;
   PetscInt  nsteps = 0;
   for (ctx.solparams.currentloadcase = 0;
        ctx.solparams.currentloadcase < ctx.solparams.nloadcases;
        loadcasetime += ctx.solparams.time[ctx.solparams.currentloadcase++]) {
       ctx.solparams.timestep = ctx.solparams.mintimestep;
-      ierr = TSSetMaxTime(ts,loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase]);CHKERRQ(ierr);
-      ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
+      loadcaseendtime = loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase];
       for (;currenttime < loadcasetime+ctx.solparams.time[ctx.solparams.currentloadcase];) {
           ierr = TSSetStepNumber(ts,nsteps);CHKERRQ(ierr);
           ierr = TSSetTime(ts,currenttime);CHKERRQ(ierr);
           ierr = TSSetTimeStep(ts,ctx.solparams.timestep);CHKERRQ(ierr);
           ierr = TSSetMaxSteps(ts,nsteps+ctx.amrparams.amrinterval-nsteps%ctx.amrparams.amrinterval);CHKERRQ(ierr);
+          ierr = TSSetMaxTime(ts,loadcaseendtime);CHKERRQ(ierr);
+          ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
           ierr = TSSolve(ts,solution);CHKERRQ(ierr);
           ierr = TSGetSolveTime(ts,&currenttime);CHKERRQ(ierr);
           ierr = TSGetStepNumber(ts,&nsteps);CHKERRQ(ierr);
