@@ -104,7 +104,7 @@ typedef struct SOURCES {
 
 /* CNT nucleation model container */
 typedef struct CNT_NUC {
-    PetscReal D0, migration, gamma, shapefactor;
+    PetscReal gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
     PetscReal incubationtimemin;
     PetscReal liquidus;
@@ -118,7 +118,7 @@ typedef struct CONST_NUC {
 
 /* thermal nucleation model container */
 typedef struct THERMAL_NUC {
-    PetscReal D0, migration, gamma, shapefactor;
+    PetscReal gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
     PetscReal solvus_temperature_0, *solvus_temperature_c; 
     PetscReal enthalpy_fusion_0, *enthalpy_fusion_c;
@@ -136,7 +136,8 @@ typedef union NUC {
 /* Nucleus parameters */
 typedef struct NUCLEUS {
     nucleation_model_t nuc_model;
-    uint16_t matrixlist[MAXAP+1];
+    uint16_t *matrixlist;
+    char *activesolutes;
     NUC nucleation; 
 } NUCLEUS;
 

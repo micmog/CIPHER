@@ -759,7 +759,9 @@ PetscErrorCode PostStep(TS ts)
         PetscReal gv_leaf[user->nsites], gv_root[user->nsites_local];
         PetscReal volume_leaf[user->nsites], volume_root[user->nsites_local];
         PetscReal temperature_leaf[user->nsites], temperature_root[user->nsites_local];
+        PetscReal diffusivity_leaf[user->ncp][user->nsites], diffusivity_root[user->ncp][user->nsites_local];
         char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
+        PetscReal barrier, diffusivity[user->ncp];
 
         ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
         ierr = DMGetLabel(user->da_solution, "site", &slabel);
@@ -767,6 +769,7 @@ PetscErrorCode PostStep(TS ts)
         memset(gv_leaf,0,user->nsites*sizeof(PetscReal));
         memset(volume_leaf,0,user->nsites*sizeof(PetscReal));
         memset(temperature_leaf,0,user->nsites*sizeof(PetscReal));
+        for (c=0; c<user->ncp; c++) memset(diffusivity_leaf[c],0,user->nsites*sizeof(PetscReal));
         for (site = 0; site<user->nsites; site++) {
             if (user->siteactivity_global[site]) {
                 DMLabelGetStratumIS(slabel, site+1, &siteIS);
@@ -798,12 +801,12 @@ PetscErrorCode PostStep(TS ts)
                         EvalInterpolant(interpolant,pcell,slist[0]);
                 
                         /* calculate nucleation barrier */
+                        NucleationBarrier(&barrier,diffusivity,dcell,ccell,(*temperature),interpolant,site,slist,user);
                         cellvolume = FastPow(user->cellgeom[sitecells[cell]],user->dim); 
                         volume_leaf[site] += cellvolume;
-                        temperature_leaf[site] += cellvolume
-                                                * (*temperature);
-                        gv_leaf[site] += cellvolume
-                                       * NucleationBarrier(dcell,ccell,(*temperature),interpolant,site,slist,user);
+                        temperature_leaf[site] += cellvolume * (*temperature);
+                        gv_leaf[site] += cellvolume * barrier;
+                        for (c=0; c<user->ncp; c++) diffusivity_leaf[c][site] += cellvolume * diffusivity[c];
                     }
                 }    
                 if (siteIS) {
@@ -821,6 +824,11 @@ PetscErrorCode PostStep(TS ts)
         memset(gv_root,0,user->nsites_local*sizeof(PetscReal));
         PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
         PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
+        for (c=0; c<user->ncp; c++)  {
+            memset(diffusivity_root[c],0,user->nsites_local*sizeof(PetscReal));
+            PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,diffusivity_leaf[c],diffusivity_root[c],MPI_SUM);
+            PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,diffusivity_leaf[c],diffusivity_root[c],MPI_SUM);
+        }
         memset(volume_root,0,user->nsites_local*sizeof(PetscReal));
         PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
         PetscSFReduceEnd(user->nucleation_sf,MPIU_SCALAR,volume_leaf,volume_root,MPI_SUM);
@@ -830,10 +838,16 @@ PetscErrorCode PostStep(TS ts)
         memset(deactive_root,0,user->nsites_local*sizeof(char));
         for (site=0; site<user->nsites_local; site++) {
             if (user->siteactivity_local[site]) {
+                currentnucleus = &user->nucleus[user->sitenucleusmapping[user->siteoffset[user->worldrank]+site]];
+                for (c=0, *diffusivity = LARGE; c<user->ncp; c++) {
+                    if (currentnucleus->activesolutes[c]) *diffusivity = *diffusivity < diffusivity_root[c][site] 
+                                                                       ? *diffusivity : diffusivity_root[c][site];
+                }
+                *diffusivity /= volume_root[site];
                 gv_root[site] /= volume_root[site];
                 temperature_root[site] /= volume_root[site];
                 deactive_root[site] = NucleationEvent(currenttime,currenttimestep,
-                                                      temperature_root[site],volume_root[site],gv_root[site],
+                                                      temperature_root[site],volume_root[site],gv_root[site],*diffusivity,
                                                       user->siteoffset[user->worldrank]+site,user);
             }    
         }  

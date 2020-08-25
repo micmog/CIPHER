@@ -828,8 +828,24 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          sprintf(nucleusmapping,"nucleus/%s",user->nucleusname[n]);
          /* matrix phases */
          ierr = GetProperty(propval, &propsize, nucleusmapping, "matrix", buffer, filesize);
-         assert(propsize > 0); currentnucleus->matrixlist[0] = propsize;
+         assert(propsize > 0); 
+         currentnucleus->matrixlist = malloc((propsize+1)*sizeof(uint16_t));
+         currentnucleus->matrixlist[0] = propsize;
          for (PetscInt propctr = 0; propctr < propsize; propctr++) currentnucleus->matrixlist[propctr+1] = atoi(propval[propctr]);
+         /* active solute components */
+         ierr = GetProperty(propval, &propsize, nucleusmapping, "active_solutes", buffer, filesize);
+         if (propsize) {
+             currentnucleus->activesolutes = malloc(user->ncp*sizeof(char));
+             memset(currentnucleus->activesolutes,0,user->ncp*sizeof(char));
+             for (PetscInt propctr = 0; propctr < propsize; propctr++) {
+                 for (PetscInt cp=0; cp<user->ncp; cp++) {
+                     if (!strcmp(propval[propctr], user->componentname[cp])) currentnucleus->activesolutes[cp] = 1;
+                 }
+             }
+         } else {
+             currentnucleus->activesolutes = malloc(user->ncp*sizeof(char));
+             for (PetscInt cp=0; cp<user->ncp; cp++) currentnucleus->activesolutes[cp] = 1;
+         }
          ierr = GetProperty(propval, &propsize, nucleusmapping, "nucleation_model", buffer, filesize);
          assert(propsize == 1);
          if (!strcmp(propval[0], "cnt" )) {
@@ -842,12 +858,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentcntnuc->shapefactor = atof(propval[0]);} 
              else {currentcntnuc->shapefactor = 1.0;}
-             /* normalized diffusion coefficient */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
-             assert(propsize == 1); currentcntnuc->D0 = atof(propval[0]);
-             /* normalized migration energy */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
-             assert(propsize == 1); currentcntnuc->migration = atof(propval[0]);
              /* lattice parameter */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentcntnuc->minsize = atof(propval[0]);} 
@@ -906,12 +916,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              ierr = GetProperty(propval, &propsize, nucleusmapping, "shape_factor", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentthermalnuc->shapefactor = atof(propval[0]);} 
              else {currentthermalnuc->shapefactor = 1.0;}
-             /* normalized diffusion coefficient */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "D0", buffer, filesize);
-             assert(propsize == 1); currentthermalnuc->D0 = atof(propval[0]);
-             /* normalized migration energy */
-             ierr = GetProperty(propval, &propsize, nucleusmapping, "migration", buffer, filesize);
-             assert(propsize == 1); currentthermalnuc->migration = atof(propval[0]);
              /* lattice parameter */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "minsize", buffer, filesize);
              if (propsize) {assert(propsize == 1); currentthermalnuc->minsize = atof(propval[0]);} 
