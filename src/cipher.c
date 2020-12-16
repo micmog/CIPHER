@@ -271,7 +271,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
 
         /* get geometric data */
         deltaL = user->cellgeom[scells[0]]; deltaR = user->cellgeom[scells[1]];
-        volL = FastPow(deltaL,user->dim-1); volR = FastPow(deltaR,user->dim-1); 
+        volL = FastPow(deltaL,user->dim); volR = FastPow(deltaR,user->dim); 
         ffactor = 2.0*(deltaL < deltaR ? volL/deltaL : volR/deltaR)/(deltaL + deltaR);
         
         if (slistL[0] > 1 || slistL[1] > 1) {
