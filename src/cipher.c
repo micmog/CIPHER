@@ -818,8 +818,8 @@ PetscErrorCode PostStep(TS ts)
         PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
         PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
         memset(user->siteactivity_global,0,user->nsites*sizeof(char));
-        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
-        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global,MPI_REPLACE);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global,MPI_REPLACE);
     
         memset(gv_root,0,user->nsites_local*sizeof(PetscReal));
         PetscSFReduceBegin(user->nucleation_sf,MPIU_SCALAR,gv_leaf,gv_root,MPI_SUM);
@@ -852,8 +852,8 @@ PetscErrorCode PostStep(TS ts)
             }    
         }  
         memset(deactive_leaf,0,user->nsites*sizeof(char));
-        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
-        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf);
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf,MPI_REPLACE);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,deactive_root,deactive_leaf,MPI_REPLACE);
 
         char reset = 0;
         for (site=0; site<user->nsites; site++) {
@@ -899,8 +899,8 @@ PetscErrorCode PostStep(TS ts)
         PetscSFReduceBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
         PetscSFReduceEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_global,user->siteactivity_local,MPI_LAND);
         memset(user->siteactivity_global,0,user->nsites*sizeof(char));
-        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
-        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global);
+        PetscSFBcastBegin(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global,MPI_REPLACE);
+        PetscSFBcastEnd(user->nucleation_sf,MPI_CHAR,user->siteactivity_local,user->siteactivity_global,MPI_REPLACE);
     }
 
     /* Determine active phase set, update composition */
@@ -1379,8 +1379,8 @@ int main(int argc,char **args)
       ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
       ierr = PetscSFSetUp(ctx.nucleation_sf);
       memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
+      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
   }
   
   /*  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1478,7 +1478,9 @@ int main(int argc,char **args)
                 if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                 if (nldof > 0) ++(ctx.ninteriorcells);
             }
-            DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
+            DMGetLabel(ctx.da_solution, "boundary", &bclabel); 
+            if (bclabel) {DMLabelReset(bclabel);} 
+            else {DMLabelCreate(PETSC_COMM_SELF, "boundary", &bclabel);}    
             ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
             free(ctx.localfaces);
             ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
@@ -1504,7 +1506,7 @@ int main(int argc,char **args)
                 ierr = DMPlexComputeCellGeometryFVM(ctx.da_solution, cell, &cvolume, NULL, NULL);
                 ctx.cellgeom[cell] = pow(cvolume,1.0/ctx.dim);
             }
-          }
+         }
           
           /* Precalculate gradient matrix */
           if (ctx.gradient_calculation){
@@ -1588,11 +1590,11 @@ int main(int argc,char **args)
               ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
               ierr = PetscSFSetUp(ctx.nucleation_sf);
               memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-              PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-              PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+              PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
+              PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
           }
 
-          {
+         {
              PetscFE output_fe;
              ierr = DMDestroy(&ctx.da_output);CHKERRQ(ierr);
              ierr = DMClone(ctx.da_solution,&ctx.da_output);CHKERRQ(ierr);
@@ -1710,7 +1712,9 @@ int main(int argc,char **args)
                         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                         if (nldof > 0) ++(ctx.ninteriorcells);
                     }
-                    DMGetLabel(ctx.da_solution, "boundary", &bclabel); DMLabelReset(bclabel);
+                    DMGetLabel(ctx.da_solution, "boundary", &bclabel);
+                    if (bclabel) {DMLabelReset(bclabel);} 
+                    else {DMLabelCreate(PETSC_COMM_SELF, "boundary", &bclabel);}    
                     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
                     free(ctx.localfaces);
                     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
@@ -1820,8 +1824,8 @@ int main(int argc,char **args)
                       ierr = PetscSFSetGraph(ctx.nucleation_sf,ctx.nsites_local,rootctr,roots,PETSC_OWN_POINTER,leaves,PETSC_OWN_POINTER);
                       ierr = PetscSFSetUp(ctx.nucleation_sf);
                       memset(ctx.siteactivity_global,0,ctx.nsites*sizeof(char));
-                      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
-                      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global);
+                      PetscSFBcastBegin(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
+                      PetscSFBcastEnd(ctx.nucleation_sf,MPI_CHAR,ctx.siteactivity_local,ctx.siteactivity_global,MPI_REPLACE);
                   }
               
                   {
