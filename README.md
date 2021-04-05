@@ -12,9 +12,9 @@ CIPHER is a phase-field simulation code for microstructure evolution in multi-co
 
 ## Requirements
 
-This software requires MPI, p4est v2.2 [2], and PETSc v3.12 [3]. 
+This software requires MPI, p4est [2], and PETSc [3]. 
 
-Note that the following installation instructions are specific to users of the University of Manchester's Computational Shared Facility (CSF).  Non CSF users will need to follow their local procedures to install, p4est and PETSc.  
+Note that the following installation instructions are specific to users of the University of Manchester's Computational Shared Facility (CSF).  Non CSF users will need to follow their local procedures to install PETSc.  
 To install PETSc:
 ```bash
 #Navigate back to your software folder, then download PETSc with:
@@ -56,7 +56,7 @@ Setting up environment to use CIPHER:
 export OMP_NUM_THREADS=1
 module load tools/env/proxy
 module load mpi/intel-17.0/openmpi/4.0.1
-export PETSC_DIR=$HOME/software/petsc-dev
+export PETSC_DIR=$HOME/software/petsc
 export PETSC_ARCH=cipher
 export CIPHER_DIR=$HOME/software/CIPHER
 PATH=$PETSC_DIR/$PETSC_ARCH/bin:$CIPHER_DIR/bin:$PATH
