@@ -15,52 +15,27 @@ CIPHER is a phase-field simulation code for microstructure evolution in multi-co
 This software requires MPI, p4est [2], and PETSc [3]. 
 
 Note that the following installation instructions are specific to users of the University of Manchester's Computational Shared Facility (CSF).  Non CSF users will need to follow their local procedures to install PETSc.  
-To install PETSc:
-```bash
-#Navigate back to your software folder, then download PETSc with:
-cd $HOME/software
-git clone https://gitlab.com/petsc/petsc.git petsc
-#Now set an environment variable to tell the system where PETSc is located:
-export PETSC_DIR=$HOME/software/petsc
-export PETSC_ARCH=cipher
-#Note that if you put PETSc in a different folder to that used in this example, you will need to alter this variable.
-#Load cmake (required to install some external packages):
-module load tools/gcc/cmake/3.11.4
-#Load MPI compilers:
-module load mpi/intel-17.0/openmpi/4.0.1
-#Navigate to the folder containing PETSc and configure it, including the necessary flags:
-cd $PETSC_DIR
-./configure --download-metis --download-parmetis --download-chaco --download-triangle --download-ctetgen --download-pragmatic --download-eigen --download-hypre --download-ml --download-hdf5 --download-zlib --download-yaml --download-p4est --with-pthread --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=$PETSC_ARCH PETSC_DIR=$PETSC_DIR
-#Then make PETSc:
-make PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH
-make install PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH all
-```
 
 To install CIPHER:
 ```bash
-#Now navigate to your software folder and download CIPHER with:
-cd $HOME/software
-git https://github.com/micmog/CIPHER.git
-#Now put CIPHER in your path, so that it can be called from anywhere in your system.
-export CIPHER_DIR=$HOME/software/CIPHER
-PATH=$CIPHER_DIR/bin:$PATH:$HOME/bin
-# nagivate to the project directory
+#Set location to install CIPHER
+export CIPHER_DIR=<path/to/cipher>
+#Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended Place this in your .bashrc/.bash_profile.
+#Clone the CIPHER repository with:
+git --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
+#Install PETSc:
+cd $CIPHER_DIR/petsc
+module load tools/gcc/cmake/3.11.4
+module load mpi/intel-17.0/openmpi/4.0.1
+./configure --download-metis --download-parmetis --download-chaco --download-triangle --download-ctetgen --download-pragmatic --download-eigen --download-hypre --download-ml --download-hdf5 --download-zlib --download-yaml --download-p4est --with-pthread --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
+make PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
+make install PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc all
 cd $CIPHER_DIR
-# compile 
+#Set up CIPHER environment
+source $CIPHER_DIR/load_CIPHER.sh
+#Install CIPHER 
 make clean
 make install
-```
-
-Setting up environment to use CIPHER:
-```bash
-export OMP_NUM_THREADS=1
-module load tools/env/proxy
-module load mpi/intel-17.0/openmpi/4.0.1
-export PETSC_DIR=$HOME/software/petsc
-export PETSC_ARCH=cipher
-export CIPHER_DIR=$HOME/software/CIPHER
-PATH=$PETSC_DIR/$PETSC_ARCH/bin:$CIPHER_DIR/bin:$PATH
-LD_LIBRARY_PATH=$PETSC_DIR/$PETSC_ARCH/lib:$LD_LIBRARY_PATH
 ```
 
 ## Usage
