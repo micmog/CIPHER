@@ -18,22 +18,21 @@ Note that the following installation instructions are specific to users of the U
 
 To install CIPHER:
 ```bash
-#Set location to install CIPHER
+# Set location to install CIPHER
 export CIPHER_DIR=<path/to/cipher>
-#Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended Place this in your .bashrc/.bash_profile.
-#Clone the CIPHER repository with:
+# Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended Place this in your .bashrc/.bash_profile.
+# Clone the CIPHER repository with:
 git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
-#Install PETSc:
+# Install PETSc:
 cd $CIPHER_DIR/petsc
 module load tools/gcc/cmake/3.11.4
 module load mpi/intel-17.0/openmpi/4.0.1
 ./configure --download-metis --download-parmetis --download-chaco --download-triangle --download-ctetgen --download-pragmatic --download-eigen --download-hypre --download-ml --download-hdf5 --download-zlib --download-yaml --download-p4est --with-pthread --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
-make PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
-make install PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc all
+make PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc all
 cd $CIPHER_DIR
-#Set up CIPHER environment
+# Set up CIPHER environment
 source $CIPHER_DIR/load_CIPHER.sh
-#Install CIPHER 
+# Install CIPHER 
 make clean
 make install
 ```
@@ -42,7 +41,9 @@ make install
 
 Running an example:
 ```bash
-# after setting up environment to use CIPHER, navigate to examples folder
+# Set up CIPHER environment
+source $CIPHER_DIR/load_CIPHER.sh
+# Navigate to examples folder
 cd $CIPHER_DIR/examples/GrainBoundaryPrecipitate
 # run example
 mpiexec -n 4 cipher.exe --config GrainBoundaryPrecipitate.yaml
@@ -55,7 +56,7 @@ For questions, comments, bug-reports or contributions please email Dr. Pratheek 
 
 ## References
 
-[1] Grand-canonical phase-field implementation: https://arxiv.org/abs/1906.10503  
+[1] Grand-canonical phase-field implementation: https://doi.org/10.1016/j.cma.2020.113029  
 [2] p4est: http://www.p4est.org    
 [3] PETSc: https://www.mcs.anl.gov/petsc/  
 
