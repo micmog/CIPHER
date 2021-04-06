@@ -22,7 +22,7 @@ To install CIPHER:
 export CIPHER_DIR=<path/to/cipher>
 #Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended Place this in your .bashrc/.bash_profile.
 #Clone the CIPHER repository with:
-git --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
+git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
 #Install PETSc:
 cd $CIPHER_DIR/petsc
 module load tools/gcc/cmake/3.11.4
