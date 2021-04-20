@@ -120,7 +120,10 @@ typedef struct CONST_NUC {
 typedef struct THERMAL_NUC {
     PetscReal gamma, shapefactor;
     PetscReal minsize, atomicvolume, lengthscale;
-    PetscReal solvus_temperature_0, *solvus_temperature_c; 
+    PetscReal solvus_temperature_0, *solvus_temperature_c;
+    PetscReal A, B, x_cu;
+    PetscReal C, D, x_zn;
+    PetscReal E, F, x_mg;
     PetscReal enthalpy_fusion_0, *enthalpy_fusion_c;
     PetscReal incubationtimemin;
     PetscReal liquidus;

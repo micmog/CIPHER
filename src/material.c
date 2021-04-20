@@ -216,7 +216,6 @@ static void NucleationBarrier_thermal(PetscReal *barrier, PetscReal *diffusivity
     THERMAL_NUC *currentthermalnuc;
     
     currentthermalnuc = &user->nucleus[user->sitenucleusmapping[siteID]].nucleation.thermal;
-    solvus_temperature = currentthermalnuc->solvus_temperature_0;
     enthalpy_fusion = currentthermalnuc->enthalpy_fusion_0;
     memset(chempot_interface,0,user->ndp*sizeof(PetscReal));
     for (gk=0; gk<phaseID[0]; gk++) {
@@ -248,11 +247,14 @@ static void NucleationBarrier_thermal(PetscReal *barrier, PetscReal *diffusivity
             composition_avg[c] += interpolant[g]*sitefrac_avg;
         }
     }
-    if (currentthermalnuc->solvus_temperature_c) {
-        for (c=0; c<user->ncp; c++) {
-            solvus_temperature += composition_avg[c]*currentthermalnuc->solvus_temperature_c[c];
-        }
-    }
+    
+    solvus_temperature = currentthermalnuc->solvus_temperature_0
+                       * (
+                            1.0 
+                          + currentthermalnuc->A*pow(1.0 - composition_avg[1]/currentthermalnuc->x_cu,currentthermalnuc->B)
+                          + currentthermalnuc->C*pow(1.0 - composition_avg[3]/currentthermalnuc->x_zn,currentthermalnuc->D)
+                         )
+                       * currentthermalnuc->E*pow(composition_avg[2]/currentthermalnuc->x_mg,currentthermalnuc->F);  
     if (currentthermalnuc->enthalpy_fusion_c) {
         for (c=0; c<user->ncp; c++) {
             enthalpy_fusion += composition_avg[c]*currentthermalnuc->enthalpy_fusion_c[c];

@@ -899,6 +899,24 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              } else {
                  currentthermalnuc->solvus_temperature_c = NULL;
              }    
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "A", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->A = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "B", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->B = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "x_cu", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->x_cu = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "C", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->C = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "D", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->D = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "x_zn", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->x_zn = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "E", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->E = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "F", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->F = atof(propval[0]);
+             ierr = GetProperty(propval, &propsize, nucleusmapping, "x_mg", buffer, filesize);
+             assert(propsize == 1); currentthermalnuc->x_mg = atof(propval[0]);
              /* enthalpy of fusion */
              ierr = GetProperty(propval, &propsize, nucleusmapping, "enthalpy_fusion_0", buffer, filesize);
              assert(propsize == 1); currentthermalnuc->enthalpy_fusion_0 = atof(propval[0]);
