@@ -252,7 +252,7 @@ static void NucleationBarrier_thermal(PetscReal *barrier, PetscReal *diffusivity
         for (c=0; c<user->ncp; c++) {
             solvus_temperature += composition_avg[c]*currentthermalnuc->solvus_temperature_c[c];
         }
-    }
+    }    
     if (currentthermalnuc->enthalpy_fusion_c) {
         for (c=0; c<user->ncp; c++) {
             enthalpy_fusion += composition_avg[c]*currentthermalnuc->enthalpy_fusion_c[c];
@@ -681,7 +681,7 @@ static void SitepotentialImplicit_calphaddis(PetscReal *sitepot, const PetscReal
 static void SitepotentialImplicit_quad(PetscReal *sitepot, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
-    for (PetscInt c=0; c<numcomps-1; c++)
+    for (PetscInt c=0; c<numcomps; c++)
         sitepot[c] =     SumTSeries(temperature,currentquad->unary [c]) 
                    + 2.0*SumTSeries(temperature,currentquad->binary[c])
                    * (sitefrac[c] - SumTSeries(temperature,currentquad->ceq[c]));
@@ -769,13 +769,32 @@ static void Sitefrac_calphaddis(PetscReal *sitefrac, const PetscReal *sitepot_im
 static void Sitefrac_quad(PetscReal *sitefrac, const PetscReal *sitepot_im, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
+    PetscReal delta[numcomps-1];
+    PetscReal ceq[numcomps], unary[numcomps], binary[numcomps];
+    PetscReal mat[(numcomps-1)*(numcomps-1)], matinv[(numcomps-1)*(numcomps-1)];
+
+    for (PetscInt c=0; c<numcomps; c++) {
+        ceq   [c] = SumTSeries(temperature,currentquad->ceq   [c]);
+        unary [c] = SumTSeries(temperature,currentquad->unary [c]);
+        binary[c] = SumTSeries(temperature,currentquad->binary[c]);
+    }
+    memset(mat   ,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(matinv,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    for (PetscInt cj=0; cj<numcomps-1; cj++) {
+        delta[cj] = 0.5*sitepot_im[cj] + binary[numcomps-1]
+                  - 0.5*( unary[cj]         -  unary[numcomps-1]                ) 
+                  +     (binary[cj]*ceq[cj] - binary[numcomps-1]*ceq[numcomps-1]);
+        mat[cj*(numcomps-1) + cj] += binary[cj];
+        for (PetscInt ci=0; ci<numcomps-1; ci++) {
+            mat[cj*(numcomps-1) + ci] += binary[numcomps-1];
+        }
+    }
+    Invertmatrix(matinv,mat,(numcomps-1));  
+    MatVecMult_CIPHER(sitefrac,matinv,delta,(numcomps-1));  
     sitefrac[numcomps-1] = 1.0;
     for (PetscInt c=0; c<numcomps-1; c++) {
-        sitefrac[c] = SumTSeries(temperature,currentquad->ceq[c]) 
-                    + 0.5*(sitepot_im[c] - SumTSeries(temperature,currentquad->unary[c]))
-                    / SumTSeries(temperature,currentquad->binary[c]);
         sitefrac[numcomps-1] -= sitefrac[c];
-    }
+    } 
 }
 
 /*
@@ -906,12 +925,33 @@ static void SitefracTangent_quad(PetscReal *sitefractangent_pot, PetscReal *site
                                  const PetscReal *sitefrac, const PetscReal *sitepot, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
     const QUAD *currentquad = &energy.quad;
+    PetscReal delta[numcomps-1];
+    PetscReal ceq_T[numcomps], unary_T[numcomps], binary_T[numcomps];
+    PetscReal ceq[numcomps], binary[numcomps];
+    PetscReal mat[(numcomps-1)*(numcomps-1)], matinv[(numcomps-1)*(numcomps-1)];
+
+    for (PetscInt c=0; c<numcomps; c++) {
+        ceq_T   [c] = SumTSeries_derivative(temperature,currentquad->ceq   [c]);
+        unary_T [c] = SumTSeries_derivative(temperature,currentquad->unary [c]);
+        binary_T[c] = SumTSeries_derivative(temperature,currentquad->binary[c]);
+        ceq     [c] = SumTSeries           (temperature,currentquad->ceq   [c]);
+        binary  [c] = SumTSeries           (temperature,currentquad->binary[c]);
+    }
+    memset(mat   ,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    memset(matinv,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+    for (PetscInt cj=0; cj<numcomps-1; cj++) {
+        mat[cj*(numcomps-1) + cj] += binary[cj];
+        for (PetscInt ci=0; ci<numcomps-1; ci++) {
+            mat[cj*(numcomps-1) + ci] += binary[numcomps-1];
+        }
+    }
+    Invertmatrix(matinv,mat,(numcomps-1));  
 
     if (sitefractangent_pot) {
-        memset(sitefractangent_pot,0,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
-        for (PetscInt cj=0; cj<numcomps-1; cj++) {
-            sitefractangent_pot[cj*(numcomps-1)+cj] = 0.5/SumTSeries(temperature,currentquad->binary[cj]);
-        }        
+        memcpy(sitefractangent_pot,matinv,(numcomps-1)*(numcomps-1)*sizeof(PetscReal));
+        for (PetscInt cj=0; cj<(numcomps-1)*(numcomps-1); cj++) {
+            sitefractangent_pot[cj] *= 0.5;
+        }
     }        
     
     if (sitefractangent_ex) {
@@ -921,10 +961,12 @@ static void SitefracTangent_quad(PetscReal *sitefractangent_pot, PetscReal *site
     if (sitefractangent_T) {
         memset(sitefractangent_T ,0,(numcomps-1)             *sizeof(PetscReal));
         for (PetscInt cj=0; cj<numcomps-1; cj++) {
-            sitefractangent_T[cj] = SumTSeries_derivative(temperature,currentquad->ceq   [cj]) 
-                                  - SumTSeries_derivative(temperature,currentquad->unary [cj])
-                                  / SumTSeries           (temperature,currentquad->binary[cj])/2.0;
+            delta[cj] = binary_T[numcomps-1]
+                      - 0.5*( unary_T[cj] - unary_T[numcomps-1]                ) 
+                      + (  binary_T[cj]*ceq[cj] + binary[cj]*ceq_T[cj] 
+                         - binary_T[numcomps-1]*ceq[numcomps-1] - binary[numcomps-1]*ceq_T[numcomps-1]);
         }
+        MatVecMult_CIPHER(sitefractangent_T,matinv,delta,(numcomps-1));  
     }        
 }
 
