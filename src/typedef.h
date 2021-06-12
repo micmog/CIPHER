@@ -184,7 +184,7 @@ typedef struct QUAD {
     TSeries ref;
     TSeries *ceq;
     TSeries *unary, *binary;
-    PetscReal *mobilityc;
+    TACTIVATIONPROP *mobilityc;
 } QUAD;
 
 /* None energy parameters container */

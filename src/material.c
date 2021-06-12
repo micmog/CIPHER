@@ -1062,10 +1062,26 @@ static void CompositionMobility_calphaddis(PetscReal *mobilityc, const PetscReal
  */
 static void CompositionMobility_quad(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,numcomps*sizeof(PetscReal));
+    PetscReal migration[numcomps];
     const QUAD *currentquad = &energy.quad;
-    for (PetscInt ck=0; ck<numcomps; ck++) {
-        mobilityc[ck] = sitefrac[ck]*currentquad->mobilityc[ck];
+    TACTIVATIONPROP *currentmobility = &currentquad->mobilityc[0];
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
+    for (PetscInt ck=0; ck<numcomps; ck++,currentmobility++) {
+        RK *currentbinary = &currentmobility->binary[0];
+        migration[ck] = 0.0;
+        for (PetscInt cj=0; cj<numcomps; cj++) {
+            migration[ck] += sitefrac[cj]*SumTSeries(temperature,currentmobility->unary[cj]);
+            for (PetscInt ci=cj+1; ci<numcomps; ci++,currentbinary++) {
+                for (PetscInt nrk=0; nrk < currentbinary->n; nrk++) {
+                    migration[ck] += sitefrac[cj]*sitefrac[ci]
+                                   * SumTSeries(temperature,currentbinary->enthalpy[nrk])
+                                   * FastPow(sitefrac[cj]-sitefrac[ci],nrk);
+                }
+            }
+        }
+        mobilityc[ck] = sitefrac[ck]
+                      * currentmobility->m0/R_GAS_CONST/temperature
+                      * exp(migration[ck]/R_GAS_CONST/temperature);
     }        
 }
 
