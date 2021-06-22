@@ -58,6 +58,10 @@ mpiexec -n 4 cipher.exe --config GrainBoundaryPrecipitate.yaml
 This code is maintained by the Microstructure Modelling Group at the University of Manchester. 
 For questions, comments, bug-reports or contributions please email Dr. Pratheek Shanthraj at pratheek.shanthraj@manchester.ac.uk.
 
+## Funding
+
+Development of CIPHER is primarily funded through EPSRC programme grants NEWAM (EP/R027218/1) and LightForm (EP/R001715/1).
+
 ## References
 
 [1] Grand-canonical phase-field implementation: https://doi.org/10.1016/j.cma.2020.113029  
