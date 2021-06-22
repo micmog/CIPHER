@@ -366,17 +366,20 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     {
         DMLabel bclabel;
         IS bcIS;
-        PetscInt bcface, nbcfaces;
+        PetscInt bcface, nbcfaces, pstart, pend;
         const PetscInt *bcfaces;
         BOUNDARYCONDITIONS *currentboundary = &user->bcs[0];
-        DMGetLabel(user->da_solution, "boundary", &bclabel);
+        
+        ierr = DMGetLabel(user->da_solution, "boundary", &bclabel); CHKERRQ(ierr);
+        ierr = DMPlexGetHeightStratum(user->da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
         for (PetscInt bc = 0; bc<user->nbcs; bc++, currentboundary++) {
             DMLabelGetStratumIS(bclabel, currentboundary->boundaryid, &bcIS);
             if (bcIS) {
                 ISGetLocalSize(bcIS, &nbcfaces);
                 ISGetIndices(bcIS, &bcfaces);
                 for (bcface = 0; bcface < nbcfaces; ++bcface) {
-                    DMPlexGetSupport(user->da_solution, bcfaces[bcface], &scells);
+                    if (bcfaces[bcface] < pstart || bcfaces[bcface] >= pend) continue;
+                    ierr = DMPlexGetSupport(user->da_solution, bcfaces[bcface], &scells); CHKERRQ(ierr);
                     /* get neighbouring cell data */
                     offset = NULL;
                     ierr = DMPlexPointLocalRef(user->da_solution, scells[0], fdof, &offset); CHKERRQ(ierr);
@@ -743,9 +746,8 @@ PetscErrorCode PostStep(TS ts)
     DMLabel        slabel;
     IS             siteIS;
     PetscReal      cellvolume, interpolant[PF_SIZE];
-    PetscInt       site, site_phase, nsitecells, ngdof, interfacekj;
+    PetscInt       site, site_phase, nsitecells, interfacekj;
     NUCLEUS        *currentnucleus;
-    PetscSection   gsection;
     INTERFACE      *currentinterface;
     
     PetscFunctionBeginUser;    
@@ -762,7 +764,10 @@ PetscErrorCode PostStep(TS ts)
         PetscReal diffusivity_leaf[user->ncp][user->nsites], diffusivity_root[user->ncp][user->nsites_local];
         char deactive_leaf[user->nsites], deactive_root[user->nsites_local];
         PetscReal barrier, diffusivity[user->ncp];
+        PetscInt  pstart, pend, ngdof;
+        PetscSection gsection;
 
+        ierr = DMPlexGetHeightStratum(user->da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
         ierr = DMGetGlobalSection(user->da_solution,&gsection);CHKERRQ(ierr);
         ierr = DMGetLabel(user->da_solution, "site", &slabel);
         ierr = VecGetArray(solution,&fdof);
@@ -782,6 +787,7 @@ PetscErrorCode PostStep(TS ts)
                 currentnucleus = &user->nucleus[user->sitenucleusmapping[site]];
                 sitematerial = &user->material[user->phasematerialmapping[site_phase]];
                 for (cell = 0; cell < nsitecells; ++cell) {
+                    if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
                     ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
                     if (ngdof > 0) {
                         /* get cell state */
@@ -869,6 +875,7 @@ PetscErrorCode PostStep(TS ts)
                 }    
                 sitematerial = &user->material[user->phasematerialmapping[site_phase]];
                 for (cell = 0; cell < nsitecells; ++cell) {
+                    if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
                     ierr = PetscSectionGetDof(gsection, sitecells[cell], &ngdof);
                     if (ngdof > 0) {
                         /* get cell state */
@@ -1347,11 +1354,13 @@ int main(int argc,char **args)
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     free(ctx.voxelphasemapping);
     free(ctx.voxelsitemapping);
+    ierr = DMCopyLabels(ctx.da_solution,ctx.da_solforest,PETSC_COPY_VALUES,PETSC_FALSE);CHKERRQ(ierr);
   }
 
   /* Set up star forest */
   if (ctx.nsites) {
       PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
+      PetscInt pmin, pmax, pstart, pend;
       PetscReal sitesperproc;
       PetscSFNode *leaves;
       IS siteIS;
@@ -1360,10 +1369,14 @@ int main(int argc,char **args)
       ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
       ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
       ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+      ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
       memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
       for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
-          DMLabelGetStratumIS(slabel, site+1, &siteIS);
-          if (siteIS) {rootctr++; sitepresent[site] = 1;}
+          ierr = DMLabelGetStratumIS(slabel, site+1, &siteIS);CHKERRQ(ierr);
+          if (siteIS) {
+              ierr = ISGetMinMax(siteIS,&pmin,&pmax);CHKERRQ(ierr);
+              if (pmin < pend && pmax >= pstart) {rootctr++; sitepresent[site] = 1;}
+          }
       }
       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
@@ -1421,10 +1434,12 @@ int main(int argc,char **args)
     
       if (ctx.nsites) { 
           PetscInt site, nsitecells;
+          PetscInt pstart, pend;
           const PetscInt *sitecells;
           IS siteIS;
           DMLabel slabel;
        
+          ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
           ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
           for (site = 0; site<ctx.nsites; site++) {
               if (ctx.siteactivity_global[site]) {
@@ -1433,6 +1448,7 @@ int main(int argc,char **args)
                       ISGetLocalSize(siteIS, &nsitecells);
                       ISGetIndices(siteIS, &sitecells);
                       for (cell = 0; cell < nsitecells; ++cell) {
+                          if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
                           ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
                       }
                       ISRestoreIndices(siteIS, &sitecells);
@@ -1460,10 +1476,9 @@ int main(int argc,char **args)
 
           /* Pre-calculate local cells and geometry */
           {
-            DMLabel bclabel;
-            PetscReal cvolume, fcentroid[ctx.dim];
+            PetscReal cvolume;
             PetscSection lsection, gsection;
-            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
+            PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim;
             
             ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
             ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1478,24 +1493,11 @@ int main(int argc,char **args)
                 if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                 if (nldof > 0) ++(ctx.ninteriorcells);
             }
-            DMGetLabel(ctx.da_solution, "boundary", &bclabel); 
-            if (bclabel) {DMLabelReset(bclabel);} 
-            else {DMLabelCreate(PETSC_COMM_SELF, "boundary", &bclabel);}    
             ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
             free(ctx.localfaces);
             ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
             for (point = pstart; point < pend; ++point) {
                 ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
-                if (nsupp == 1) {
-                    DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
-                    boundaryid = 0;
-                    for (dim=0; dim<ctx.dim; ++dim) {
-                        boundaryid++;
-                        if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
-                        boundaryid++;
-                        if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
-                    }
-                }
                 ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                 if (nsupp != 2 || nchild > 0) continue;
                 ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1562,6 +1564,7 @@ int main(int argc,char **args)
           /* Set up star forest */
           if (ctx.nsites) {
               PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
+              PetscInt pmin, pmax, pstart, pend;
               PetscReal sitesperproc;
               PetscSFNode *leaves;
               IS siteIS;
@@ -1571,10 +1574,14 @@ int main(int argc,char **args)
               ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
               ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
               ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+              ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
               memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
               for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
                   DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                  if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                  if (siteIS) {
+                      ierr = ISGetMinMax(siteIS,&pmin,&pmax);CHKERRQ(ierr);
+                      if (pmin < pend && pmax >= pstart) {rootctr++; sitepresent[site] = 1;}
+                  }
               }
               ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
               ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);
@@ -1655,10 +1662,12 @@ int main(int argc,char **args)
 
               if (ctx.nsites) { 
                   PetscInt site, nsitecells;
+                  PetscInt pstart, pend;
                   const PetscInt *sitecells;
                   IS siteIS;
                   DMLabel slabel;
        
+                  ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
                   ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
                   for (site = 0; site<ctx.nsites; site++) {
                       if (ctx.siteactivity_global[site]) {
@@ -1667,6 +1676,7 @@ int main(int argc,char **args)
                               ISGetLocalSize(siteIS, &nsitecells);
                               ISGetIndices(siteIS, &sitecells);
                               for (cell = 0; cell < nsitecells; ++cell) {
+                                  if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
                                   ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
                               }
                               ISRestoreIndices(siteIS, &sitecells);
@@ -1694,10 +1704,9 @@ int main(int argc,char **args)
 
                   /* Pre-calculate local cells and geometry */
                   {
-                    DMLabel bclabel;
-                    PetscReal cvolume, fcentroid[ctx.dim];
+                    PetscReal cvolume;
                     PetscSection lsection, gsection;
-                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim, boundaryid;
+                    PetscInt point, pstart, pend, ngdof, nldof, nsupp, nchild, dim;
             
                     ierr = DMGetSection(ctx.da_solution,&lsection);CHKERRQ(ierr);
                     ierr = DMGetGlobalSection(ctx.da_solution,&gsection);CHKERRQ(ierr);
@@ -1712,24 +1721,11 @@ int main(int argc,char **args)
                         if (ngdof > 0) ctx.localcells[(ctx.nlocalcells)++] = point;
                         if (nldof > 0) ++(ctx.ninteriorcells);
                     }
-                    DMGetLabel(ctx.da_solution, "boundary", &bclabel);
-                    if (bclabel) {DMLabelReset(bclabel);} 
-                    else {DMLabelCreate(PETSC_COMM_SELF, "boundary", &bclabel);}    
                     ierr = DMPlexGetHeightStratum(ctx.da_solution, 1, &pstart, &pend); CHKERRQ(ierr);
                     free(ctx.localfaces);
                     ctx.localfaces = malloc((pend-pstart)*sizeof(PetscInt)); ctx.nlocalfaces = 0;
                     for (point = pstart; point < pend; ++point) {
                         ierr = DMPlexGetSupportSize(ctx.da_solution, point, &nsupp);
-                        if (nsupp == 1) {
-                            DMPlexComputeCellGeometryFVM(ctx.da_solution, point, NULL, fcentroid, NULL);
-                            boundaryid = 0;
-                            for (dim=0; dim<ctx.dim; ++dim) {
-                                boundaryid++;
-                                if (fabs(fcentroid[dim]                ) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
-                                boundaryid++;
-                                if (fabs(fcentroid[dim] - ctx.size[dim]) < 1e-18) DMLabelSetValue(bclabel,point,boundaryid);
-                            }
-                        }
                         ierr = DMPlexGetTreeChildren(ctx.da_solution, point, &nchild, NULL);
                         if (nsupp != 2 || nchild > 0) continue;
                         ctx.localfaces[(ctx.nlocalfaces)++] = point;
@@ -1796,6 +1792,7 @@ int main(int argc,char **args)
                   /* Set up star forest */
                   if (ctx.nsites){
                       PetscInt *roots, sitepresent[ctx.nsites], site, rootctr;
+                      PetscInt pmin, pmax, pstart, pend;
                       PetscReal sitesperproc;
                       PetscSFNode *leaves;
                       IS siteIS;
@@ -1805,10 +1802,14 @@ int main(int argc,char **args)
                       ierr = PetscSFCreate(PETSC_COMM_WORLD,&ctx.nucleation_sf);
                       ierr = PetscSFSetFromOptions(ctx.nucleation_sf);
                       ierr = DMGetLabel(ctx.da_solution, "site", &slabel);
+                      ierr = DMPlexGetHeightStratum(ctx.da_solution, 0, &pstart, &pend); CHKERRQ(ierr);
                       memset(sitepresent,0,ctx.nsites*sizeof(PetscInt));
                       for (site = 0, rootctr = 0; site<ctx.nsites; site++) {
                           DMLabelGetStratumIS(slabel, site+1, &siteIS);
-                          if (siteIS) {rootctr++; sitepresent[site] = 1;}
+                          if (siteIS) {
+                              ierr = ISGetMinMax(siteIS,&pmin,&pmax);CHKERRQ(ierr);
+                              if (pmin < pend && pmax >= pstart) {rootctr++; sitepresent[site] = 1;}
+                          }
                       }
                       ierr = PetscMalloc1(rootctr,&roots);CHKERRQ(ierr);
                       ierr = PetscMalloc1(rootctr,&leaves);CHKERRQ(ierr);

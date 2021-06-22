@@ -276,7 +276,15 @@ material:
     temperature0: 670.551445
     chempot_ex_kineticcoeff : 1.0
     c0 : [0.217306322, 0.143556608, 0.3329534, 0.30618367]
-    mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
+    mobilityc :
+      al :
+        mobility0 : 1.0e-9
+      cu :
+        mobility0 : 1.0e-9
+      mg :
+        mobility0 : 1.0e-9
+      zn :
+        mobility0 : 1.0e-9
     ceq :
       al :
         t_coefficient : [-9.473562506959e-3, 1.54008503132e-4, 2.59436543e-7]

@@ -41,6 +41,10 @@ make install
 
 Running an example:
 ```bash
+# Set environment varialbes (preferably put this in .bash_profile)
+export BASE_PATH=$PATH
+export BASE_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+export CIPHER_DIR=<path/to/cipher>
 # Set up CIPHER environment
 source $CIPHER_DIR/load_CIPHER.sh
 # Navigate to examples folder
@@ -53,6 +57,10 @@ mpiexec -n 4 cipher.exe --config GrainBoundaryPrecipitate.yaml
 
 This code is maintained by the Microstructure Modelling Group at the University of Manchester. 
 For questions, comments, bug-reports or contributions please email Dr. Pratheek Shanthraj at pratheek.shanthraj@manchester.ac.uk.
+
+## Funding
+
+Development of CIPHER is primarily funded through EPSRC programme grants NEWAM (EP/R027218/1) and LightForm (EP/R001715/1).
 
 ## References
 
