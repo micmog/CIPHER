@@ -1165,7 +1165,6 @@ int main(int argc,char **args)
   Vec            solution;
   /* time stepping context */
   TS             ts = NULL;
-  VecTagger      refineTag = NULL, coarsenTag = NULL;
   /* numerical parameters */
   PetscErrorCode ierr;
       
@@ -1853,8 +1852,6 @@ int main(int argc,char **args)
    are no longer needed.
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
-  ierr = VecTaggerDestroy(&refineTag);CHKERRQ(ierr);
-  ierr = VecTaggerDestroy(&coarsenTag);CHKERRQ(ierr);
   ierr = VecDestroy(&solution);CHKERRQ(ierr);
   ierr = DMDestroy(&ctx.da_solution);CHKERRQ(ierr);
   ierr = PetscFinalize();
