@@ -1434,7 +1434,8 @@ int main(int argc,char **args)
       if (ctx.nsites) { 
           PetscInt site, nsitecells;
           PetscInt pstart, pend;
-          const PetscInt *sitecells;
+          PetscInt face, supp, conesize, nsupp, labelvalue;
+          const PetscInt *cone, *scells, *sitecells;
           IS siteIS;
           DMLabel slabel;
        
@@ -1448,7 +1449,19 @@ int main(int argc,char **args)
                       ISGetIndices(siteIS, &sitecells);
                       for (cell = 0; cell < nsitecells; ++cell) {
                           if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
-                          ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                          /* check label of neighbouring cells */
+                          ierr = DMPlexGetConeSize(ctx.da_solution,sitecells[cell],&conesize);
+                          ierr = DMPlexGetCone    (ctx.da_solution,sitecells[cell],&cone    );
+                          for (face=0; face<conesize; face++) {
+                              ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                              ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                              for (supp=0; supp < nsupp; supp++) {
+                                  ierr = DMGetLabelValue(ctx.da_solution, "site", scells[supp], &labelvalue);CHKERRQ(ierr);
+                                  if (labelvalue != site+1) {
+                                      ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                                  }
+                              }
+                          }
                       }
                       ISRestoreIndices(siteIS, &sitecells);
                       ISDestroy(&siteIS);
@@ -1662,7 +1675,8 @@ int main(int argc,char **args)
               if (ctx.nsites) { 
                   PetscInt site, nsitecells;
                   PetscInt pstart, pend;
-                  const PetscInt *sitecells;
+                  PetscInt face, supp, conesize, nsupp, labelvalue;
+                  const PetscInt *cone, *scells, *sitecells;
                   IS siteIS;
                   DMLabel slabel;
        
@@ -1676,7 +1690,19 @@ int main(int argc,char **args)
                               ISGetIndices(siteIS, &sitecells);
                               for (cell = 0; cell < nsitecells; ++cell) {
                                   if (sitecells[cell] < pstart || sitecells[cell] >= pend) continue;
-                                  ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                                  /* check label of neighbouring cells */
+                                  ierr = DMPlexGetConeSize(ctx.da_solution,sitecells[cell],&conesize);
+                                  ierr = DMPlexGetCone    (ctx.da_solution,sitecells[cell],&cone    );
+                                  for (face=0; face<conesize; face++) {
+                                      ierr = DMPlexGetSupportSize(ctx.da_solution, cone[face], &nsupp);
+                                      ierr = DMPlexGetSupport(ctx.da_solution, cone[face], &scells);
+                                      for (supp=0; supp < nsupp; supp++) {
+                                          ierr = DMGetLabelValue(ctx.da_solution, "site", scells[supp], &labelvalue);CHKERRQ(ierr);
+                                          if (labelvalue != site+1) {
+                                              ierr = DMLabelSetValue(adaptlabel, sitecells[cell], DM_ADAPT_REFINE); CHKERRQ(ierr);
+                                          }
+                                      }
+                                  }
                               }
                               ISRestoreIndices(siteIS, &sitecells);
                               ISDestroy(&siteIS);
