@@ -1022,10 +1022,26 @@ void SitefracTangent(PetscReal *sitefractangent_pot, PetscReal *sitefractangent_
  */
 static void CompositionMobility_calphad2sl(PetscReal *mobilityc, const PetscReal *sitefrac, const PetscReal temperature, const CHEMFE energy, const PetscInt numcomps)
 {
-    memset(mobilityc,0,numcomps*sizeof(PetscReal));
+    PetscReal migration[numcomps];
     const CALPHAD2SL *currentcalphad2sl = &energy.calphad2sl;
-    for (PetscInt ck=0; ck<numcomps; ck++) {
-        mobilityc[ck] = currentcalphad2sl->mobilityc[ck];
+    TACTIVATIONPROP *currentmobility = &currentcalphad2sl->mobilityc[0];
+    memset(mobilityc,0,numcomps*sizeof(PetscReal));
+    for (PetscInt ck=0; ck<numcomps; ck++,currentmobility++) {
+        RK *currentbinary = &currentmobility->binary[0];
+        migration[ck] = 0.0;
+        for (PetscInt cj=0; cj<numcomps; cj++) {
+            migration[ck] += sitefrac[cj]*SumTSeries(temperature,currentmobility->unary[cj]);
+            for (PetscInt ci=cj+1; ci<numcomps; ci++,currentbinary++) {
+                for (PetscInt nrk=0; nrk < currentbinary->n; nrk++) {
+                    migration[ck] += sitefrac[cj]*sitefrac[ci]
+                                   * SumTSeries(temperature,currentbinary->enthalpy[nrk])
+                                   * FastPow(sitefrac[cj]-sitefrac[ci],nrk);
+                }
+            }
+        }
+        mobilityc[ck] = sitefrac[ck]
+                      * currentmobility->m0/R_GAS_CONST/temperature
+                      * exp(migration[ck]/R_GAS_CONST/temperature);
     }        
 }
 

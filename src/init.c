@@ -643,13 +643,49 @@ PetscErrorCode SetUpConfig(AppCtx *user)
                currentcalphad2sl->p = atof(propval[0]); currentcalphad2sl->q = atof(propval[1]);
                assert(fabs(currentcalphad2sl->p + currentcalphad2sl->q - 1.0) < TOL);
               } 
-              /* solute mobility */
+              /* mobility */
               {
-               currentcalphad2sl->mobilityc = malloc(user->ncp*sizeof(PetscReal));
-               ierr = GetProperty(propval, &propsize, materialmapping, "mobilityc", buffer, filesize); CHKERRQ(ierr);
-               assert(propsize == user->ncp);
-               for (PetscInt propctr = 0; propctr < user->ncp; propctr++) currentcalphad2sl->mobilityc[propctr] = atof(propval[propctr]);
-              } 
+               char mobmapping[PETSC_MAX_PATH_LEN];
+               currentcalphad2sl->mobilityc = (TACTIVATIONPROP *) malloc(user->ncp*sizeof(TACTIVATIONPROP));
+               TACTIVATIONPROP *currentmobility = &currentcalphad2sl->mobilityc[0];
+               for (PetscInt c=0; c<user->ncp; c++, currentmobility++) {
+                   sprintf(mobmapping, "%s/mobilityc/%s",materialmapping,user->componentname[c]);
+                   ierr = GetProperty(propval, &propsize, mobmapping, "mobility0", buffer, filesize);
+                   assert(propsize == 1);
+                   currentmobility->m0 = atof(propval[0]);
+                   currentmobility->unary = (TSeries *) malloc(user->ncp*sizeof(TSeries));
+                   currentmobility->binary = (RK *) malloc(user->ncp*(user->ncp-1)/2*sizeof(struct RK));
+                   TSeries *currentunary = &currentmobility->unary[0];
+                   RK *currentbinary = &currentmobility->binary[0];
+                   for (PetscInt cj=0; cj<user->ncp; cj++, currentunary++) {
+                       sprintf(mobmapping, "%s/mobilityc/%s/unary_migration/%s",materialmapping,user->componentname[c],user->componentname[cj]);
+                       ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
+                       currentunary->nTser = propsize;
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->coeff[propctr] = atof(propval[propctr]);
+                       ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
+                       assert(propsize == currentunary->nTser);
+                       for (PetscInt propctr = 0; propctr < propsize; propctr++) currentunary->exp[propctr] = atoi(propval[propctr]);
+                       currentunary->logCoeff = 0.0;
+                       for (PetscInt ci=cj+1; ci<user->ncp; ci++, currentbinary++) {
+                           sprintf(mobmapping, "%s/mobilityc/%s/binary_migration/%s/%s",materialmapping,user->componentname[c],user->componentname[cj],user->componentname[ci]);
+                           ierr = GetProperty(propval, &propsize, mobmapping, "nrk", buffer, filesize);
+                           if (propsize) {currentbinary->n = atoi(propval[0]);} else {currentbinary->n = 0;}
+                           currentbinary->enthalpy = (TSeries *) malloc(currentbinary->n*sizeof(TSeries));
+                           TSeries *currententhalpy = &currentbinary->enthalpy[0];
+                           for (PetscInt nrk=0; nrk < currentbinary->n; nrk++, currententhalpy++) {
+                               sprintf(mobmapping, "%s/mobilityc/%s/binary_migration/%s/%s/rk_%d",materialmapping,user->componentname[c],user->componentname[cj],user->componentname[ci],nrk);
+                               ierr = GetProperty(propval, &propsize, mobmapping, "t_coefficient", buffer, filesize);
+                               currententhalpy->nTser = propsize;
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->coeff[propctr] = atof(propval[propctr]);
+                               ierr = GetProperty(propval, &propsize, mobmapping, "t_exponent", buffer, filesize);
+                               assert(propsize == currententhalpy->nTser);
+                               for (PetscInt propctr = 0; propctr < propsize; propctr++) currententhalpy->exp[propctr] = atoi(propval[propctr]);
+                               currententhalpy->logCoeff = 0.0;
+                           }
+                       }
+                   }
+               }    
+              }
               /* unary enthalpy */
               {
                char unarymapping[PETSC_MAX_PATH_LEN];

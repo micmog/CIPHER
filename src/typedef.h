@@ -168,7 +168,7 @@ typedef struct CALPHAD2SL {
     TSeries *unary;
     RK *binaryp, *binaryq;
     RK *ternaryp, *ternaryq;
-    PetscReal *mobilityc;
+    TACTIVATIONPROP *mobilityc;
 } CALPHAD2SL;
 
 /* CALPHADDIS energy parameters container */
