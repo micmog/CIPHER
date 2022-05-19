@@ -25,8 +25,8 @@ export CIPHER_DIR=<path/to/cipher>
 git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
 # Install PETSc:
 cd $CIPHER_DIR/petsc
-module load tools/gcc/cmake/3.11.4
-module load mpi/intel-17.0/openmpi/4.0.1
+module load tools/gcc/cmake/3.23.0
+module load mpi/intel-19.1/openmpi/4.1.1
 ./configure --download-metis --download-parmetis --download-chaco --download-triangle --download-ctetgen --download-pragmatic --download-eigen --download-hypre --download-ml --download-hdf5 --download-zlib --download-yaml --download-p4est --with-pthread --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
 make PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc all
 cd $CIPHER_DIR
