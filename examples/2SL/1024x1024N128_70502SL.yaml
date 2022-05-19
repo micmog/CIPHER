@@ -274,7 +274,15 @@ material:
     stochiometry : [0.666666666666, 0.333333333333]
     c0_p : [0.0, 0.0, 0.0, 1.0]
     c0_q : [0.0, 0.0, 1.0, 0.0]
-    mobilityc : [1.0e-9, 1.0e-9, 1.0e-9, 1.0e-9]
+    mobilityc : 
+      al :
+        mobility0 : 1.0e-9
+      cu :
+        mobility0 : 1.0e-9
+      mg :
+        mobility0 : 1.0e-9
+      zn :
+        mobility0 : 1.0e-9
     unary_enthalpy:
       (zn:mg) : 
         t_coefficient : [-5.94389140e+04, 3.91615685e+02, -2.93826800e-03, -3.92359500e-06, 7.89500000e+04]
