@@ -1353,7 +1353,7 @@ int main(int argc,char **args)
     ierr = VecRestoreArrayRead(cellgeom,&cgeom);CHKERRQ(ierr);
     free(ctx.voxelphasemapping);
     free(ctx.voxelsitemapping);
-    ierr = DMCopyLabels(ctx.da_solution,ctx.da_solforest,PETSC_COPY_VALUES,PETSC_FALSE);CHKERRQ(ierr);
+    ierr = DMCopyLabels(ctx.da_solution,ctx.da_solforest,PETSC_COPY_VALUES,PETSC_FALSE,DM_COPY_LABELS_REPLACE);CHKERRQ(ierr);
   }
 
   /* Set up star forest */
