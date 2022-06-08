@@ -18,10 +18,13 @@ Note that the following installation instructions are specific to users of the U
 
 To install CIPHER:
 ```bash
-# Set location to install CIPHER
+# Set environment variables and location to install CIPHER. 
+export BASE_PATH=$PATH
+export BASE_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 export CIPHER_DIR=<path/to/cipher>
-# Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended Place this in your .bashrc/.bash_profile.
+# Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended to place these in your .bashrc/.bash_profile.
 # Clone the CIPHER repository with:
+module load tools/env/proxy
 git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
 # Install PETSc:
 cd $CIPHER_DIR/petsc
@@ -41,7 +44,7 @@ make install
 
 Running an example:
 ```bash
-# Set environment varialbes (preferably put this in .bash_profile)
+# Set environment variables, if you have not already added these to your .bashrc or .bash_profile.
 export BASE_PATH=$PATH
 export BASE_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 export CIPHER_DIR=<path/to/cipher>
