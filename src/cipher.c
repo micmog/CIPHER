@@ -531,6 +531,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                                                triplejunctionenergy : interface_energy[gk*slist[0]+gi];
                         triplejunctionenergy = triplejunctionenergy > interface_energy[gj*slist[0]+gi] ?
                                                triplejunctionenergy : interface_energy[gj*slist[0]+gi];
+                        triplejunctionenergy *= user->solparams.junctionpenalty;
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];

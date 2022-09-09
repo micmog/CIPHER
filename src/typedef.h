@@ -260,6 +260,7 @@ typedef struct SOLUTIONPARAMS {
     PetscInt  step;
     /* phase field parameters */
     PetscReal interfacewidth;
+    PetscReal junctionpenalty;
     /* interpolation */
     interpolation_t interpolation;
     /* tolerances */

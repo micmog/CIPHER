@@ -1282,6 +1282,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      else {user->solparams.maxtimestep = user->solparams.time[0];}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "junctionpenalty", buffer, filesize); CHKERRQ(ierr);
+     if (propsize) {assert(propsize == 1); user->solparams.junctionpenalty = atof(propval[0]);} 
+     else {user->solparams.junctionpenalty = 1.0;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
      assert(propsize == user->dim); 
      user->amrparams.initblocksize = malloc(user->dim*sizeof(PetscInt));
