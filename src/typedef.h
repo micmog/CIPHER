@@ -26,7 +26,7 @@
 #define TOL   1.0e-6
 /* max active phases... depends on neighbourhood */
 #define MAXCP 5
-#define MAXAP 50
+#define MAXAP 15
 #define R_GAS_CONST 8.314462
 
 /* field offsets */
