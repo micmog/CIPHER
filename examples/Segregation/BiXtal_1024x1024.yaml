@@ -10,7 +10,6 @@ header:
 
 solution_parameters:
   time : 1.0e+6
-  interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9
   maxnrefine : 9
@@ -267,6 +266,7 @@ material:
 
 interface :
   grainboundary :
+    width : 4.0
     potential : [1.7e+7, -1.8e+7, -2.3e+7]
     energy : 
       e0: 2.0e+8

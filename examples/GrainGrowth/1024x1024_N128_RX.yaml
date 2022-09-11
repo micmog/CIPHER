@@ -10,7 +10,6 @@ header:
 
 solution_parameters:
   time : 1000000
-  interfacewidth : 4
   initblocksize : [1, 1]
   initrefine : 10
   maxnrefine : 10
@@ -40,6 +39,7 @@ material:
   
 interface :
   grainboundary :
+    width : 4.0
     energy : 
       e0: 5.0e+8
     mobility : 

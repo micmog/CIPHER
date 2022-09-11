@@ -10,7 +10,6 @@ header:
 
 solution_parameters:
   time : 100.0
-  interfacewidth : 10
   initblocksize : [2, 2]
   initrefine : 9
   maxnrefine : 9
@@ -94,6 +93,7 @@ material:
 
 interface :
   solid-liquid :
+    width : 10.0
     energy : 
       e0: 0.5e+6
     mobility : 

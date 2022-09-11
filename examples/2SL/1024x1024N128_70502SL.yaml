@@ -12,7 +12,6 @@ header:
 
 solution_parameters:
   time : 10.0
-  interfacewidth : 4
   initblocksize : [2, 2]
   initrefine : 9
   maxnrefine : 9
@@ -435,6 +434,7 @@ nucleus:
   
 interface :
   grainboundary :
+    width : 4.0
     energy : 
       e0: 2.0e+8
     mobility : 
@@ -443,6 +443,7 @@ interface :
         t_coefficient : -1.0e+5
         t_exponent: 0
   pptboundary :
+    width : 4.0
     energy : 
       e0: 1.0e+8
     mobility : 

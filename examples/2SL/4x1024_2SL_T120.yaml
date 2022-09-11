@@ -10,7 +10,6 @@ header:
 
 solution_parameters:
   time : 500000.0
-  interfacewidth : 0.25
   initblocksize : [1, 256]
   initrefine : 0
   maxnrefine : 4
@@ -511,6 +510,7 @@ material:
           
 interface :
   pptboundary :
+    width : 0.25
     energy : 
       e0: 5.0e+8
     mobility : 
