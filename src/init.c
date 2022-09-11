@@ -1284,7 +1284,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
      else {user->solparams.maxtimestep = user->solparams.time[0];}
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "junctionpenalty", buffer, filesize); CHKERRQ(ierr);
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "junctionpenalty", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.junctionpenalty = atof(propval[0]);} 
      else {user->solparams.junctionpenalty = 1.0;}
      ierr = GetProperty(propval, &propsize, "solution_parameters", "initblocksize", buffer, filesize); CHKERRQ(ierr);
