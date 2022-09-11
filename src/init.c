@@ -1181,6 +1181,10 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              assert(propsize == user->ncp); currentinterface->mobilityc = malloc(user->ncp*sizeof(PetscReal));
              for (PetscInt propctr = 0; propctr < propsize; propctr++) currentinterface->mobilityc[propctr] = atof(propval[propctr]);
          } else {currentinterface->mobilityc = NULL;}
+         /* interface width */
+         ierr = GetProperty(propval, &propsize, interfacemapping, "width", buffer, filesize);
+         assert(propsize == 1); 
+         currentinterface->width = atof(propval[0]);
      }    
     }
 
@@ -1280,8 +1284,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "solution_parameters", "timestepmax", buffer, filesize);
      if (propsize) {assert(propsize == 1); user->solparams.maxtimestep = atof(propval[0]);} 
      else {user->solparams.maxtimestep = user->solparams.time[0];}
-     ierr = GetProperty(propval, &propsize, "solution_parameters", "interfacewidth", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize == 1); user->solparams.interfacewidth = atof(propval[0]);
      ierr = GetProperty(propval, &propsize, "solution_parameters", "junctionpenalty", buffer, filesize); CHKERRQ(ierr);
      if (propsize) {assert(propsize == 1); user->solparams.junctionpenalty = atof(propval[0]);} 
      else {user->solparams.junctionpenalty = 1.0;}

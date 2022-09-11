@@ -60,7 +60,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
     PetscReal         mobilitycv_global[user->ncp*user->ninteriorcells];
     PetscReal         specific_heat, tconductivity[user->ninteriorcells];
     PetscReal         *temperature, *temperatureL, *temperatureR, temperatureavg;
-    PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE]; 
+    PetscReal         interface_mobility[PF_SIZE*PF_SIZE], interface_energy[PF_SIZE*PF_SIZE], interface_width[PF_SIZE*PF_SIZE]; 
     PetscReal         *gradient_matrix, dot_product;
     PetscInt          conesize, nsupp, supp, dim, dir, nleastsq;
     Vec               gradient_global[user->dim], gradient_local[user->dim];
@@ -279,55 +279,9 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             SetIntersection(setintersect,injectionL,injectionR,slistL,slistR);
 
             /* get fluxes on cell faces */
-            for (gk=0; gk<setintersect[0]; gk++) {
-                for (gj=gk+1; gj<setintersect[0]; gj++) {
-                    interface_energy[gk*setintersect[0]+gj] = 1.0;
-                }
-            }    
-            if (user->gradient_calculation) {
-                for (dim=0; dim<user->dim; dim++) {
-                    offset = NULL;
-                    ierr = DMPlexPointLocalRef(user->da_solution, scells[0], grad[dim], &offset);
-                    grad_cellL[dim] = &offset[PF_OFFSET];
-                    offset = NULL;
-                    ierr = DMPlexPointLocalRef(user->da_solution, scells[1], grad[dim], &offset);
-                    grad_cellR[dim] = &offset[PF_OFFSET];
-                    for (g=0; g<setintersect[0]; g++)
-                        grad_cellavg[dim][g] = (grad_cellL[dim][injectionL[g]] + grad_cellR[dim][injectionR[g]])/2.0;
-                }        
-                for (gk=0; gk<setintersect[0]; gk++) {
-                    for (gj=gk+1; gj<setintersect[0]; gj++) {
-                        for (dim=0, rhsval=0.0; dim<user->dim; dim++) {
-                            unitvec[dim] = grad_cellavg[dim][gk] - grad_cellavg[dim][gj];
-                            rhsval += unitvec[dim]*unitvec[dim];
-                        }    
-                        rhsval = sqrt(rhsval);
-                        if (rhsval > 1e-16) for (dim=0; dim<user->dim; dim++) unitvec[dim] /= rhsval;
-                        currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
-                                                                                + setintersect[gj+1]          ]];
-                        interfacekj = gk*setintersect[0]+gj;
-                        for (dir=0; dir<currentinterface->ienergy->n; dir++) {
-                            for (dim=0, dot_product=0.0; dim<user->dim; dim++) 
-                                dot_product += unitvec[dim]*currentinterface->ienergy->dir[user->dim*dir+dim];
-                            interface_energy[interfacekj] += FastPow(dot_product,4)*currentinterface->ienergy->val[dir];
-                        }
-                    }
-                }
-            }    
             memset(fluxp,0,setintersect[0]*sizeof(PetscReal));
             for (gk=0; gk<setintersect[0]; gk++) {
-                for (gj=gk+1; gj<setintersect[0]; gj++) {
-                    currentinterface = &user->interface[user->interfacelist[  setintersect[gk+1]*user->npf
-                                                                            + setintersect[gj+1]          ]];
-                    interfacekj = gk*setintersect[0]+gj;
-                    interface_energy[interfacekj] *= currentinterface->ienergy->e->m0;
-                    if (currentinterface->ienergy->e->unary->nTser)
-                        interface_energy[interfacekj] *= exp(  SumTSeries(temperatureavg, currentinterface->ienergy->e->unary[0])
-                                                             / R_GAS_CONST/temperatureavg);
-                    fluxp[gk] -= interface_energy[interfacekj]*(pcellR[injectionR[gj]] - pcellL[injectionL[gj]]);
-                    fluxp[gj] -= interface_energy[interfacekj]*(pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
-                }
-                fluxp[gk] *= 8.0*user->solparams.interfacewidth/PETSC_PI/PETSC_PI;
+                fluxp[gk] = (pcellR[injectionR[gk]] - pcellL[injectionL[gk]]);
                 plaplL[injectionL[gk]] += ffactor*fluxp[gk]/volL;
                 plaplR[injectionR[gk]] -= ffactor*fluxp[gk]/volR;
             }
@@ -513,6 +467,7 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
                     if (currentinterface->imobility->m->unary->nTser)
                     interface_mobility[interfacekj] *= exp(  SumTSeries((*temperature), currentinterface->imobility->m->unary[0])
                                                            / R_GAS_CONST/(*temperature));
+                    interface_width[interfacekj] = currentinterface->width;
                 }
             }    
 
@@ -521,23 +476,23 @@ PetscErrorCode RHSFunction(TS ts,PetscReal ftime,Vec X,Vec F,void *ptr)
             for (gk=0; gk<slist[0]; gk++) {
                 for (gj=gk+1; gj<slist[0]; gj++) {
                     interfacekj = gk*slist[0]+gj;
-                    caplsource[gk] -= interface_energy[interfacekj]*pcell[gj];
-                    caplsource[gj] -= interface_energy[interfacekj]*pcell[gk];
+                    caplsource[gk] -= interface_energy[interfacekj]*(pcell[gj]/interface_width[interfacekj] + plapl[gj]*interface_width[interfacekj]/PETSC_PI/PETSC_PI);
+                    caplsource[gj] -= interface_energy[interfacekj]*(pcell[gk]/interface_width[interfacekj] + plapl[gk]*interface_width[interfacekj]/PETSC_PI/PETSC_PI);
                     for (gi=gj+1; gi<slist[0]; gi++) {
                         triplejunctionenergy = 0.0;
-                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gj] ?
-                                               triplejunctionenergy : interface_energy[gk*slist[0]+gj];
-                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gi] ?
-                                               triplejunctionenergy : interface_energy[gk*slist[0]+gi];
-                        triplejunctionenergy = triplejunctionenergy > interface_energy[gj*slist[0]+gi] ?
-                                               triplejunctionenergy : interface_energy[gj*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gj]/interface_width[gk*slist[0]+gj] ?
+                                               triplejunctionenergy : interface_energy[gk*slist[0]+gj]/interface_width[gk*slist[0]+gj];
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gk*slist[0]+gi]/interface_width[gk*slist[0]+gi] ?
+                                               triplejunctionenergy : interface_energy[gk*slist[0]+gi]/interface_width[gk*slist[0]+gi];
+                        triplejunctionenergy = triplejunctionenergy > interface_energy[gj*slist[0]+gi]/interface_width[gj*slist[0]+gi] ?
+                                               triplejunctionenergy : interface_energy[gj*slist[0]+gi]/interface_width[gj*slist[0]+gi];
                         triplejunctionenergy *= user->solparams.junctionpenalty;
                         caplsource[gk] -= triplejunctionenergy*pcell[gj]*pcell[gi];
                         caplsource[gj] -= triplejunctionenergy*pcell[gk]*pcell[gi];
                         caplsource[gi] -= triplejunctionenergy*pcell[gk]*pcell[gj];
                     }
                 }
-                caplsource[gk] *= 8.0/user->solparams.interfacewidth;
+                caplsource[gk] *= 8.0;
                 caplsource[gk] += plapl[gk];
             }   
 

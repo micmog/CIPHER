@@ -26,7 +26,7 @@
 #define TOL   1.0e-6
 /* max active phases... depends on neighbourhood */
 #define MAXCP 5
-#define MAXAP 15
+#define MAXAP 50
 #define R_GAS_CONST 8.314462
 
 /* field offsets */
@@ -235,7 +235,7 @@ typedef struct IMOBILITY {
 typedef struct INTERFACE {
     IENERGY *ienergy;
     IMOBILITY *imobility;
-    PetscReal *potential, *mobilityc;
+    PetscReal *potential, *mobilityc, width;
     SOURCES isources;
 } INTERFACE;
 
@@ -259,7 +259,6 @@ typedef struct SOLUTIONPARAMS {
     PetscInt  nloadcases, currentloadcase;
     PetscInt  step;
     /* phase field parameters */
-    PetscReal interfacewidth;
     PetscReal junctionpenalty;
     /* interpolation */
     interpolation_t interpolation;
