@@ -965,7 +965,7 @@ PetscErrorCode PostStep(TS ts)
          memcpy(pcell,phiSS       ,superset[0]        *sizeof(PetscReal));
          memcpy(ccell,sitepot_exSS,superset[0]*SP_SIZE*sizeof(PetscReal));
          I2FFUNC(&offsetg[AS_OFFSET],superset);
-         assert(superset[0] < MAXAP);
+         assert(superset[0] < AS_SIZE);
      }    
      ierr = VecRestoreArray(localX,&fadof); CHKERRQ(ierr);
      ierr = VecRestoreArray(solution,&fdof); CHKERRQ(ierr);
