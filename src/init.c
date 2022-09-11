@@ -105,7 +105,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 {
     char           configfile[PETSC_MAX_PATH_LEN] = "";
     unsigned char  *buffer = 0;
-    PetscInt       total_cells;
+    PetscInt       total_cells, max_phase_neighbours = MAXAP;
     
     PetscFunctionBeginUser;
 
@@ -877,21 +877,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
     }
 
-    /* field offsets */
-    SF_SIZE = MAXSITES*user->ncp;
-    SP_SIZE = MAXSITES*user->ndp;
-
-    AS_OFFSET = 0;
-    AS_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf) + 1;
-    PF_OFFSET = AS_OFFSET+AS_SIZE;
-    PF_SIZE   = (MAXAP < user->npf ? MAXAP : user->npf);
-    DP_OFFSET = PF_OFFSET+PF_SIZE;
-    DP_SIZE   = user->ndp;
-    EX_OFFSET = DP_OFFSET+DP_SIZE;
-    EX_SIZE   = PF_SIZE*SP_SIZE;
-    TM_OFFSET = EX_OFFSET+EX_SIZE;
-    TM_SIZE   = 1;
-    
     /* Parsing config file nucleation */
     {
      NUCLEUS *currentnucleus = &user->nucleus[0];
@@ -1341,8 +1326,25 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "solution_parameters", "gradient_calculation", buffer, filesize);
      if (propsize) {assert(propsize == 1 && atoi(propval[0]) >= 0 && atoi(propval[0]) <= 1); user->gradient_calculation = atoi(propval[0]);}
      else {user->gradient_calculation = 0;}
+     ierr = GetProperty(propval, &propsize, "solution_parameters", "max_phase_neighbours", buffer, filesize);
+     if (propsize) {assert(propsize == 1); max_phase_neighbours = atoi(propval[0]);}
     }
 
+    /* field offsets */
+    SF_SIZE = MAXSITES*user->ncp;
+    SP_SIZE = MAXSITES*user->ndp;
+
+    AS_OFFSET = 0;
+    AS_SIZE   = (max_phase_neighbours < user->npf ? max_phase_neighbours : user->npf) + 1;
+    PF_OFFSET = AS_OFFSET+AS_SIZE;
+    PF_SIZE   = (max_phase_neighbours < user->npf ? max_phase_neighbours : user->npf);
+    DP_OFFSET = PF_OFFSET+PF_SIZE;
+    DP_SIZE   = user->ndp;
+    EX_OFFSET = DP_OFFSET+DP_SIZE;
+    EX_SIZE   = PF_SIZE*SP_SIZE;
+    TM_OFFSET = EX_OFFSET+EX_SIZE;
+    TM_SIZE   = 1;
+    
     /* Parsing config file mappings */
     {
      char *tok, *savetok;
