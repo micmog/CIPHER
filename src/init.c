@@ -104,7 +104,7 @@ PetscErrorCode GetProperty(char **propval, PetscInt *propsize,
 PetscErrorCode SetUpConfig(AppCtx *user)
 {
     char           configfile[PETSC_MAX_PATH_LEN] = "";
-    unsigned char  *buffer = 0;
+    unsigned char  *buffer = 0, *mappingbuffer = 0;
     PetscInt       total_cells, max_phase_neighbours = MAXAP;
     
     PetscFunctionBeginUser;
@@ -112,27 +112,24 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     /* Read config file to buffer */
     PetscOptionsGetString(NULL,NULL,"--config",configfile,PETSC_MAX_PATH_LEN,NULL);
     FILE *infile=NULL;
-    if (user->worldrank == 0) {
-        infile = fopen (configfile, "r");
-        if (infile==NULL) {
-            printf("Error: config file can't be opened. \n");
-            printf("Error: Please make sure the file %s is in the CWD.\n",configfile);
-            return 1;
-        }
-    }
-    PetscInt filesize;
+	infile = fopen (configfile, "r");
+	if (infile==NULL) {
+		printf("Error: config file can't be opened. \n");
+		printf("Error: Please make sure the file %s is in the CWD.\n",configfile);
+		return 1;
+	}
+    size_t filesize;
     if (infile) {
         fseek(infile, 0, SEEK_END);
         filesize = ftell(infile);
         fseek(infile, 0, SEEK_SET);
     }    
-    MPI_Bcast(&filesize,1,MPIU_INT ,0,PETSC_COMM_WORLD);
     buffer = malloc(filesize);
     if (infile) {
         fread(buffer, 1, filesize, infile);
         fclose(infile);
     }
-    MPI_Bcast(buffer,filesize,MPI_CHAR,0,PETSC_COMM_WORLD);
+    printf("File size %lu \n", filesize);
     
     char **propval;
     PetscInt propsize, ierr, maxprops = 100;
@@ -1390,6 +1387,28 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
      tok = strtok_r(propval[0], "\n", &savetok);
+	 if (strstr(tok, ".txt") != NULL) {
+		 FILE *mappingfile=NULL;
+		 mappingfile = fopen (propval[0], "r");
+		 if (mappingfile==NULL) {
+			 printf("Error: Voxel phase mapping file can't be opened. \n");
+			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+			 return 1;
+		 }
+		 long int mappingfilesize;
+		 if (mappingfile) {
+			 fseek(mappingfile, 0, SEEK_END);
+			 mappingfilesize = ftell(infile);
+			 fseek(mappingfile, 0, SEEK_SET);
+		 }
+		 mappingbuffer = malloc(mappingfilesize);
+		 if (mappingfile) {
+			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+			 fclose(mappingfile);
+		 }
+		 printf("File size %lu \n", mappingfilesize);
+		 tok = strtok_r(mappingbuffer, "\n", &savetok);
+	 }
      ctrm=0;
      while (tok != NULL && ctrm < total_cells) {
          // process the line
@@ -1421,57 +1440,104 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          tok = strtok_r(NULL, "\n", &savetok);
      }
      assert(ctrm == total_cells && tok == NULL);
+	 if (mappingbuffer) {free(mappingbuffer);}
 
      ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
-     user->interfacelist = malloc(user->npf*user->npf*sizeof(PetscInt));
      tok = strtok_r(propval[0], "\n", &savetok);
-     ctrm=0;
-     while (tok != NULL && ctrm < user->npf*user->npf) {
-         // process the line
-         if (strstr(tok, "of") != NULL) {
-             char stra[128], strb[128];
-             PetscInt sof, interface;
-             sscanf(tok, "%s of %s", stra, strb);
-             sof = atoi(stra); interface = atoi(strb);
-             for (PetscInt j=ctrm;j<ctrm+sof;j++) {
-                 PetscInt row = j/user->npf, col = j%user->npf;
-                 if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
-             }
-             ctrm+=sof;
-         } else if (strstr(tok, "to") != NULL) {
-             char stra[128], strb[128];
-             PetscInt interface, interfacefrom, interfaceto;
-             sscanf(tok, "%s to %s", stra, strb);
-             interfacefrom = atoi(stra); interfaceto = atoi(strb);
-             if (interfacefrom < interfaceto) {
-                 for (interface=interfacefrom;interface<=interfaceto;interface++) {
-                     PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-                     if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-                     ctrm++;
-                 }    
-             } else {
-                 for (interface=interfacefrom;interface>=interfaceto;interface--) {
-                     PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-                     if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-                     ctrm++;
-                 }    
-             }   
-         } else if (atoi(tok)) {
-             PetscInt interface = atoi(tok);
-             PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-             if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-             ctrm++;
-         }
-         //advance the token
-         tok = strtok_r(NULL, "\n", &savetok);
-     }
-     assert(ctrm == user->npf*user->npf);
+	 if (strstr(tok, ".txt") != NULL) {
+		 FILE *mappingfile=NULL;
+		 mappingfile = fopen (propval[0], "r");
+		 if (mappingfile==NULL) {
+			 printf("Error: Interface mapping file can't be opened. \n");
+			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+			 return 1;
+		 }
+		 long int mappingfilesize;
+		 if (mappingfile) {
+			 fseek(mappingfile, 0, SEEK_END);
+			 mappingfilesize = ftell(infile);
+			 fseek(mappingfile, 0, SEEK_SET);
+		 }
+		 mappingbuffer = malloc(mappingfilesize);
+		 if (mappingfile) {
+			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+			 fclose(mappingfile);
+		 }
+		 printf("File size %lu \n", mappingfilesize);
+		 tok = strtok_r(mappingbuffer, "\n", &savetok);
+	 }
+	 ctrm=0;
+	 user->interfacelist = malloc(user->npf*user->npf*sizeof(PetscInt));
+	 while (tok != NULL && ctrm < user->npf*user->npf) {
+		 // process the line
+		 if (strstr(tok, "of") != NULL) {
+			 char stra[128], strb[128];
+			 PetscInt sof, interface;
+			 sscanf(tok, "%s of %s", stra, strb);
+			 sof = atoi(stra); interface = atoi(strb);
+			 for (PetscInt j=ctrm;j<ctrm+sof;j++) {
+				 PetscInt row = j/user->npf, col = j%user->npf;
+				 if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
+			 }
+			 ctrm+=sof;
+		 } else if (strstr(tok, "to") != NULL) {
+			 char stra[128], strb[128];
+			 PetscInt interface, interfacefrom, interfaceto;
+			 sscanf(tok, "%s to %s", stra, strb);
+			 interfacefrom = atoi(stra); interfaceto = atoi(strb);
+			 if (interfacefrom < interfaceto) {
+				 for (interface=interfacefrom;interface<=interfaceto;interface++) {
+					 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+					 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+					 ctrm++;
+				 }    
+			 } else {
+				 for (interface=interfacefrom;interface>=interfaceto;interface--) {
+					 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+					 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+					 ctrm++;
+				 }    
+			 }   
+		 } else if (atoi(tok)) {
+			 PetscInt interface = atoi(tok);
+			 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+			 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+			 ctrm++;
+		 }
+		 //advance the token
+		 tok = strtok_r(NULL, "\n", &savetok);
+	 }
+	 printf("ctrs %d %d %d. \n", ctrm, user->npf*user->npf, tok != NULL); 
+	 assert(ctrm == user->npf*user->npf);
+	 if (mappingbuffer) {free(mappingbuffer);}
 
      if (user->nsites) {
          ierr = GetProperty(propval, &propsize, "mappings", "site_nucleus_mapping", buffer, filesize);
          assert(propsize);
          tok = strtok_r(propval[0], "\n", &savetok);
+		 if (strstr(tok, ".txt") != NULL) {
+			 FILE *mappingfile=NULL;
+			 mappingfile = fopen (propval[0], "r");
+			 if (mappingfile==NULL) {
+				 printf("Error: Interface mapping file can't be opened. \n");
+				 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+				 return 1;
+			 }
+			 long int mappingfilesize;
+			 if (mappingfile) {
+				 fseek(mappingfile, 0, SEEK_END);
+				 mappingfilesize = ftell(infile);
+				 fseek(mappingfile, 0, SEEK_SET);
+			 }
+			 mappingbuffer = malloc(mappingfilesize);
+			 if (mappingfile) {
+				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+				 fclose(mappingfile);
+			 }
+			 printf("File size %lu \n", mappingfilesize);
+			 tok = strtok_r(mappingbuffer, "\n", &savetok);
+		 }
          ctrm=0;
          while (tok != NULL && ctrm < user->nsites) {
              // process the line
@@ -1506,10 +1572,33 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == user->nsites && tok == NULL);
+         if (mappingbuffer) {free(mappingbuffer);}
 
          ierr = GetProperty(propval, &propsize, "mappings", "site_phase_mapping", buffer, filesize);
          assert(propsize);
          tok = strtok_r(propval[0], "\n", &savetok);
+		 if (strstr(tok, ".txt") != NULL) {
+			 FILE *mappingfile=NULL;
+			 mappingfile = fopen (propval[0], "r");
+			 if (mappingfile==NULL) {
+				 printf("Error: Interface mapping file can't be opened. \n");
+				 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+				 return 1;
+			 }
+			 long int mappingfilesize;
+			 if (mappingfile) {
+				 fseek(mappingfile, 0, SEEK_END);
+				 mappingfilesize = ftell(infile);
+				 fseek(mappingfile, 0, SEEK_SET);
+			 }
+			 mappingbuffer = malloc(mappingfilesize);
+			 if (mappingfile) {
+				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+				 fclose(mappingfile);
+			 }
+			 printf("File size %lu \n", mappingfilesize);
+			 tok = strtok_r(mappingbuffer, "\n", &savetok);
+		 }
          ctrm=0;
          while (tok != NULL && ctrm < user->nsites) {
              // process the line
@@ -1544,10 +1633,33 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == user->nsites && tok == NULL);
+         if (mappingbuffer) {free(mappingbuffer);}
 
          ierr = GetProperty(propval, &propsize, "mappings", "voxel_site_mapping", buffer, filesize);
          assert(propsize);
          tok = strtok_r(propval[0], "\n", &savetok);
+		 if (strstr(tok, ".txt") != NULL) {
+			 FILE *mappingfile=NULL;
+			 mappingfile = fopen (propval[0], "r");
+			 if (mappingfile==NULL) {
+				 printf("Error: Interface mapping file can't be opened. \n");
+				 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+				 return 1;
+			 }
+			 long int mappingfilesize;
+			 if (mappingfile) {
+				 fseek(mappingfile, 0, SEEK_END);
+				 mappingfilesize = ftell(infile);
+				 fseek(mappingfile, 0, SEEK_SET);
+			 }
+			 mappingbuffer = malloc(mappingfilesize);
+			 if (mappingfile) {
+				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+				 fclose(mappingfile);
+			 }
+			 printf("File size %lu \n", mappingfilesize);
+			 tok = strtok_r(mappingbuffer, "\n", &savetok);
+		 }
          ctrm=0;
          while (tok != NULL && ctrm < total_cells) {
              // process the line
@@ -1579,6 +1691,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == total_cells && tok == NULL);
+         if (mappingbuffer) {free(mappingbuffer);}
      }
     } 
 
