@@ -1348,6 +1348,27 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      ierr = GetProperty(propval, &propsize, "mappings", "phase_material_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
      tok = strtok_r(propval[0], "\n", &savetok);
+	 if (strstr(tok, ".txt") != NULL) {
+		 FILE *mappingfile=NULL;
+		 mappingfile = fopen (propval[0], "r");
+		 if (mappingfile==NULL) {
+			 printf("Error: Voxel phase mapping file can't be opened. \n");
+			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+			 return 1;
+		 }
+		 long int mappingfilesize;
+		 if (mappingfile) {
+			 fseek(mappingfile, 0, SEEK_END);
+			 mappingfilesize = ftell(infile);
+			 fseek(mappingfile, 0, SEEK_SET);
+		 }
+		 mappingbuffer = malloc(mappingfilesize);
+		 if (mappingfile) {
+			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+			 fclose(mappingfile);
+		 }
+		 tok = strtok_r(mappingbuffer, "\n", &savetok);
+	 }
      PetscInt ctrm=0;
      while (tok != NULL && ctrm < user->npf) {
          // process the line
@@ -1383,6 +1404,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          tok = strtok_r(NULL, "\n", &savetok);
      }
      assert(ctrm == user->npf && tok == NULL);
+	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
 
      ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
@@ -1406,7 +1428,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
 			 fclose(mappingfile);
 		 }
-		 printf("File size %lu \n", mappingfilesize);
 		 tok = strtok_r(mappingbuffer, "\n", &savetok);
 	 }
      ctrm=0;
@@ -1440,7 +1461,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          tok = strtok_r(NULL, "\n", &savetok);
      }
      assert(ctrm == total_cells && tok == NULL);
-	 if (mappingbuffer) {free(mappingbuffer);}
+	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
 
      ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
      assert(propsize);
@@ -1464,7 +1485,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
 			 fclose(mappingfile);
 		 }
-		 printf("File size %lu \n", mappingfilesize);
 		 tok = strtok_r(mappingbuffer, "\n", &savetok);
 	 }
 	 ctrm=0;
@@ -1508,9 +1528,8 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 		 //advance the token
 		 tok = strtok_r(NULL, "\n", &savetok);
 	 }
-	 printf("ctrs %d %d %d. \n", ctrm, user->npf*user->npf, tok != NULL); 
 	 assert(ctrm == user->npf*user->npf);
-	 if (mappingbuffer) {free(mappingbuffer);}
+	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
 
      if (user->nsites) {
          ierr = GetProperty(propval, &propsize, "mappings", "site_nucleus_mapping", buffer, filesize);
@@ -1535,7 +1554,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
 				 fclose(mappingfile);
 			 }
-			 printf("File size %lu \n", mappingfilesize);
 			 tok = strtok_r(mappingbuffer, "\n", &savetok);
 		 }
          ctrm=0;
@@ -1572,7 +1590,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == user->nsites && tok == NULL);
-         if (mappingbuffer) {free(mappingbuffer);}
+	     if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
 
          ierr = GetProperty(propval, &propsize, "mappings", "site_phase_mapping", buffer, filesize);
          assert(propsize);
@@ -1596,7 +1614,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
 				 fclose(mappingfile);
 			 }
-			 printf("File size %lu \n", mappingfilesize);
 			 tok = strtok_r(mappingbuffer, "\n", &savetok);
 		 }
          ctrm=0;
@@ -1633,7 +1650,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == user->nsites && tok == NULL);
-         if (mappingbuffer) {free(mappingbuffer);}
+	     if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
 
          ierr = GetProperty(propval, &propsize, "mappings", "voxel_site_mapping", buffer, filesize);
          assert(propsize);
@@ -1657,7 +1674,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
 				 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
 				 fclose(mappingfile);
 			 }
-			 printf("File size %lu \n", mappingfilesize);
 			 tok = strtok_r(mappingbuffer, "\n", &savetok);
 		 }
          ctrm=0;
@@ -1691,11 +1707,11 @@ PetscErrorCode SetUpConfig(AppCtx *user)
              tok = strtok_r(NULL, "\n", &savetok);
          }
          assert(ctrm == total_cells && tok == NULL);
-         if (mappingbuffer) {free(mappingbuffer);}
+	     if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
      }
     } 
 
-    free(buffer);   
+    free(buffer); 
     PetscFunctionReturn(0);
 }
 
@@ -1791,7 +1807,7 @@ PetscErrorCode SetUpProblem(Vec solution, AppCtx *user)
                 currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
                 *tcell = currentmaterial->thermal.temperature0;
             }
-        }        
+        }    
         for (g=0; g<gslist[0]; g++) {
             currentmaterial = &user->material[user->phasematerialmapping[gslist[g+1]]];
             SitepotentialExplicit(&ccell[g*SP_SIZE],currentmaterial->c0,(*tcell),gslist[g+1],user);
