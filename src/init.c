@@ -1345,6 +1345,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     
     /* Parsing config file mappings */
     {
+     printf("Parsing config file mappings...\n");
      char *tok, *savetok;
      PetscInt ctrm = 0;
      if (user->worldrank == 0) {             
@@ -1408,6 +1409,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == user->npf && tok == NULL);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished parsing phase-material mapping.\n");
      }
      ierr = MPI_Bcast(user->phasematerialmapping, user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
@@ -1468,6 +1470,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == total_cells && tok == NULL);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished parsing voxel-phase mapping.\n");
      }
      ierr = MPI_Bcast(user->voxelphasemapping, total_cells, MPIU_INT, 0, PETSC_COMM_WORLD);
 
@@ -1538,6 +1541,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == user->npf*user->npf);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished parsing interface mapping.\n");
      }
      ierr = MPI_Bcast(user->interfacelist, user->npf * user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
@@ -1719,9 +1723,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          assert(ctrm == total_cells && tok == NULL);
 	     if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
      }
-    } 
-
+    }     
     free(buffer); 
+    printf("Finished parsing config file.\n");
     PetscFunctionReturn(0);
 }
 
