@@ -1497,7 +1497,6 @@ PetscErrorCode SetUpConfig(AppCtx *user)
             tok = strtok_r(mappingbuffer, "\n", &savetok);
         }
         ctrm=0;
-        user->interfacelist = malloc(user->npf*user->npf*sizeof(PetscInt));
         while (tok != NULL && ctrm < user->npf*user->npf) {
             // process the line
             if (strstr(tok, "of") != NULL) {
