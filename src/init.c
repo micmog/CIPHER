@@ -129,7 +129,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         fread(buffer, 1, filesize, infile);
         fclose(infile);
     }
-    printf("File size %lu \n", filesize);
+    if (user->worldrank == 0) {
+        printf("Config file size %lu \n", filesize);
+    }
     
     char **propval;
     PetscInt propsize, ierr, maxprops = 100;
@@ -1345,7 +1347,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     
     /* Parsing config file mappings */
     {
-     printf("Parsing config file mappings...\n");
+     if (user->worldrank == 0) {
+        printf("Parsing config file mappings...\n");
+     }     
      char *tok, *savetok;
      PetscInt ctrm = 0;
      if (user->worldrank == 0) {             
@@ -1353,6 +1357,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         assert(propsize);
         tok = strtok_r(propval[0], "\n", &savetok);
         if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the phase-material mapping.\n", tok);
             FILE *mappingfile=NULL;
             mappingfile = fopen (propval[0], "r");
             if (mappingfile==NULL) {
@@ -1373,6 +1378,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
             }
             tok = strtok_r(mappingbuffer, "\n", &savetok);
         }
+        printf("Processing the phase-material mapping.\n");
         ctrm=0;
         while (tok != NULL && ctrm < user->npf) {
             // process the line
@@ -1409,15 +1415,16 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == user->npf && tok == NULL);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
-        printf("Finished parsing phase-material mapping.\n");
+        printf("Finished processing the phase-material mapping.\n");
      }
      ierr = MPI_Bcast(user->phasematerialmapping, user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
-     if (user->worldrank == 0) {
+     if (user->worldrank == 0) {        
         ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
         assert(propsize);
         tok = strtok_r(propval[0], "\n", &savetok);
         if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the voxel-phase mapping.\n", tok);
             FILE *mappingfile=NULL;
             mappingfile = fopen (propval[0], "r");
             if (mappingfile==NULL) {
@@ -1438,6 +1445,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
             }
             tok = strtok_r(mappingbuffer, "\n", &savetok);
         }
+        printf("Processing the voxel-phase mapping.\n");
         ctrm=0;
         while (tok != NULL && ctrm < total_cells) {
             // process the line
@@ -1470,7 +1478,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == total_cells && tok == NULL);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
-        printf("Finished parsing voxel-phase mapping.\n");
+        printf("Finished processing voxel-phase mapping.\n");
      }
      ierr = MPI_Bcast(user->voxelphasemapping, total_cells, MPIU_INT, 0, PETSC_COMM_WORLD);
 
@@ -1479,6 +1487,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         assert(propsize);
         tok = strtok_r(propval[0], "\n", &savetok);
         if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the interface mapping.\n", tok);
             FILE *mappingfile=NULL;
             mappingfile = fopen (propval[0], "r");
             if (mappingfile==NULL) {
@@ -1499,6 +1508,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
             }
             tok = strtok_r(mappingbuffer, "\n", &savetok);
         }
+        printf("Processing the interface mapping.\n");
         ctrm=0;
         while (tok != NULL && ctrm < user->npf*user->npf) {
             // process the line
@@ -1541,7 +1551,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         }
         assert(ctrm == user->npf*user->npf);
         if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
-        printf("Finished parsing interface mapping.\n");
+        printf("Finished processing the interface mapping.\n");
      }
      ierr = MPI_Bcast(user->interfacelist, user->npf * user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
@@ -1725,7 +1735,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
      }
     }     
     free(buffer); 
-    printf("Finished parsing config file.\n");
+    if (user->worldrank == 0) {
+        printf("Finished parsing config file.\n");
+    }    
     PetscFunctionReturn(0);
 }
 
