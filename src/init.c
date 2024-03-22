@@ -129,7 +129,9 @@ PetscErrorCode SetUpConfig(AppCtx *user)
         fread(buffer, 1, filesize, infile);
         fclose(infile);
     }
-    printf("File size %lu \n", filesize);
+    if (user->worldrank == 0) {
+        printf("Config file size %lu \n", filesize);
+    }
     
     char **propval;
     PetscInt propsize, ierr, maxprops = 100;
@@ -164,6 +166,7 @@ PetscErrorCode SetUpConfig(AppCtx *user)
       assert(propsize == 1 && atoi(propval[0]) > 0);
       user->npf = atoi(propval[0]);
       user->phasematerialmapping = malloc(user->npf*sizeof(PetscInt));
+      user->interfacelist  = malloc(user->npf * user->npf * sizeof(PetscInt));
      }
      /* number of nucleation sites */
      {
@@ -1344,192 +1347,213 @@ PetscErrorCode SetUpConfig(AppCtx *user)
     
     /* Parsing config file mappings */
     {
+     if (user->worldrank == 0) {
+        printf("Parsing config file mappings...\n");
+     }     
      char *tok, *savetok;
-     ierr = GetProperty(propval, &propsize, "mappings", "phase_material_mapping", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize);
-     tok = strtok_r(propval[0], "\n", &savetok);
-	 if (strstr(tok, ".txt") != NULL) {
-		 FILE *mappingfile=NULL;
-		 mappingfile = fopen (propval[0], "r");
-		 if (mappingfile==NULL) {
-			 printf("Error: Voxel phase mapping file can't be opened. \n");
-			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
-			 return 1;
-		 }
-		 long int mappingfilesize;
-		 if (mappingfile) {
-			 fseek(mappingfile, 0, SEEK_END);
-			 mappingfilesize = ftell(infile);
-			 fseek(mappingfile, 0, SEEK_SET);
-		 }
-		 mappingbuffer = malloc(mappingfilesize);
-		 if (mappingfile) {
-			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
-			 fclose(mappingfile);
-		 }
-		 tok = strtok_r(mappingbuffer, "\n", &savetok);
-	 }
-     PetscInt ctrm=0;
-     while (tok != NULL && ctrm < user->npf) {
-         // process the line
-         if (strstr(tok, "of") != NULL) {
-             char stra[128], strb[128];
-             PetscInt sof,m;
-             sscanf(tok, "%s of %s", stra, strb);
-             sof = atoi(stra); m = atoi(strb);
-             assert(m <= user->nmat);
-             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
-                 user->phasematerialmapping[j] = m-1;
-             ctrm += sof;
-         } else if (strstr(tok, "to") != NULL) {
-             char stra[128], strb[128];
-             PetscInt m, mfrom, mto;
-             sscanf(tok, "%s to %s", stra, strb);
-             mfrom = atoi(stra); mto = atoi(strb);
-             assert(mfrom <= user->nmat);
-             assert(mto   <= user->nmat);
-             if (mfrom < mto) {
-                 for (m=mfrom;m<=mto;m++) 
-                     user->phasematerialmapping[ctrm++] = m-1;
-             } else {
-                 for (m=mfrom;m>=mto;m--)
-                     user->phasematerialmapping[ctrm++] = m-1;
-             }   
-         }
-         else if (atoi(tok)) {
-             assert(atoi(tok) <= user->nmat);
-             user->phasematerialmapping[ctrm++] = atoi(tok)-1;
-         }
-         //advance the token
-         tok = strtok_r(NULL, "\n", &savetok);
+     PetscInt ctrm = 0;
+     if (user->worldrank == 0) {             
+        ierr = GetProperty(propval, &propsize, "mappings", "phase_material_mapping", buffer, filesize); CHKERRQ(ierr);
+        assert(propsize);
+        tok = strtok_r(propval[0], "\n", &savetok);
+        if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the phase-material mapping.\n", tok);
+            FILE *mappingfile=NULL;
+            mappingfile = fopen (propval[0], "r");
+            if (mappingfile==NULL) {
+                printf("Error: Voxel phase mapping file can't be opened. \n");
+                printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+                return 1;
+            }
+            long int mappingfilesize;
+            if (mappingfile) {
+                fseek(mappingfile, 0, SEEK_END);
+                mappingfilesize = ftell(infile);
+                fseek(mappingfile, 0, SEEK_SET);
+            }
+            mappingbuffer = malloc(mappingfilesize);
+            if (mappingfile) {
+                fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+                fclose(mappingfile);
+            }
+            tok = strtok_r(mappingbuffer, "\n", &savetok);
+        }
+        printf("Processing the phase-material mapping.\n");
+        ctrm=0;
+        while (tok != NULL && ctrm < user->npf) {
+            // process the line
+            if (strstr(tok, "of") != NULL) {
+                char stra[128], strb[128];
+                PetscInt sof,m;
+                sscanf(tok, "%s of %s", stra, strb);
+                sof = atoi(stra); m = atoi(strb);
+                assert(m <= user->nmat);
+                for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                    user->phasematerialmapping[j] = m-1;
+                ctrm += sof;
+            } else if (strstr(tok, "to") != NULL) {
+                char stra[128], strb[128];
+                PetscInt m, mfrom, mto;
+                sscanf(tok, "%s to %s", stra, strb);
+                mfrom = atoi(stra); mto = atoi(strb);
+                assert(mfrom <= user->nmat);
+                assert(mto   <= user->nmat);
+                if (mfrom < mto) {
+                    for (m=mfrom;m<=mto;m++) 
+                        user->phasematerialmapping[ctrm++] = m-1;
+                } else {
+                    for (m=mfrom;m>=mto;m--)
+                        user->phasematerialmapping[ctrm++] = m-1;
+                }   
+            }
+            else if (atoi(tok)) {
+                assert(atoi(tok) <= user->nmat);
+                user->phasematerialmapping[ctrm++] = atoi(tok)-1;
+            }
+            //advance the token
+            tok = strtok_r(NULL, "\n", &savetok);
+        }
+        assert(ctrm == user->npf && tok == NULL);
+        if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished processing the phase-material mapping.\n");
      }
-     assert(ctrm == user->npf && tok == NULL);
-	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+     ierr = MPI_Bcast(user->phasematerialmapping, user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
-     ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize);
-     tok = strtok_r(propval[0], "\n", &savetok);
-	 if (strstr(tok, ".txt") != NULL) {
-		 FILE *mappingfile=NULL;
-		 mappingfile = fopen (propval[0], "r");
-		 if (mappingfile==NULL) {
-			 printf("Error: Voxel phase mapping file can't be opened. \n");
-			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
-			 return 1;
-		 }
-		 long int mappingfilesize;
-		 if (mappingfile) {
-			 fseek(mappingfile, 0, SEEK_END);
-			 mappingfilesize = ftell(infile);
-			 fseek(mappingfile, 0, SEEK_SET);
-		 }
-		 mappingbuffer = malloc(mappingfilesize);
-		 if (mappingfile) {
-			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
-			 fclose(mappingfile);
-		 }
-		 tok = strtok_r(mappingbuffer, "\n", &savetok);
-	 }
-     ctrm=0;
-     while (tok != NULL && ctrm < total_cells) {
-         // process the line
-         if (strstr(tok, "of") != NULL) {
-             char stra[128], strb[128];
-             PetscInt sof,p;
-             sscanf(tok, "%s of %s", stra, strb);
-             sof = atoi(stra); p = atoi(strb);
-             for (PetscInt j=ctrm;j<ctrm+sof;j++) 
-                 user->voxelphasemapping[j] = p-1;;
-             ctrm+=sof;
-         } else if (strstr(tok, "to") != NULL) {
-             char stra[128], strb[128];
-             PetscInt p, pfrom, pto;
-             sscanf(tok, "%s to %s", stra, strb);
-             pfrom = atoi(stra); pto = atoi(strb);
-             if (pfrom < pto) {
-                 for (p=pfrom;p<=pto;p++) 
-                     user->voxelphasemapping[ctrm++] = p-1;
-             } else {
-                 for (p=pfrom;p>=pto;p--)
-                     user->voxelphasemapping[ctrm++] = p-1;
-             }   
-         }
-         else if (atoi(tok)) {
-             user->voxelphasemapping[ctrm++] = atoi(tok)-1;
-         }
-         //advance the token
-         tok = strtok_r(NULL, "\n", &savetok);
+     if (user->worldrank == 0) {        
+        ierr = GetProperty(propval, &propsize, "mappings", "voxel_phase_mapping", buffer, filesize); CHKERRQ(ierr);
+        assert(propsize);
+        tok = strtok_r(propval[0], "\n", &savetok);
+        if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the voxel-phase mapping.\n", tok);
+            FILE *mappingfile=NULL;
+            mappingfile = fopen (propval[0], "r");
+            if (mappingfile==NULL) {
+                printf("Error: Voxel phase mapping file can't be opened. \n");
+                printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+                return 1;
+            }
+            long int mappingfilesize;
+            if (mappingfile) {
+                fseek(mappingfile, 0, SEEK_END);
+                mappingfilesize = ftell(infile);
+                fseek(mappingfile, 0, SEEK_SET);
+            }
+            mappingbuffer = malloc(mappingfilesize);
+            if (mappingfile) {
+                fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+                fclose(mappingfile);
+            }
+            tok = strtok_r(mappingbuffer, "\n", &savetok);
+        }
+        printf("Processing the voxel-phase mapping.\n");
+        ctrm=0;
+        while (tok != NULL && ctrm < total_cells) {
+            // process the line
+            if (strstr(tok, "of") != NULL) {
+                char stra[128], strb[128];
+                PetscInt sof,p;
+                sscanf(tok, "%s of %s", stra, strb);
+                sof = atoi(stra); p = atoi(strb);
+                for (PetscInt j=ctrm;j<ctrm+sof;j++) 
+                    user->voxelphasemapping[j] = p-1;;
+                ctrm+=sof;
+            } else if (strstr(tok, "to") != NULL) {
+                char stra[128], strb[128];
+                PetscInt p, pfrom, pto;
+                sscanf(tok, "%s to %s", stra, strb);
+                pfrom = atoi(stra); pto = atoi(strb);
+                if (pfrom < pto) {
+                    for (p=pfrom;p<=pto;p++) 
+                        user->voxelphasemapping[ctrm++] = p-1;
+                } else {
+                    for (p=pfrom;p>=pto;p--)
+                        user->voxelphasemapping[ctrm++] = p-1;
+                }   
+            }
+            else if (atoi(tok)) {
+                user->voxelphasemapping[ctrm++] = atoi(tok)-1;
+            }
+            //advance the token
+            tok = strtok_r(NULL, "\n", &savetok);
+        }
+        assert(ctrm == total_cells && tok == NULL);
+        if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished processing voxel-phase mapping.\n");
      }
-     assert(ctrm == total_cells && tok == NULL);
-	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+     ierr = MPI_Bcast(user->voxelphasemapping, total_cells, MPIU_INT, 0, PETSC_COMM_WORLD);
 
-     ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
-     assert(propsize);
-     tok = strtok_r(propval[0], "\n", &savetok);
-	 if (strstr(tok, ".txt") != NULL) {
-		 FILE *mappingfile=NULL;
-		 mappingfile = fopen (propval[0], "r");
-		 if (mappingfile==NULL) {
-			 printf("Error: Interface mapping file can't be opened. \n");
-			 printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
-			 return 1;
-		 }
-		 long int mappingfilesize;
-		 if (mappingfile) {
-			 fseek(mappingfile, 0, SEEK_END);
-			 mappingfilesize = ftell(infile);
-			 fseek(mappingfile, 0, SEEK_SET);
-		 }
-		 mappingbuffer = malloc(mappingfilesize);
-		 if (mappingfile) {
-			 fread(mappingbuffer, 1, mappingfilesize, mappingfile);
-			 fclose(mappingfile);
-		 }
-		 tok = strtok_r(mappingbuffer, "\n", &savetok);
-	 }
-	 ctrm=0;
-	 user->interfacelist = malloc(user->npf*user->npf*sizeof(PetscInt));
-	 while (tok != NULL && ctrm < user->npf*user->npf) {
-		 // process the line
-		 if (strstr(tok, "of") != NULL) {
-			 char stra[128], strb[128];
-			 PetscInt sof, interface;
-			 sscanf(tok, "%s of %s", stra, strb);
-			 sof = atoi(stra); interface = atoi(strb);
-			 for (PetscInt j=ctrm;j<ctrm+sof;j++) {
-				 PetscInt row = j/user->npf, col = j%user->npf;
-				 if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
-			 }
-			 ctrm+=sof;
-		 } else if (strstr(tok, "to") != NULL) {
-			 char stra[128], strb[128];
-			 PetscInt interface, interfacefrom, interfaceto;
-			 sscanf(tok, "%s to %s", stra, strb);
-			 interfacefrom = atoi(stra); interfaceto = atoi(strb);
-			 if (interfacefrom < interfaceto) {
-				 for (interface=interfacefrom;interface<=interfaceto;interface++) {
-					 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-					 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-					 ctrm++;
-				 }    
-			 } else {
-				 for (interface=interfacefrom;interface>=interfaceto;interface--) {
-					 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-					 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-					 ctrm++;
-				 }    
-			 }   
-		 } else if (atoi(tok)) {
-			 PetscInt interface = atoi(tok);
-			 PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
-			 if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
-			 ctrm++;
-		 }
-		 //advance the token
-		 tok = strtok_r(NULL, "\n", &savetok);
-	 }
-	 assert(ctrm == user->npf*user->npf);
-	 if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+     if (user->worldrank == 0) {
+        ierr = GetProperty(propval, &propsize, "mappings", "interface_mapping", buffer, filesize); CHKERRQ(ierr);
+        assert(propsize);
+        tok = strtok_r(propval[0], "\n", &savetok);
+        if (strstr(tok, ".txt") != NULL) {
+            printf("Reading in file '%s' to populate the interface mapping.\n", tok);
+            FILE *mappingfile=NULL;
+            mappingfile = fopen (propval[0], "r");
+            if (mappingfile==NULL) {
+                printf("Error: Interface mapping file can't be opened. \n");
+                printf("Error: Please make sure the file %s is in the CWD.\n",propval[0]);
+                return 1;
+            }
+            long int mappingfilesize;
+            if (mappingfile) {
+                fseek(mappingfile, 0, SEEK_END);
+                mappingfilesize = ftell(infile);
+                fseek(mappingfile, 0, SEEK_SET);
+            }
+            mappingbuffer = malloc(mappingfilesize);
+            if (mappingfile) {
+                fread(mappingbuffer, 1, mappingfilesize, mappingfile);
+                fclose(mappingfile);
+            }
+            tok = strtok_r(mappingbuffer, "\n", &savetok);
+        }
+        printf("Processing the interface mapping.\n");
+        ctrm=0;
+        while (tok != NULL && ctrm < user->npf*user->npf) {
+            // process the line
+            if (strstr(tok, "of") != NULL) {
+                char stra[128], strb[128];
+                PetscInt sof, interface;
+                sscanf(tok, "%s of %s", stra, strb);
+                sof = atoi(stra); interface = atoi(strb);
+                for (PetscInt j=ctrm;j<ctrm+sof;j++) {
+                    PetscInt row = j/user->npf, col = j%user->npf;
+                    if (col > row) user->interfacelist[j] = (unsigned char) interface-1;
+                }
+                ctrm+=sof;
+            } else if (strstr(tok, "to") != NULL) {
+                char stra[128], strb[128];
+                PetscInt interface, interfacefrom, interfaceto;
+                sscanf(tok, "%s to %s", stra, strb);
+                interfacefrom = atoi(stra); interfaceto = atoi(strb);
+                if (interfacefrom < interfaceto) {
+                    for (interface=interfacefrom;interface<=interfaceto;interface++) {
+                        PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+                        if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+                        ctrm++;
+                    }    
+                } else {
+                    for (interface=interfacefrom;interface>=interfaceto;interface--) {
+                        PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+                        if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+                        ctrm++;
+                    }    
+                }   
+            } else if (atoi(tok)) {
+                PetscInt interface = atoi(tok);
+                PetscInt row = ctrm/user->npf, col = ctrm%user->npf;
+                if (col > row) user->interfacelist[ctrm] = (unsigned char) interface-1;
+                ctrm++;
+            }
+            //advance the token
+            tok = strtok_r(NULL, "\n", &savetok);
+        }
+        assert(ctrm == user->npf*user->npf);
+        if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
+        printf("Finished processing the interface mapping.\n");
+     }
+     ierr = MPI_Bcast(user->interfacelist, user->npf * user->npf, MPIU_INT, 0, PETSC_COMM_WORLD);
 
      if (user->nsites) {
          ierr = GetProperty(propval, &propsize, "mappings", "site_nucleus_mapping", buffer, filesize);
@@ -1709,9 +1733,11 @@ PetscErrorCode SetUpConfig(AppCtx *user)
          assert(ctrm == total_cells && tok == NULL);
 	     if (mappingbuffer) {free(mappingbuffer);mappingbuffer=0;}
      }
-    } 
-
+    }     
     free(buffer); 
+    if (user->worldrank == 0) {
+        printf("Finished parsing config file.\n");
+    }    
     PetscFunctionReturn(0);
 }
 
