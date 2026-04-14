@@ -4,6 +4,8 @@ export PETSC_ARCH=cipher
 
 module load mpi/gcc/openmpi/4.1.8-gcc-14.2.0
 
+git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
+
 cd $PETSC_DIR
 ./configure --download-metis --download-parmetis --download-chaco \
   --download-triangle --download-ctetgen --download-pragmatic \
