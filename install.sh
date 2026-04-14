@@ -17,7 +17,7 @@ git pull origin main
   --download-zlib --download-yaml --download-p4est --with-pthread \
   --with-debugging=0  --download-fblaslapack=1
 make all 2>&1 | tee make-all.log
-make check 2>&1 | make-check.log
+make check 2>&1 | tee make-check.log
 
 cd $CIPHER_DIR
 make install 2>&1 | tee make-install.log
