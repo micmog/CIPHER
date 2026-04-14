@@ -16,11 +16,20 @@ This software requires MPI, p4est [2], and PETSc [3].
 
 Note that the following installation instructions are specific to users of the University of Manchester's Computational Shared Facility (CSF).  Non CSF users will need to follow their local procedures to install PETSc.  
 
-To install CIPHER:
+To install CIPHER, first clone the repo using
+
+```
+git clone --recurse-submodules https://github.com/micmog/CIPHER.git
+```
+
+Then `cd` to the `CIPHER` directory you have just cloned, and run the install script:
+
 ```bash
+cd CIPHER
 source ./install.sh
 ```
-Note that you should change the value of `CIPHER_DIR` in the `install.sh` script to a suitable location.
+Note that you should change the value of `CIPHER_DIR` in the `install.sh` script to the directory you have
+cloned this repo into.
 
 A slurm jobscript is also provided to automate the installation at [install-jobscript.sh](install-jobscript.sh).
 
