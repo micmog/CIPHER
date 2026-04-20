@@ -16,40 +16,30 @@ This software requires MPI, p4est [2], and PETSc [3].
 
 Note that the following installation instructions are specific to users of the University of Manchester's Computational Shared Facility (CSF).  Non CSF users will need to follow their local procedures to install PETSc.  
 
-To install CIPHER:
-```bash
-# Set environment variables and location to install CIPHER. 
-export BASE_PATH=$PATH
-export BASE_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
-export CIPHER_DIR=<path/to/cipher>
-# Replace <path/to/cipher> with specific location, e.g. export CIPHER_DIR=$HOME/software/CIPHER. It is recommended to place these in your .bashrc/.bash_profile.
-# Clone the CIPHER repository with:
-module load tools/env/proxy
-git clone --recurse-submodules https://github.com/micmog/CIPHER.git $CIPHER_DIR
-# Install PETSc:
-cd $CIPHER_DIR/petsc
-module load tools/gcc/cmake/3.23.0
-module load mpi/intel-19.1/openmpi/4.1.1
-./configure --download-metis --download-parmetis --download-chaco --download-triangle --download-ctetgen --download-pragmatic --download-eigen --download-hypre --download-ml --download-hdf5 --download-zlib --download-yaml --download-p4est --with-pthread --with-mkl_pardiso-dir=$MKLROOT --with-mkl_sparse-dir=$MKLROOT --with-mkl_sparse_optimize-dir=$MKLROOT --with-blaslapack-dir=$MKLROOT --with-cxx-dialect=C++11 --with-debugging=0 COPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" CXXOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" FOPTFLAGS="-O2 -msse4.2 -axSSE4.2,AVX,CORE-AVX2" PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc
-make PETSC_ARCH=cipher PETSC_DIR=$CIPHER_DIR/petsc all
-cd $CIPHER_DIR
-# Set up CIPHER environment
-source $CIPHER_DIR/load_CIPHER.sh
-# Install CIPHER 
-make clean
-make install
+To install CIPHER, first clone the repo using
+
 ```
+git clone --recurse-submodules https://github.com/micmog/CIPHER.git
+```
+
+Then `cd` to the `CIPHER` directory you have just cloned, and run the install script:
+
+```bash
+cd CIPHER
+source ./install.sh
+```
+Note that you should change the value of `CIPHER_DIR` in the `install.sh` script to the directory you have
+cloned this repo into.
+
+A slurm jobscript is also provided to automate the installation at [install-jobscript.sh](install-jobscript.sh).
 
 ## Usage
 
 Running an example:
 ```bash
-# Set environment variables, if you have not already added these to your .bashrc or .bash_profile.
-export BASE_PATH=$PATH
-export BASE_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+# Set environment variables
 export CIPHER_DIR=<path/to/cipher>
-# Set up CIPHER environment
-source $CIPHER_DIR/load_CIPHER.sh
+export PATH=$CIPHER_DIR/bin:$PATH
 # Navigate to examples folder
 cd $CIPHER_DIR/examples/GrainBoundaryPrecipitate
 # run example
